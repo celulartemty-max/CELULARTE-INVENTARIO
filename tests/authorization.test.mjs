@@ -1,3 +1,14 @@
-import test from "node:test"; import assert from "node:assert/strict";
-test("role policy: admin roles are global",()=>{ const isAdmin=(r)=>r==="MASTER"||r==="ADMIN"; assert.equal(isAdmin("MASTER"),true); assert.equal(isAdmin("ADMIN"),true); assert.equal(isAdmin("OPERATIVE"),false); });
-test("branch policy rejects unassigned branch",()=>{ const allowed=["a","b"]; assert.equal(allowed.includes("c"),false); });
+import test from "node:test";
+import assert from "node:assert/strict";
+
+test("MASTER has global scope", () => {
+  const hasGlobalScope = (role) => role === "MASTER";
+  assert.equal(hasGlobalScope("MASTER"), true);
+  assert.equal(hasGlobalScope("MANAGER"), false);
+  assert.equal(hasGlobalScope("OPERATIVE"), false);
+});
+
+test("an unassigned branch is outside operative scope", () => {
+  const allowed = ["branch-a", "branch-b"];
+  assert.equal(allowed.includes("branch-c"), false);
+});
