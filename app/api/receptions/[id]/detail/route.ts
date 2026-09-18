@@ -1,0 +1,5 @@
+import { requireUser } from "@/lib/auth/authorization";
+import { buildReceptionXlsx } from "@/lib/inventory/reception-xlsx";
+import { getReceptionVersion,registerReceptionDocument } from "@/lib/inventory/receptions";
+export const runtime="nodejs";
+export async function GET(req:Request,{params}:{params:Promise<{id:string}>}){try{const user=await requireUser();const {id}=await params;const url=new URL(req.url);const requested=url.searchParams.get('version');const data=await getReceptionVersion(user,id,requested?Number(requested):undefined);const {buffer,sha256}=await buildReceptionXlsx(data.snapshot as never);const storageUrl=`/api/receptions/${id}/detail?version=${data.version}`;await registerReceptionDocument(user,id,data.version,storageUrl,sha256);return new Response(new Uint8Array(buffer),{headers:{'content-type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','content-disposition':`attachment; filename="${data.folio}-Detalle-por-Caja-v${data.version}.xlsx"`,'x-reception-version':String(data.version),'x-content-sha256':sha256}})}catch(error){return Response.json({error:error instanceof Error?error.message:'ERROR'},{status:400})}}
