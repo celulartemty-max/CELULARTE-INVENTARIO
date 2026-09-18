@@ -1,0 +1,24 @@
+name: Validate
+on:
+  push:
+    branches: [main, phase-2-1-reception-validation]
+  pull_request:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://user:password@example.invalid/celularte_inventario?sslmode=require
+      AUTH_SECRET: 0123456789abcdef0123456789abcdef
+      AUTH_CREDENTIALS_JSON: '[]'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
