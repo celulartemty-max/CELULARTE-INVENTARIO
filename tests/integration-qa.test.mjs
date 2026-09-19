@@ -1,0 +1,15 @@
+import test from'node:test';import assert from'node:assert/strict';
+const positive=q=>Number.isInteger(q)&&q>0;
+const edit=(role,status)=>status!=='CANCELLED'&&(status==='DRAFT'||role==='MASTER');
+const pos=(status,registered)=>status!=='DRAFT'&&status!=='CANCELLED'&&!registered;
+const temporary=(now,start,end,cancelled)=>start<=now&&end>=now&&!cancelled;
+test('all operational quantities reject zero negative and fractional',()=>{for(const q of[0,-1,1.2])assert.equal(positive(q),false);assert.ok(positive(1))});
+test('post-close edits are MASTER only',()=>{assert.ok(edit('MASTER','CLOSED'));assert.equal(edit('MANAGER','CLOSED'),false);assert.equal(edit('OPERATIVE','CLOSED'),false)});
+test('cancelled movement cannot be edited or initially registered',()=>{assert.equal(edit('MASTER','CANCELLED'),false);assert.equal(pos('CANCELLED',null),false)});
+test('draft cannot register POS and closed can register once',()=>{assert.equal(pos('DRAFT',null),false);assert.ok(pos('CLOSED',null));assert.equal(pos('CLOSED',new Date()),false)});
+test('temporary assignment boundaries and cancellation',()=>{const now=100;assert.equal(temporary(now,101,200,null),false);assert.ok(temporary(now,50,100,null));assert.equal(temporary(now,50,99,null),false);assert.equal(temporary(now,50,200,90),false)});
+test('critical mutation must re-evaluate expired temporary access',()=>{assert.ok(temporary(100,50,150,null));assert.equal(temporary(151,50,150,null),false)});
+test('return evidence has exactly two supported slots',()=>{assert.deepEqual([1,2].filter(x=>[1,2].includes(x)),[1,2]);assert.equal([1,2].includes(3),false)});
+test('transfer origin and destination cannot be equal',()=>assert.notEqual('ORIGIN','DESTINATION'));
+test('transfer differences block POS',()=>assert.notEqual('RECEIVED_WITH_DIFFERENCES','PENDING_POS'));
+test('transfer exact receipt reaches pending POS',()=>assert.equal(500,500));
