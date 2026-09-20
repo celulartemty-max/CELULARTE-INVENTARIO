@@ -1,15 +1,4 @@
 import { requireUser,getAuthorizedBranchIds } from "@/lib/auth/authorization";
 import { sql } from "@/lib/db";
 import NewReception,{type BranchOption,type ProductOption} from "./reception-new";
-
-export default async function NewReceptionPage(){
-  const u=await requireUser();
-  const ids=await getAuthorizedBranchIds(u);
-  const branches=ids===null
-    ?await sql`SELECT id::text,name FROM branches WHERE status::text='ACTIVE' ORDER BY name`
-    :ids.length
-      ?await sql`SELECT id::text,name FROM branches WHERE id=ANY(${ids}::uuid[]) AND status::text='ACTIVE' ORDER BY name`
-      :[];
-  const products=await sql`SELECT id::text,name FROM products WHERE status::text='ACTIVE' ORDER BY name`;
-  return <><header><h1>Nueva recepción</h1><p>Selecciona el producto y crea las cajas para iniciar el conteo.</p></header><NewReception branches={branches as unknown as BranchOption[]} products={products as unknown as ProductOption[]}/></>;
-}
+export default async function NewReceptionPage(){const u=await requireUser();const ids=await getAuthorizedBranchIds(u);const branches=ids===null?await sql`SELECT id::text,name FROM branches WHERE status::text='ACTIVE' ORDER BY name`:ids.length?await sql`SELECT id::text,name FROM branches WHERE id=ANY(${ids}::uuid[]) AND status::text='ACTIVE' ORDER BY name`:[];const products=await sql`SELECT id::text,name FROM products WHERE status::text='ACTIVE' ORDER BY name`;return <><header><h1>Nueva recepción</h1><p>Selecciona el producto y crea las cajas para iniciar el conteo.</p></header><NewReception branches={branches as unknown as BranchOption[]} products={products as unknown as ProductOption[]}/></>}

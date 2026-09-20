@@ -1,23 +1,2 @@
-"use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-export type BranchOption={id:string;name:string};
-export type ProductOption={id:string;name:string};
-
-export default function NewReception({branches,products}:{branches:BranchOption[];products:ProductOption[]}){
-  const [busy,setBusy]=useState(false);
-  const router=useRouter();
-  return <form className="card pad formGrid" onSubmit={async e=>{
-    e.preventDefault();setBusy(true);
-    const f=new FormData(e.currentTarget);
-    const r=await fetch('/api/receptions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'create',branchId:f.get('branch'),productId:f.get('product'),expectedBoxes:Number(f.get('boxes'))})});
-    const j=await r.json() as {id?:string;error?:string};setBusy(false);
-    if(r.ok&&j.id)router.push('/entradas/'+j.id);else alert(j.error||'ERROR');
-  }}>
-    <label>Sucursal<select name="branch" required>{branches.map(b=><option value={b.id} key={b.id}>{b.name}</option>)}</select></label>
-    <label>Producto<select name="product" required defaultValue=""><option value="" disabled>Selecciona un producto…</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
-    <label>Total de cajas<input name="boxes" type="number" min="1" defaultValue="1" required inputMode="numeric"/></label>
-    <button className="primary" disabled={busy||products.length===0}>{busy?'Creando…':'Crear recepción'}</button>
-    {products.length===0&&<small>No hay productos activos. Un usuario MASTER debe crear un producto antes de iniciar la recepción.</small>}
-  </form>;
-}
+"use client";import { useState } from "react";import { useRouter } from "next/navigation";export type BranchOption={id:string;name:string};export type ProductOption={id:string;name:string};
+export default function NewReception({branches,products}:{branches:BranchOption[];products:ProductOption[]}){const [busy,setBusy]=useState(false);const router=useRouter();return <form className="card pad formGrid" onSubmit={async e=>{e.preventDefault();setBusy(true);const f=new FormData(e.currentTarget);const r=await fetch('/api/receptions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'create',branchId:f.get('branch'),productId:f.get('product'),expectedBoxes:Number(f.get('boxes'))})});const j=await r.json() as {id?:string;error?:string};setBusy(false);if(r.ok&&j.id)router.push('/entradas/'+j.id);else alert(j.error||'ERROR')}}><label>Sucursal<select name="branch" required>{branches.map(b=><option value={b.id} key={b.id}>{b.name}</option>)}</select></label><label>Producto<select name="product" required defaultValue=""><option value="" disabled>Selecciona un producto…</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><label>Total de cajas<input name="boxes" type="number" min="1" defaultValue="1" required inputMode="numeric"/></label><button className="primary" disabled={busy||products.length===0}>{busy?'Creando…':'Crear recepción'}</button>{products.length===0&&<small>No hay productos activos. Un usuario MASTER debe crear un producto antes de iniciar la recepción.</small>}</form>}
