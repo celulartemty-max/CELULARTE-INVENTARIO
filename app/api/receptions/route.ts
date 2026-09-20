@@ -4,7 +4,8 @@ import { addBox,closeBox,closeReception,createReception,deleteLine,registerPos,u
 
 export async function POST(req:Request){
   try{
-    const u=await requireUser();const b=await req.json();
+    const u=await requireUser();
+    const b=await req.json();
     if(b.action==='create'){
       const id=await createReception(u,String(b.branchId),String(b.productId),Number(b.expectedBoxes));
       return NextResponse.json({ok:true,id});
@@ -17,5 +18,7 @@ export async function POST(req:Request){
     else if(b.action==='pos')await registerPos(u,String(b.movementId));
     else return NextResponse.json({error:'INVALID_ACTION'},{status:400});
     return NextResponse.json({ok:true});
-  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'ERROR'},{status:400})}
+  }catch(e){
+    return NextResponse.json({error:e instanceof Error?e.message:'ERROR'},{status:400});
+  }
 }
