@@ -1,2 +1,24 @@
-import { NextResponse } from "next/server"; import { requireUser } from "@/lib/auth/authorization"; import { addBox,closeReception,createReception,deleteLine,registerPos,upsertLine } from "@/lib/inventory/receptions";
-export async function POST(req:Request){try{const u=await requireUser();const b=await req.json();if(b.action==='create'){const id=await createReception(u,String(b.branchId),Number(b.expectedBoxes));return NextResponse.json({ok:true,id})}if(b.action==='addBox')await addBox(u,String(b.movementId));else if(b.action==='saveLine')await upsertLine(u,String(b.movementId),{lineId:b.lineId?String(b.lineId):undefined,boxId:String(b.boxId),productId:String(b.productId),colorId:String(b.colorId),modelReference:String(b.modelReference||''),quantity:Number(b.quantity)});else if(b.action==='deleteLine')await deleteLine(u,String(b.movementId),String(b.lineId));else if(b.action==='close')await closeReception(u,String(b.movementId));else if(b.action==='pos')await registerPos(u,String(b.movementId));else return NextResponse.json({error:'INVALID_ACTION'},{status:400});return NextResponse.json({ok:true});}catch(e){return NextResponse.json({error:e instanceof Error?e.message:'ERROR'},{status:400})}}
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth/authorization";
+import { addBox,closeBox,closeReception,createReception,deleteLine,registerPos,upsertLine } from "@/lib/inventory/receptions";
+
+export async function POST(req:Request){
+  try{
+    const u=await requireUser();
+    const b=await req.json();
+    if(b.action==='create'){
+      const id=await createReception(u,String(b.branchId),String(b.productId),Number(b.expectedBoxes));
+      return NextResponse.json({ok:true,id});
+    }
+    if(b.action==='addBox')await addBox(u,String(b.movementId));
+    else if(b.action==='closeBox')await closeBox(u,String(b.movementId),String(b.boxId));
+    else if(b.action==='saveLine')await upsertLine(u,String(b.movementId),{lineId:b.lineId?String(b.lineId):undefined,boxId:String(b.boxId),colorId:String(b.colorId),modelReference:String(b.modelReference||''),quantity:Number(b.quantity)});
+    else if(b.action==='deleteLine')await deleteLine(u,String(b.movementId),String(b.lineId));
+    else if(b.action==='close')await closeReception(u,String(b.movementId));
+    else if(b.action==='pos')await registerPos(u,String(b.movementId));
+    else return NextResponse.json({error:'INVALID_ACTION'},{status:400});
+    return NextResponse.json({ok:true});
+  }catch(e){
+    return NextResponse.json({error:e instanceof Error?e.message:'ERROR'},{status:400});
+  }
+}
