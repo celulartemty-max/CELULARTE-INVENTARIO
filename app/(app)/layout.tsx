@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/authorization";
 
-function Brand(){return <img src="/celularte-logo.svg" alt="CELULARTE" className="celularteLogo"/>}
+function Brand(){return <img src="/celularte-logo.svg" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(150px, 42vw, 220px)",height:"auto",display:"block"}}/>}
 
 export default async function AppLayout({children}:{children:React.ReactNode}){
   const user=await requireUser();
