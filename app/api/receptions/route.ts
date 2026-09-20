@@ -11,10 +11,10 @@ async function removeLastEmptyBox(user:Awaited<ReturnType<typeof requireUser>>,m
     await assertBranchAccess(user,movement.branch_id);
     if(movement.status!=='DRAFT')throw new Error('LOCKED');
     if(movement.expected_boxes<=1)throw new Error('MINIMUM_ONE_BOX');
-    const boxes=await client.query<{id:string;box_number:number;status:string;line_count:number}>(`SELECT b.id::text,b.box_number,b.status::text,count(l.id)::int AS line_count FROM reception_boxes b LEFT JOIN reception_box_lines l ON l.box_id=b.id WHERE b.reception_id=$1::uuid GROUP BY b.id ORDER BY b.box_number DESC LIMIT 1 FOR UPDATE OF b`,[movement.reception_id]);
+    const boxes=await client.query<{id:string;box_number:number;status:string;has_lines:boolean}>(`SELECT b.id::text,b.box_number,b.status::text,EXISTS(SELECT 1 FROM reception_box_lines l WHERE l.box_id=b.id) AS has_lines FROM reception_boxes b WHERE b.reception_id=$1::uuid ORDER BY b.box_number DESC LIMIT 1 FOR UPDATE OF b`,[movement.reception_id]);
     const box=boxes.rows[0];
     if(!box||box.box_number!==movement.expected_boxes)throw new Error('LAST_BOX_NOT_FOUND');
-    if(box.status!=='DRAFT'||box.line_count>0)throw new Error('LAST_BOX_NOT_EMPTY');
+    if(box.status!=='DRAFT'||box.has_lines)throw new Error('LAST_BOX_NOT_EMPTY');
     await client.query('DELETE FROM reception_boxes WHERE id=$1::uuid',[box.id]);
     await client.query('UPDATE receptions SET expected_boxes=expected_boxes-1 WHERE id=$1::uuid',[movement.reception_id]);
     await client.query("INSERT INTO audit_events(user_id,branch_id,movement_id,action,new_value) VALUES($1::uuid,$2::uuid,$3::uuid,'RECEPTION_EMPTY_BOX_REMOVED',jsonb_build_object('box_number',$4::int))",[user.id,movement.branch_id,movementId,box.box_number]);
