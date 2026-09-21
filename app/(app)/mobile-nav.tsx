@@ -28,8 +28,17 @@ export default function MobileNav({role,userName}:{role:string;userName:string})
       const insideAccount=accountRef.current?.contains(target);
       if(!insideMore&&!insideAccount)closeMenus();
     }
+    function onNavigation(){closeMenus()}
     document.addEventListener("pointerdown",onPointerDown);
-    return()=>document.removeEventListener("pointerdown",onPointerDown);
+    window.addEventListener("popstate",onNavigation);
+    window.addEventListener("hashchange",onNavigation);
+    window.addEventListener("pageshow",onNavigation);
+    return()=>{
+      document.removeEventListener("pointerdown",onPointerDown);
+      window.removeEventListener("popstate",onNavigation);
+      window.removeEventListener("hashchange",onNavigation);
+      window.removeEventListener("pageshow",onNavigation);
+    };
   },[]);
 
   return <nav className="mobileNav" aria-label="Navegación móvil">
