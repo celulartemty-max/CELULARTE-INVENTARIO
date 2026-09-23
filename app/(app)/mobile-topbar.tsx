@@ -4,7 +4,7 @@ import Link from "next/link";
 import {useEffect,useRef,useState} from "react";
 import type {AppRole} from "@/lib/auth/types";
 
-function Brand(){return <img src="/celularte-logo.svg?v=20260923-4" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(220px, 56vw, 300px)",height:"auto",display:"block",objectFit:"contain"}}/>}
+function Brand(){return <img src="/celularte-logo.png?v=20260923-5" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(220px, 56vw, 300px)",height:"auto",display:"block",objectFit:"contain"}}/>}
 
 export default function MobileTopbar({role,userName,initials}:{role:AppRole;userName:string;initials:string}){
   const [menuOpen,setMenuOpen]=useState(false);
