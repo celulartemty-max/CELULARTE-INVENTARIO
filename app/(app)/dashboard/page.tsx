@@ -7,8 +7,18 @@ const receptionDateFmt=new Intl.DateTimeFormat("es-MX",{timeZone:"America/Monter
 const badgeDateFmt=new Intl.DateTimeFormat("es-MX",{timeZone:"America/Monterrey",day:"2-digit",month:"short",year:"numeric"});
 const detail=(id:string,type:string)=>type==='RECEPTION'?`/entradas/${id}`:type.startsWith('RETURN_')?`/devoluciones/${id}`:type==='EXIT'?`/salidas/${id}`:type==='TRANSFER'?`/traspasos/${id}`:'#';
 const typeLabel=(v:string)=>({RECEPTION:'Recepción',RETURN_ML:'Devolución Mercado Libre',RETURN_TIKTOK:'Devolución TikTok',RETURN_CUSTOMER:'Devolución de cliente',EXIT:'Salida',TRANSFER:'Traspaso'}[v]??v);
-const typeIcon=(v:string)=>v==='EXIT'?'→':v==='TRANSFER'?'⇄':v.startsWith('RETURN_')?'↩':'◇';
 const tone=(v:string)=>v==='EXIT'?'toneRed':v==='TRANSFER'?'tonePurple':v.startsWith('RETURN_')?'toneGreen':'toneBlue';
+
+type IconKind='RECEPTION'|'RETURN'|'EXIT'|'TRANSFER'|'CHECK';
+function MovementIcon({kind}:{kind:IconKind}){
+  const common={width:26,height:26,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.8,strokeLinecap:'round' as const,strokeLinejoin:'round' as const,'aria-hidden':true};
+  if(kind==='RECEPTION')return <svg {...common}><path d="M4.5 8.2 12 4l7.5 4.2v8.4L12 21l-7.5-4.4Z"/><path d="m4.8 8.4 7.2 4.1 7.2-4.1M12 12.5V21"/><path d="M12 2v6m0 0-2.2-2.2M12 8l2.2-2.2"/></svg>;
+  if(kind==='RETURN')return <svg {...common}><path d="M8 7H5V4"/><path d="M5.4 7A8 8 0 1 1 4 14"/><path d="M9 10.2 12 8.5l3 1.7v3.6L12 15.5l-3-1.7Z"/><path d="m9.2 10.3 2.8 1.6 2.8-1.6"/></svg>;
+  if(kind==='EXIT')return <svg {...common}><path d="M10 5H5v14h5"/><path d="M13 8l4 4-4 4M17 12H9"/></svg>;
+  if(kind==='TRANSFER')return <svg {...common}><path d="M4 8h14M15 5l3 3-3 3M20 16H6M9 13l-3 3 3 3"/></svg>;
+  return <svg {...common}><path d="M5 12.5 9.2 17 19 7"/></svg>;
+}
+const iconKind=(v:string):IconKind=>v==='EXIT'?'EXIT':v==='TRANSFER'?'TRANSFER':v.startsWith('RETURN_')?'RETURN':'RECEPTION';
 
 export default async function Dashboard(){
   const user=await requireUser(),branches=await getAuthorizedBranchIds(user);
@@ -21,28 +31,28 @@ export default async function Dashboard(){
   return <div className="dashboardV2">
     <section className="dashTop">
       <div className="dashGreeting"><h1>Hola, {firstName}</h1><p>{branchName?`Sucursal ${String(branchName)}`:user.role==='MASTER'?'Acceso global':'Sucursal asignada'}</p></div>
-      <div className="dateBadge"><span>▣</span>{badgeDateFmt.format(new Date())}</div>
+      <div className="dateBadge">{badgeDateFmt.format(new Date())}</div>
     </section>
 
     <section className="dashStatsV2" aria-label="Resumen operativo">
-      <Link href="/entradas/nueva" className="statV2"><span className="statV2Icon toneBlue">◇</span><strong>{Number(stats.reception_in_progress??0).toLocaleString('es-MX')}</strong><small>Recepciones<br/>en proceso</small><span className="statV2Arrow">›</span></Link>
-      <a href="#movimientos" className="statV2"><span className="statV2Icon toneGreen">✓</span><strong>{Number(stats.receptions_closed_30??0).toLocaleString('es-MX')}</strong><small>Recepciones cerradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></a>
-      <Link href="/salidas/nueva" className="statV2"><span className="statV2Icon toneRed">→</span><strong>{Number(stats.exits_registered_30??0).toLocaleString('es-MX')}</strong><small>Salidas registradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></Link>
-      <Link href="/traspasos/nuevo" className="statV2"><span className="statV2Icon tonePurple">⇄</span><strong>{Number(stats.active_transfers??0).toLocaleString('es-MX')}</strong><small>Traspasos<br/>activos</small><span className="statV2Arrow">›</span></Link>
+      <Link href="/entradas/nueva" className="statV2"><span className="statV2Icon toneBlue"><MovementIcon kind="RECEPTION"/></span><strong>{Number(stats.reception_in_progress??0).toLocaleString('es-MX')}</strong><small>Recepciones<br/>en proceso</small><span className="statV2Arrow">›</span></Link>
+      <a href="#movimientos" className="statV2"><span className="statV2Icon toneGreen"><MovementIcon kind="CHECK"/></span><strong>{Number(stats.receptions_closed_30??0).toLocaleString('es-MX')}</strong><small>Recepciones cerradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></a>
+      <Link href="/salidas/nueva" className="statV2"><span className="statV2Icon toneRed"><MovementIcon kind="EXIT"/></span><strong>{Number(stats.exits_registered_30??0).toLocaleString('es-MX')}</strong><small>Salidas registradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></Link>
+      <Link href="/traspasos/nuevo" className="statV2"><span className="statV2Icon tonePurple"><MovementIcon kind="TRANSFER"/></span><strong>{Number(stats.active_transfers??0).toLocaleString('es-MX')}</strong><small>Traspasos<br/>activos</small><span className="statV2Arrow">›</span></Link>
     </section>
 
     <section id="movimientos" className="dashSection">
       <div className="dashSectionHead"><h2>Movimientos recientes</h2><a href="#movimientos">Últimos {rows.length} ›</a></div>
-      <div className="recentV2">{rows.length===0?<div className="dashEmpty">Aún no hay movimientos para mostrar.</div>:rows.map(r=>{const id=String(r.id),type=String(r.type);const isReception=type==='RECEPTION'&&r.product_name;const title=isReception?String(r.product_name):typeLabel(type);const meta=isReception?`${receptionDateFmt.format(new Date(String(r.created_at)))} · ${Number(r.expected_boxes)} caja${Number(r.expected_boxes)===1?'':'s'} · ${String(r.branch)}`:`${String(r.folio)} · ${String(r.branch)}`;return <Link href={detail(id,type)} className="recentV2Row" key={id}><span className={`recentV2Icon ${tone(type)}`}>{typeIcon(type)}</span><span className="recentV2Text"><b>{title}</b><small>{meta}</small></span><span className="recentV2Date">{fmt.format(new Date(String(r.created_at)))}</span><span className="recentV2Arrow">›</span></Link>})}</div>
+      <div className="recentV2">{rows.length===0?<div className="dashEmpty">Aún no hay movimientos para mostrar.</div>:rows.map(r=>{const id=String(r.id),type=String(r.type);const isReception=type==='RECEPTION'&&r.product_name;const title=isReception?String(r.product_name):typeLabel(type);const meta=isReception?`${receptionDateFmt.format(new Date(String(r.created_at)))} · ${Number(r.expected_boxes)} caja${Number(r.expected_boxes)===1?'':'s'} · ${String(r.branch)}`:`${String(r.folio)} · ${String(r.branch)}`;return <Link href={detail(id,type)} className="recentV2Row" key={id}><span className={`recentV2Icon ${tone(type)}`}><MovementIcon kind={iconKind(type)}/></span><span className="recentV2Text"><b>{title}</b><small>{meta}</small></span><span className="recentV2Date">{fmt.format(new Date(String(r.created_at)))}</span><span className="recentV2Arrow">›</span></Link>})}</div>
     </section>
 
     <section className="dashSection">
       <div className="dashSectionHead"><h2>Acciones rápidas</h2></div>
       <div className="quickV2Grid">
-        <Link href="/entradas/nueva" className="quickV2 quickBlue"><span className="quickV2Icon toneBlue">◇</span><span>Nueva recepción</span><span>›</span></Link>
-        <Link href="/devoluciones/nueva" className="quickV2 quickGreen"><span className="quickV2Icon toneGreen">↩</span><span>Nueva devolución</span><span>›</span></Link>
-        <Link href="/salidas/nueva" className="quickV2 quickRed"><span className="quickV2Icon toneRed">→</span><span>Nueva salida</span><span>›</span></Link>
-        <Link href="/traspasos/nuevo" className="quickV2 quickPurple"><span className="quickV2Icon tonePurple">⇄</span><span>Nuevo traspaso</span><span>›</span></Link>
+        <Link href="/entradas/nueva" className="quickV2 quickBlue"><span className="quickV2Icon toneBlue"><MovementIcon kind="RECEPTION"/></span><span>Nueva recepción</span><span>›</span></Link>
+        <Link href="/devoluciones/nueva" className="quickV2 quickGreen"><span className="quickV2Icon toneGreen"><MovementIcon kind="RETURN"/></span><span>Nueva devolución</span><span>›</span></Link>
+        <Link href="/salidas/nueva" className="quickV2 quickRed"><span className="quickV2Icon toneRed"><MovementIcon kind="EXIT"/></span><span>Nueva salida</span><span>›</span></Link>
+        <Link href="/traspasos/nuevo" className="quickV2 quickPurple"><span className="quickV2Icon tonePurple"><MovementIcon kind="TRANSFER"/></span><span>Nuevo traspaso</span><span>›</span></Link>
       </div>
     </section>
   </div>
