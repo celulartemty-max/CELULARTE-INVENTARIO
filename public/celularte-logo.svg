@@ -1,1 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" role="img" aria-label="CELULARTE"><defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#263b9a"/><stop offset="1" stop-color="#1685d2"/></linearGradient></defs><g transform="skewX(-10)"><text x="24" y="126" font-family="Arial,Helvetica,sans-serif" font-size="112" font-weight="900" font-style="italic" letter-spacing="-4" fill="url(#b)" stroke="#b9bec7" stroke-width="3" paint-order="stroke">CELULARTE</text></g><g transform="translate(354 18) rotate(-8 55 70)"><rect x="15" y="0" width="82" height="148" rx="10" fill="none" stroke="#2c2c2f" stroke-width="11"/><rect x="38" y="12" width="38" height="7" rx="3" fill="#2c2c2f"/><circle cx="56" cy="132" r="9" fill="#2c2c2f"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 230" role="img" aria-label="CELULARTE">
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0b3199"/>
+      <stop offset="1" stop-color="#087ee0"/>
+    </linearGradient>
+  </defs>
+  <g transform="skewX(-10)">
+    <text x="24" y="158" font-family="Arial Black,Arial,Helvetica,sans-serif" font-size="142" font-weight="900" font-style="italic" letter-spacing="-8" fill="url(#blue)">CELULARTE</text>
+  </g>
+  <g transform="translate(438 20) rotate(-8 64 92)">
+    <rect x="13" y="2" width="105" height="190" rx="13" fill="#fff" stroke="#333438" stroke-width="12"/>
+    <rect x="39" y="15" width="54" height="9" rx="4" fill="#333438"/>
+    <text x="28" y="145" font-family="Arial Black,Arial,Helvetica,sans-serif" font-size="104" font-weight="900" font-style="italic" fill="#3d3d3f">A</text>
+    <circle cx="66" cy="173" r="10" fill="#333438"/>
+  </g>
+</svg>
