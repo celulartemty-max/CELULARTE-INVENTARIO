@@ -2,11 +2,11 @@
 
 import type {AppRole} from '@/lib/auth/types';
 
-export type ExitMovement={id:string;folio:string;branch_id:string;branch:string;status:string;pos_registered_at:string|null;current_version:number;channel:string;exit_type:string};
+export type ExitMovement={id:string;folio:string;branch_id:string;branch:string;status:string;pos_registered_at:string|null;current_version:number;channel:string;exit_type:string;reason:string|null};
 export type ExitLine={id:string;productId:string;quantity:number;product:string};
 export type Product={id:string;name:string};
 
-const ch:Record<string,string>={MERCADO_LIBRE:'Mercado Libre',TIKTOK:'TikTok'};
+const ch:Record<string,string>={MERCADO_LIBRE:'Mercado Libre',TIKTOK:'TikTok',OTHER:'Otro'};
 const ty:Record<string,string>={FULL:'Full',INDEPENDENT_SALE:'Venta independiente'};
 const statusLabels:Record<string,string>={DRAFT:'En captura',CLOSED:'Salida cerrada',PENDING_POS:'Pendiente de registrar',POS_REGISTERED:'Registrado en sistema',POS_CORRECTION_PENDING:'Corrección pendiente',POS_RECONCILED:'Registrado en sistema',CANCELLED:'Cancelada'};
 
@@ -15,6 +15,7 @@ export default function ExitEditor({movement,lines,products,role}:{movement:Exit
   const isDraft=movement.status==='DRAFT';
   const posPending=movement.status==='POS_CORRECTION_PENDING'||(!isDraft&&!movement.pos_registered_at&&movement.status!=='CANCELLED');
   const canRegisterPos=role==='MASTER'||role==='MANAGER';
+  const detail=movement.channel==='OTHER'?`Motivo: ${movement.reason||'Sin motivo'}`:ty[movement.exit_type];
 
   async function act(body:Record<string,unknown>,msg?:string){
     if(msg&&!confirm(msg))return;
@@ -32,9 +33,9 @@ export default function ExitEditor({movement,lines,products,role}:{movement:Exit
     return <div style={{maxWidth:680,margin:'0 auto'}}>
       <header style={{marginBottom:20}}>
         <div>
-          <small style={{color:'#667085',fontWeight:800}}>SALIDA DE INVENTARIO · {ch[movement.channel]}</small>
+          <small style={{color:'#667085',fontWeight:800}}>SALIDA DE INVENTARIO · {ch[movement.channel]||movement.channel}</small>
           <h1 style={{fontSize:'clamp(28px,7vw,40px)',overflowWrap:'anywhere',margin:'6px 0 4px'}}>{movement.folio}</h1>
-          <p style={{margin:0}}>{movement.branch} · {ty[movement.exit_type]} · {statusLabels[movement.status]||movement.status}</p>
+          <p style={{margin:0}}>{movement.branch} · {detail} · {statusLabels[movement.status]||movement.status}</p>
         </div>
       </header>
 
@@ -63,9 +64,9 @@ export default function ExitEditor({movement,lines,products,role}:{movement:Exit
   return <div style={{maxWidth:760,margin:'0 auto'}}>
     <header style={{marginBottom:18}}>
       <div>
-        <small style={{color:'#667085',fontWeight:800}}>SALIDA DE INVENTARIO · {ch[movement.channel]}</small>
+        <small style={{color:'#667085',fontWeight:800}}>SALIDA DE INVENTARIO · {ch[movement.channel]||movement.channel}</small>
         <h1 style={{fontSize:'clamp(28px,7vw,40px)',overflowWrap:'anywhere',margin:'6px 0 4px'}}>{movement.folio}</h1>
-        <p style={{margin:0}}>{movement.branch} · {ty[movement.exit_type]} · En captura</p>
+        <p style={{margin:0}}>{movement.branch} · {detail} · En captura</p>
       </div>
     </header>
 
