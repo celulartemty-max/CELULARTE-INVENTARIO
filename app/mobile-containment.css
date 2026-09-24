@@ -1,0 +1,23 @@
+/* Global mobile containment — keeps every editor inside the phone viewport. */
+@media(max-width:800px){
+  html,body,#__next{width:100%;max-width:100%;overflow-x:hidden}
+  .shell,.content,.content>*,main,section,article,header,form,.card,.pad,.formGrid,.lines,.line,.inline,.actions{min-width:0;max-width:100%}
+  .content{width:100%;overflow-x:clip}
+  .content>div{width:100%;max-width:100%!important;min-width:0;margin-left:auto!important;margin-right:auto!important}
+  .card,.pad,section,form{box-sizing:border-box}
+  .card{overflow-wrap:anywhere}
+  .formGrid{width:100%}
+  .formGrid>*,.formGrid label,.line>*,.inline>*{min-width:0;max-width:100%}
+  input:not([type=checkbox]):not([type=radio]),select,textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+  button,.buttonLink{max-width:100%;overflow-wrap:anywhere;white-space:normal}
+  h1,h2,h3,p,small,b,strong,span{overflow-wrap:anywhere}
+  img,svg,video,canvas{max-width:100%;height:auto}
+  .tableWrap{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+}
+
+@media(max-width:420px){
+  .content{padding-left:14px;padding-right:14px}
+  .card.pad{padding-left:16px!important;padding-right:16px!important}
+  .inline{width:100%}
+  .inline input[type=number]{width:100%;max-width:100%}
+}
