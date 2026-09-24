@@ -1,0 +1,304 @@
+.page {
+  --navy: #0d1a38;
+  --blue: #1769d2;
+  --muted: #6f7c94;
+  min-height: 100svh;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding: 36px 20px 56px;
+  background:
+    radial-gradient(circle at 8% 8%, rgba(74, 157, 255, .18), transparent 31%),
+    radial-gradient(circle at 94% 92%, rgba(23, 105, 210, .12), transparent 30%),
+    linear-gradient(145deg, #f7fbff 0%, #ffffff 50%, #eef6ff 100%);
+  color: var(--navy);
+}
+
+.glowOne,
+.glowTwo {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(2px);
+}
+
+.glowOne {
+  width: 280px;
+  height: 280px;
+  left: -140px;
+  top: 10%;
+  border: 1px solid rgba(23, 105, 210, .12);
+}
+
+.glowTwo {
+  width: 420px;
+  height: 420px;
+  right: -270px;
+  bottom: -120px;
+  border: 1px solid rgba(23, 105, 210, .1);
+}
+
+.loginShell {
+  width: min(100%, 920px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 68px;
+  position: relative;
+  z-index: 1;
+}
+
+.brandArea {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.logoWrap {
+  width: min(100%, 390px);
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.productName {
+  margin-top: -4px;
+  color: var(--blue);
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .36em;
+}
+
+.brandMessage {
+  max-width: 360px;
+  margin: 18px 0 0;
+  font-size: 24px;
+  line-height: 1.18;
+  font-weight: 800;
+  letter-spacing: -.025em;
+}
+
+.card {
+  width: 100%;
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid #e2e9f2;
+  border-radius: 24px;
+  padding: 34px;
+  box-shadow: 0 22px 65px rgba(20, 50, 90, .12);
+  backdrop-filter: blur(18px);
+}
+
+.cardHeading {
+  margin-bottom: 26px;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .24em;
+}
+
+.cardHeading h1 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+
+.cardHeading p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin-top: 17px;
+}
+
+.field span {
+  font-size: 13px;
+  font-weight: 800;
+  color: #34425c;
+}
+
+.field input {
+  width: 100%;
+  height: 52px;
+  padding: 0 15px;
+  border: 1px solid #d9e1ec;
+  border-radius: 13px;
+  outline: none;
+  background: #f9fbfd;
+  color: var(--navy);
+  font-size: 16px;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.field input:focus {
+  background: #fff;
+  border-color: #6ba6ef;
+  box-shadow: 0 0 0 4px rgba(23, 105, 210, .1);
+}
+
+.field input::placeholder {
+  color: #a1abba;
+}
+
+.error {
+  margin-top: 16px;
+  padding: 11px 13px;
+  border-radius: 11px;
+  background: #fff0f0;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.submit {
+  width: 100%;
+  height: 53px;
+  margin-top: 23px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #0c61cb, #2179e5);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  box-shadow: 0 10px 24px rgba(23, 105, 210, .24);
+  cursor: pointer;
+}
+
+.submit:active {
+  transform: translateY(1px);
+}
+
+.help {
+  margin: 15px 0 0;
+  text-align: center;
+  color: #8a95a7;
+  font-size: 11px;
+}
+
+.footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  z-index: 1;
+  text-align: center;
+  color: #9aa5b5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .18em;
+}
+
+@media (max-width: 760px) {
+  .page {
+    display: block;
+    min-height: 100svh;
+    padding: max(44px, env(safe-area-inset-top)) 22px 58px;
+  }
+
+  .loginShell {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  .brandArea {
+    width: 100%;
+    align-items: center;
+    text-align: center;
+  }
+
+  .logoWrap {
+    width: min(78vw, 300px);
+    height: 112px;
+    justify-content: center;
+  }
+
+  .logo {
+    object-position: center;
+  }
+
+  .productName {
+    margin-top: -7px;
+    font-size: 11px;
+    letter-spacing: .34em;
+  }
+
+  .brandMessage {
+    display: none;
+  }
+
+  .card {
+    padding: 27px 22px 25px;
+    border-radius: 21px;
+    box-shadow: 0 16px 45px rgba(20, 50, 90, .1);
+  }
+
+  .cardHeading {
+    margin-bottom: 22px;
+    text-align: center;
+  }
+
+  .cardHeading h1 {
+    font-size: 30px;
+  }
+
+  .cardHeading p {
+    font-size: 13px;
+  }
+
+  .field input {
+    height: 54px;
+    border-radius: 13px;
+  }
+
+  .submit {
+    height: 55px;
+    border-radius: 13px;
+  }
+}
+
+@media (max-height: 690px) and (max-width: 760px) {
+  .page {
+    padding-top: 24px;
+  }
+
+  .loginShell {
+    gap: 12px;
+  }
+
+  .logoWrap {
+    height: 82px;
+    width: 235px;
+  }
+
+  .card {
+    padding-top: 22px;
+  }
+
+  .footer {
+    display: none;
+  }
+}
