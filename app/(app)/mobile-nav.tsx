@@ -55,7 +55,7 @@ export default function MobileNav({role,userName}:{role:string;userName:string})
 
   return <nav className="mobileNav" aria-label="Navegación móvil">
     <Link href="/dashboard" onClick={closeMenus}><span><NavIcon kind="HOME"/></span><small>Inicio</small></Link>
-    <Link href="/dashboard#movimientos" onClick={closeMenus}><span><NavIcon kind="MOVEMENTS"/></span><small>Movimientos</small></Link>
+    <Link href="/movimientos" onClick={closeMenus}><span><NavIcon kind="MOVEMENTS"/></span><small>Movimientos</small></Link>
     {role==='MASTER'?<Link href="/productos" onClick={closeMenus}><span><NavIcon kind="PRODUCTS"/></span><small>Productos</small></Link>:<Link href="/entradas/nueva" onClick={closeMenus}><span><NavIcon kind="RECEPTION"/></span><small>Entrada</small></Link>}
     <details ref={moreRef} onToggle={()=>openOnly("more")}><summary><span><NavIcon kind="MORE"/></span><small>Más</small></summary><div className="mobileMoreMenu"><Link href="/entradas/nueva" onClick={closeMenus}>Nueva entrada</Link><Link href="/devoluciones/nueva" onClick={closeMenus}>Nueva devolución</Link><Link href="/salidas/nueva" onClick={closeMenus}>Nueva salida</Link><Link href="/traspasos/nuevo" onClick={closeMenus}>Nuevo traspaso</Link></div></details>
     <details ref={accountRef} className="mobileAccount" onToggle={()=>openOnly("account")}><summary><span><NavIcon kind="ACCOUNT"/></span><small>Mi cuenta</small></summary><div className="mobileMoreMenu"><b>{userName}</b><small>{role}</small><form action="/api/auth/logout" method="post"><button>Salir</button></form></div></details>
