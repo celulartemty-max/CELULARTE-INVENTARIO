@@ -93,3 +93,19 @@
   .colorRename .colorSwatch{display:none}
   .colorRename .hexField,.colorRename .colorFormActions{grid-column:1/-1}
 }
+
+/* Final mobile frame guard: preserve equal left/right margins on every screen. */
+@media(max-width:800px){
+  html,body{margin:0!important;width:100%!important;max-width:100%!important;overflow-x:clip!important}
+  .shell{width:100%!important;max-width:100%!important;overflow-x:clip!important}
+  .mobileTopbar{width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+  .content{width:100%!important;max-width:100%!important;padding-left:16px!important;padding-right:16px!important;margin:0!important;box-sizing:border-box!important;overflow-x:clip!important}
+  .content>header,.content>section,.content>.card,.productAdmin{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important;box-sizing:border-box!important}
+  .productAdmin{overflow:hidden!important}
+  .productEditorRow,.productTitleRow,.colorEditorList,.colorCreateHex{max-width:100%!important;box-sizing:border-box!important}
+}
+
+@media(max-width:420px){
+  .content{padding-left:16px!important;padding-right:16px!important}
+  .card.pad.productAdmin{padding-left:16px!important;padding-right:16px!important}
+}
