@@ -20,7 +20,6 @@
   .productEditorRow{overflow:hidden}
   .productTitleRow{flex-wrap:wrap}
   .productCreate{grid-template-columns:minmax(0,1fr) auto}
-  .colorCreateHex{grid-template-columns:minmax(0,1fr) minmax(240px,1fr) auto}
   .renameForm{grid-template-columns:minmax(0,1fr) auto auto}
   .colorRename{grid-template-columns:24px minmax(0,1fr);align-items:start}
   .colorRename .hexField,.colorRename .colorFormActions{grid-column:2/-1}
@@ -31,15 +30,13 @@
   .card.pad{padding-left:16px!important;padding-right:16px!important}
   .inline{width:100%}
   .inline input[type=number]{width:100%;max-width:100%}
-  .productCreate,.colorCreateHex{grid-template-columns:1fr}
-  .productCreate button,.colorCreateHex>button{width:100%}
+  .productCreate{grid-template-columns:1fr}
+  .productCreate button{width:100%}
   .renameForm,.colorRename{grid-template-columns:1fr}
   .renameForm input{grid-column:1/-1}
   .colorRename .colorSwatch{display:none}
   .colorRename .hexField,.colorRename .colorFormActions{grid-column:1/-1}
   .renameForm .saveButton,.renameForm .ghostButton{width:100%;min-height:46px}
-  .hexControls{grid-template-columns:52px minmax(0,1fr)!important}
-  .clearHex{grid-column:1/-1;width:100%}
 }
 
 /* Product & color editor */
@@ -71,3 +68,28 @@
 .hexInput{height:44px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .clearHex{height:44px;background:#eef2f7;color:#526079;padding:9px 12px}
 .colorFormActions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Responsive overrides intentionally live after the base rules. */
+@media(max-width:800px){
+  .colorCreateHex{
+    grid-template-columns:1fr!important;
+    align-items:stretch!important;
+    gap:12px;
+    padding:14px;
+  }
+  .colorCreateHex>input[name="color"]{height:48px}
+  .colorCreateHex .hexField{gap:7px}
+  .colorCreateHex .hexControls{grid-template-columns:54px minmax(0,1fr) auto}
+  .colorCreateHex>button{width:100%;min-height:46px}
+  .colorRename{grid-template-columns:24px minmax(0,1fr)!important}
+  .colorRename .hexField,.colorRename .colorFormActions{grid-column:2/-1}
+}
+
+@media(max-width:420px){
+  .colorCreateHex{padding:12px;gap:10px}
+  .colorCreateHex .hexControls{grid-template-columns:52px minmax(0,1fr)}
+  .colorCreateHex .clearHex{grid-column:1/-1;width:100%}
+  .colorRename{grid-template-columns:1fr!important}
+  .colorRename .colorSwatch{display:none}
+  .colorRename .hexField,.colorRename .colorFormActions{grid-column:1/-1}
+}
