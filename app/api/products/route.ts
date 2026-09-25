@@ -1,2 +1,18 @@
-import { NextResponse } from "next/server"; import { requireUser } from "@/lib/auth/authorization"; import { createColor,createProduct,setColorStatus,setProductStatus } from "@/lib/inventory/products";
-export async function POST(req:Request){try{const u=await requireUser();const b=await req.json();if(b.action==='createProduct')await createProduct(u,String(b.name||''));else if(b.action==='createColor')await createColor(u,String(b.productId),String(b.name||''));else if(b.action==='productStatus')await setProductStatus(u,String(b.id),b.status);else if(b.action==='colorStatus')await setColorStatus(u,String(b.id),b.status);else return NextResponse.json({error:'INVALID_ACTION'},{status:400});return NextResponse.json({ok:true});}catch(e){return NextResponse.json({error:e instanceof Error?e.message:'ERROR'},{status:400})}}
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth/authorization";
+import { createColor,createProduct,renameColor,renameProduct,setColorStatus,setProductStatus } from "@/lib/inventory/products";
+
+export async function POST(req:Request){
+  try{
+    const u=await requireUser();
+    const b=await req.json();
+    if(b.action==='createProduct')await createProduct(u,String(b.name||''));
+    else if(b.action==='createColor')await createColor(u,String(b.productId),String(b.name||''));
+    else if(b.action==='renameProduct')await renameProduct(u,String(b.id),String(b.name||''));
+    else if(b.action==='renameColor')await renameColor(u,String(b.id),String(b.name||''));
+    else if(b.action==='productStatus')await setProductStatus(u,String(b.id),b.status);
+    else if(b.action==='colorStatus')await setColorStatus(u,String(b.id),b.status);
+    else return NextResponse.json({error:'INVALID_ACTION'},{status:400});
+    return NextResponse.json({ok:true});
+  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'ERROR'},{status:400})}
+}
