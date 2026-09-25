@@ -21,11 +21,11 @@ function HexField({initial='',label='Tono exacto'}:{initial?:string|null;label?:
   return <div className="hexField">
     <label>{label}</label>
     <div className="hexControls">
-      <input className="hexPicker" type="color" aria-label="Elegir tono" value={preview} onChange={e=>setHex(e.target.value.toUpperCase())}/>
+      <input className="hexPicker" type="color" aria-label="Elegir tono exacto" value={preview} onChange={e=>setHex(e.target.value.toUpperCase())}/>
       <input className="hexInput" name="hex" value={hex} onChange={e=>setHex(e.target.value.toUpperCase())} placeholder="#2E6FD8" maxLength={7} pattern="^#[0-9A-Fa-f]{6}$" title="Usa un código HEX como #2E6FD8"/>
       {hex&&<button type="button" className="clearHex" onClick={()=>setHex('')}>Sin tono</button>}
     </div>
-    <small>Opcional. Para diseños como flores, mariposas o moños puedes dejarlo sin tono.</small>
+    <small>{initial?'Puedes cambiar el recuadro de color o escribir otro código HEX.':'Opcional. Para diseños como flores, mariposas o moños puedes dejarlo sin tono.'}</small>
   </div>
 }
 
@@ -38,6 +38,10 @@ export default function ProductAdmin({initial}:{initial:ProductAdminRow[]}){
     const r=await fetch('/api/products',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok){alert(await r.text());setBusy(false);return}
     location.reload();
+  }
+  function removeColor(id:string,name:string){
+    if(!confirm(`¿Eliminar “${name}”?\n\nYa no aparecerá como opción para nuevas capturas. Los movimientos anteriores conservarán su información.`))return;
+    act({action:'colorStatus',id,status:'INACTIVE'});
   }
   return <section className="card pad productAdmin">
     <form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'createProduct',name:f.get('name')})}} className="productCreate">
@@ -56,12 +60,17 @@ export default function ProductAdmin({initial}:{initial:ProductAdminRow[]}){
       </div>
 
       <div className="colorEditorList">
-        {p.colors.map(c=>editingColor===c.id?
+        {p.colors.filter(c=>c.status==='ACTIVE').map(c=>editingColor===c.id?
           <form key={c.id} className="renameForm colorRename" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'renameColor',id:c.id,name:f.get('name'),hex:f.get('hex')})}}>
-            <span className="colorSwatch" style={{background:swatch(c.name,c.hex)}} aria-hidden="true"/>
-            <input name="name" defaultValue={c.name} required autoFocus/>
+            <span className="colorSwatch colorSwatchLarge" style={{background:swatch(c.name,c.hex)}} aria-hidden="true"/>
+            <div className="colorEditHeading"><b>Editar color o diseño</b><small>{c.hex&&validHex(c.hex)?`Tono actual: ${c.hex.toUpperCase()}`:'Sin tono HEX guardado'}</small></div>
+            <input name="name" defaultValue={c.name} required autoFocus aria-label="Nombre del color o diseño"/>
             <HexField initial={c.hex}/>
-            <div className="colorFormActions"><button className="saveButton" disabled={busy}><span aria-hidden="true">✓</span> {busy?'Guardando…':'Guardar cambios'}</button><button type="button" className="ghostButton" onClick={()=>setEditingColor(null)}>Cancelar</button></div>
+            <div className="colorFormActions">
+              <button className="saveButton" disabled={busy}><span aria-hidden="true">✓</span> {busy?'Guardando…':'Guardar cambios'}</button>
+              <button type="button" className="ghostButton" onClick={()=>setEditingColor(null)}>Cancelar</button>
+              <button type="button" className="deleteColorButton" disabled={busy} onClick={()=>removeColor(c.id,c.name)}>Eliminar color</button>
+            </div>
           </form>:
           <button type="button" className="colorChip" key={c.id} onClick={()=>setEditingColor(c.id)} title={`Editar ${c.name}`}>
             <span className="colorSwatch" style={{background:swatch(c.name,c.hex)}} aria-hidden="true"/><span>{c.name}</span>{c.hex&&<small className="chipHex">{c.hex}</small>}<span className="colorEditMark">✎</span>
