@@ -34,7 +34,7 @@ export default function ProductAdmin({initial}:{initial:ProductAdminRow[]}){
         {editingProduct===p.id?
           <form className="renameForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'renameProduct',id:p.id,name:f.get('name')})}}>
             <input name="name" defaultValue={p.name} required autoFocus/>
-            <button disabled={busy}>Guardar</button><button type="button" className="ghostButton" onClick={()=>setEditingProduct(null)}>Cancelar</button>
+            <button className="saveButton" disabled={busy}><span aria-hidden="true">✓</span> {busy?'Guardando…':'Guardar'}</button><button type="button" className="ghostButton" onClick={()=>setEditingProduct(null)}>Cancelar</button>
           </form>:
           <><div className="productName"><b>{p.name}</b><small>{p.status==='ACTIVE'?'ACTIVO':'INACTIVO'}</small></div><button type="button" className="editButton" onClick={()=>setEditingProduct(p.id)}>Editar producto</button></>}
       </div>
@@ -44,7 +44,7 @@ export default function ProductAdmin({initial}:{initial:ProductAdminRow[]}){
           <form key={c.id} className="renameForm colorRename" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'renameColor',id:c.id,name:f.get('name')})}}>
             <span className="colorSwatch" style={{background:swatch(c.name)}} aria-hidden="true"/>
             <input name="name" defaultValue={c.name} required autoFocus/>
-            <button disabled={busy}>Guardar</button><button type="button" className="ghostButton" onClick={()=>setEditingColor(null)}>Cancelar</button>
+            <button className="saveButton" disabled={busy}><span aria-hidden="true">✓</span> {busy?'Guardando…':'Guardar'}</button><button type="button" className="ghostButton" onClick={()=>setEditingColor(null)}>Cancelar</button>
           </form>:
           <button type="button" className="colorChip" key={c.id} onClick={()=>setEditingColor(c.id)} title={`Editar ${c.name}`}>
             <span className="colorSwatch" style={{background:swatch(c.name)}} aria-hidden="true"/><span>{c.name}</span><span className="colorEditMark">✎</span>
