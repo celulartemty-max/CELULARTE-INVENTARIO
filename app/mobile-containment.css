@@ -109,3 +109,30 @@
   .content{padding-left:16px!important;padding-right:16px!important}
   .card.pad.productAdmin{padding-left:16px!important;padding-right:16px!important}
 }
+
+/* Saved color editor: clearer HEX controls + safe soft-delete action. */
+.colorEditHeading{display:flex;flex-direction:column;gap:2px;min-width:0}
+.colorEditHeading b{font-size:14px;color:#17233d}
+.colorEditHeading small{font-size:10px;color:#7a8494}
+.colorSwatchLarge{width:24px;height:24px;min-width:24px;border-radius:7px}
+.deleteColorButton{min-height:44px;padding:10px 14px;border:1px solid #efc8c8;border-radius:12px;background:#fff2f2;color:#c93636;font-weight:800}
+.deleteColorButton:disabled{opacity:.55}
+
+@media(max-width:800px){
+  .colorRename{padding:14px!important;gap:10px!important}
+  .colorRename>input[name="name"]{grid-column:1/-1;height:48px}
+  .colorRename .colorEditHeading{grid-column:2/-1}
+  .colorRename .hexField,.colorRename .colorFormActions{grid-column:1/-1!important}
+  .colorRename .hexControls{grid-template-columns:54px minmax(0,1fr) auto}
+  .colorRename .colorFormActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .colorRename .deleteColorButton{grid-column:1/-1;width:100%}
+}
+
+@media(max-width:420px){
+  .colorRename .colorSwatchLarge{display:block!important;grid-column:1/-1}
+  .colorRename .colorEditHeading{grid-column:1/-1}
+  .colorRename .hexControls{grid-template-columns:52px minmax(0,1fr)}
+  .colorRename .clearHex{grid-column:1/-1;width:100%}
+  .colorRename .colorFormActions{grid-template-columns:1fr}
+  .colorRename .saveButton,.colorRename .ghostButton,.colorRename .deleteColorButton{width:100%;grid-column:1/-1}
+}
