@@ -1,0 +1,14 @@
+/* Premium desktop sidebar — CELULARTE */
+@media (min-width:801px){
+  .shell{grid-template-columns:260px minmax(0,1fr)}
+  .appSidebar{background:#fff!important;color:#111!important;padding:28px 20px!important;gap:28px!important;border-right:1px solid #e8ebf0;box-shadow:8px 0 30px rgba(15,23,42,.035)}
+  .appSidebar .brand{display:flex;align-items:center;justify-content:center;min-height:112px;padding:12px 8px;border-radius:18px;background:#fff}
+  .appSidebar .celularteLogo{width:min(100%,220px)!important;max-height:100px;object-fit:contain!important}
+  .appSidebar .desktopNav{display:grid;gap:10px}
+  .appSidebar .desktopNav a{display:flex;align-items:center;min-height:54px;padding:14px 18px!important;border-radius:14px!important;background:#111!important;color:#fff!important;font-size:16px;font-weight:700;letter-spacing:-.01em;box-shadow:0 5px 12px rgba(0,0,0,.08);transition:transform .16s ease,box-shadow .16s ease,background .16s ease}
+  .appSidebar .desktopNav a:hover{background:#1c1c1c!important;transform:translateY(-1px);box-shadow:0 8px 18px rgba(0,0,0,.12)}
+  .appSidebar .desktopNav a:focus-visible{outline:3px solid rgba(8,104,217,.25);outline-offset:2px}
+  .appSidebar .profile{padding:14px;border-top:1px solid #edf0f4;color:#111}
+  .appSidebar .profile small{color:#667085;opacity:1}
+  .appSidebar .profile button{background:#111!important;color:#fff!important;border-radius:10px;width:100%}
+}
