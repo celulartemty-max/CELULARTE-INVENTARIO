@@ -4,7 +4,7 @@ import MobileNav from "./mobile-nav";
 import MobileTopbar from "./mobile-topbar";
 import PosCameraGuard from "./pos-camera-guard";
 
-function Brand(){return <img src="/celularte-logo.svg" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(150px, 42vw, 220px)",height:"auto",display:"block"}}/>}
+function Brand(){return <img src="/celularte-logo.png" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(150px, 42vw, 220px)",height:"auto",display:"block",objectFit:"contain"}}/>}
 
 export default async function AppLayout({children}:{children:React.ReactNode}){
   const user=await requireUser();
