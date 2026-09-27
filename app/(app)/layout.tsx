@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/authorization";
 import MobileNav from "./mobile-nav";
 import MobileTopbar from "./mobile-topbar";
 import PosCameraGuard from "./pos-camera-guard";
+import "./desktop-premium.css";
 
 function Brand(){return <img src="/celularte-logo.png" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(150px, 42vw, 220px)",height:"auto",display:"block",objectFit:"contain"}}/>}
 
