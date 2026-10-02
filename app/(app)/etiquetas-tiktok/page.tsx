@@ -9,7 +9,7 @@ export default function TikTokLabels(){
  useEffect(()=>{load()},[]);
  async function upload(e:React.ChangeEvent<HTMLInputElement>){const f=e.target.files?.[0];if(!f)return;setBusy(true);setMsg("");const fd=new FormData();fd.append("file",f);const r=await fetch("/api/tiktok-labels/import",{method:"POST",body:fd});const j=await r.json();setBusy(false);setMsg(r.ok?`Importación lista: ${j.imported} variantes · ${j.missingSku} sin SKU`:j.error||"No se pudo importar");if(r.ok)load();e.target.value=""}
  async function save(id:string,sku:string){const r=await fetch("/api/tiktok-labels",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id,sku})});const j=await r.json();if(!r.ok){setMsg(j.error||"No se pudo guardar");return}load()}
- const shown=useMemo(()=>items.filter(x=>{const missing=!x.seller_sku;if(mode==="GENERATE"&&missing)return false;if(filter==="WITH"&&missing)return false;if(filter==="MISSING"&&!missing)return false;return (x.product_name+" "+x.variation+" "+(x.seller_sku||"")).toLowerCase().includes(q.toLowerCase())}),[items,q,filter,mode]);
+ const shown=useMemo(()=>items.filter(x=>{const isMissing=!x.seller_sku;if(mode==="GENERATE"&&isMissing)return false;if(filter==="WITH"&&isMissing)return false;if(filter==="MISSING"&&!isMissing)return false;return (x.product_name+" "+x.variation+" "+(x.seller_sku||"")).toLowerCase().includes(q.toLowerCase())}),[items,q,filter,mode]);
  const missing=items.filter(x=>!x.seller_sku).length, selected=items.filter(x=>(qty[x.id]||0)>0),total=selected.reduce((a,x)=>a+(qty[x.id]||0),0);
  function printLabels(){if(!total)return;window.print()}
  return <div className="ttPage">
