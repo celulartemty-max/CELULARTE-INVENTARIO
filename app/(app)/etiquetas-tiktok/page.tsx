@@ -1,4 +1,5 @@
 "use client";
+import "./tiktok-labels.css";
 import {useEffect,useMemo,useState} from "react";
 
 type Item={id:string;product_name:string;variation:string;tiktok_sku_id:string|null;seller_sku:string|null;sku_source:string;updated_at:string};
