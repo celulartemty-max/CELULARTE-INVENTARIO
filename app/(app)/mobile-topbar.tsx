@@ -25,7 +25,7 @@ export default function MobileTopbar({role,userName,initials}:{role:AppRole;user
   return <div className="mobileTopbar" ref={topbarRef}>
     <details className="hamburgerMenu" open={menuOpen} onToggle={e=>setMenuOpen(e.currentTarget.open)}>
       <summary aria-label="Abrir menú" onClick={e=>{e.preventDefault();setAccountOpen(false);setMenuOpen(v=>!v)}}>☰</summary>
-      <div onClick={closeAll}><Link href="/dashboard">Inicio</Link><Link href="/entradas/nueva">Entrada de inventario</Link><Link href="/devoluciones/nueva">Devoluciones</Link><Link href="/salidas/nueva">Salida de inventario</Link><Link href="/traspasos/nuevo">Traspasos</Link>{role==='MASTER'&&<Link href="/productos">Productos</Link>}</div>
+      <div onClick={closeAll}><Link href="/dashboard">Inicio</Link><Link href="/entradas/nueva">Entrada de inventario</Link><Link href="/devoluciones/nueva">Devoluciones</Link><Link href="/salidas/nueva">Salida de inventario</Link><Link href="/traspasos/nuevo">Traspasos</Link>{role==='MASTER'&&<Link href="/productos">Productos</Link>}{role==='MASTER'&&<Link href="/etiquetas-tiktok">Etiquetas TikTok</Link>}</div>
     </details>
     <Link href="/dashboard" className="mobileBrand" onClick={closeAll}><Brand/></Link>
     <details className="accountMenu" open={accountOpen} onToggle={e=>setAccountOpen(e.currentTarget.open)}>
