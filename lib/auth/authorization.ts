@@ -7,3 +7,6 @@ export async function requireUser(): Promise<SessionUser> { const s = await getS
 export const isAdmin = (u: SessionUser) => u.role === "MASTER";
 export async function getAuthorizedBranchIds(user: SessionUser): Promise<string[] | null> { if (isAdmin(user)) return null; const rows = await sql`SELECT branch_id::text AS id FROM temporary_branch_access WHERE user_id=${user.id}::uuid AND starts_at <= now() AND ends_at >= now() AND cancelled_at IS NULL`; return [...new Set([...(user.primaryBranchId ? [user.primaryBranchId] : []), ...rows.map((r) => String(r.id))])]; }
 export async function assertBranchAccess(user: SessionUser, branchId: string) { const allowed = await getAuthorizedBranchIds(user); if (allowed !== null && !allowed.includes(branchId)) throw new Error("FORBIDDEN_BRANCH"); }
+
+export async function getModulePermissions(user: SessionUser): Promise<string[] | null> { if (isAdmin(user)) return null; try { const rows=await sql`SELECT module FROM user_module_permissions WHERE user_id=${user.id}::uuid`; return rows.map((r)=>String(r.module)); } catch { return []; } }
+export async function hasModulePermission(user: SessionUser,module:string): Promise<boolean> { const p=await getModulePermissions(user); return p===null||p.includes(module); }
