@@ -6,7 +6,8 @@ import type {AppRole} from "@/lib/auth/types";
 
 function Brand(){return <img src="/celularte-logo.png?v=20260923-5" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(220px, 56vw, 300px)",height:"auto",display:"block",objectFit:"contain"}}/>}
 
-export default function MobileTopbar({role,userName,initials}:{role:AppRole;userName:string;initials:string}){
+export default function MobileTopbar({role,userName,initials,permissions}:{role:AppRole;userName:string;initials:string;permissions:string[]|null}){
+  const can=(m:string)=>permissions===null||permissions.includes(m);
   const [menuOpen,setMenuOpen]=useState(false);
   const [accountOpen,setAccountOpen]=useState(false);
   const topbarRef=useRef<HTMLDivElement>(null);
@@ -25,7 +26,7 @@ export default function MobileTopbar({role,userName,initials}:{role:AppRole;user
   return <div className="mobileTopbar" ref={topbarRef}>
     <details className="hamburgerMenu" open={menuOpen} onToggle={e=>setMenuOpen(e.currentTarget.open)}>
       <summary aria-label="Abrir menú" onClick={e=>{e.preventDefault();setAccountOpen(false);setMenuOpen(v=>!v)}}>☰</summary>
-      <div onClick={closeAll}><Link href="/dashboard">Inicio</Link><Link href="/entradas/nueva">Entrada de inventario</Link><Link href="/devoluciones/nueva">Devoluciones</Link><Link href="/salidas/nueva">Salida de inventario</Link><Link href="/traspasos/nuevo">Traspasos</Link>{role==='MASTER'&&<Link href="/productos">Productos</Link>}{role==='MASTER'&&<Link href="/etiquetas-tiktok">Etiquetas TikTok</Link>}</div>
+      <div onClick={closeAll}><Link href="/dashboard">Inicio</Link>{can("ENTRADAS")&&<Link href="/entradas/nueva">Entrada de inventario</Link>}{can("DEVOLUCIONES")&&<Link href="/devoluciones/nueva">Devoluciones</Link>}{can("SALIDAS")&&<Link href="/salidas/nueva">Salida de inventario</Link>}{can("TRASPASOS")&&<Link href="/traspasos/nuevo">Traspasos</Link>}{can("PRODUCTOS")&&<Link href="/productos">Productos</Link>}{can("ETIQUETAS_TIKTOK")&&<Link href="/etiquetas-tiktok">Etiquetas TikTok</Link>}</div>
     </details>
     <Link href="/dashboard" className="mobileBrand" onClick={closeAll}><Brand/></Link>
     <details className="accountMenu" open={accountOpen} onToggle={e=>setAccountOpen(e.currentTarget.open)}>
