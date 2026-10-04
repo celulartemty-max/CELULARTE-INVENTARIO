@@ -1,5 +1,5 @@
 import Image from "next/image";
-import styles from "./login.module.css";
+import Link from "next/link";\nimport styles from "./login.module.css";
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
@@ -61,7 +61,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           )}
 
           <button type="submit" className={styles.submit}>Iniciar sesión</button>
-          <p className={styles.help}>Acceso exclusivo para colaboradores autorizados.</p>
+          <p className={styles.help}>¿Aún no tienes cuenta? <Link href="/registro"><b>Crear mi cuenta</b></Link></p>
         </form>
       </section>
 
