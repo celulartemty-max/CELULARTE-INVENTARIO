@@ -46,6 +46,7 @@ export default async function Dashboard(){
     <section className="dashSection">
       <div className="dashSectionHead"><h2>Acciones rápidas</h2></div>
       <div className="quickV2Grid">
+        {user.role==='MASTER'&&<Link href="/usuarios" className="quickV2"><span className="quickV2Icon">👤</span><span>Usuarios y permisos</span><span>›</span></Link>}
         <Link href="/entradas/nueva" className="quickV2 quickBlue"><span className="quickV2Icon toneBlue"><MovementIcon kind="RECEPTION"/></span><span>Nueva recepción</span><span>›</span></Link>
         <Link href="/devoluciones/nueva" className="quickV2 quickGreen"><span className="quickV2Icon toneGreen"><MovementIcon kind="RETURN"/></span><span>Nueva devolución</span><span>›</span></Link>
         <Link href="/salidas/nueva" className="quickV2 quickRed"><span className="quickV2Icon toneRed"><MovementIcon kind="EXIT"/></span><span>Nueva salida</span><span>›</span></Link>
