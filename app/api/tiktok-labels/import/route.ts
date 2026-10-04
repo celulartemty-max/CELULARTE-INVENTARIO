@@ -18,7 +18,7 @@ export async function POST(req:NextRequest){
     const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:false,cellText:true});
     const ws=wb.Sheets["Template"];
     if(!ws)return NextResponse.json({error:"No se encontró la hoja Template en el archivo"},{status:400});
-    const rows=XLSX.utils.sheet_to_json<unknown[]>(ws,{header:1,defval:"",raw:false});
+    const cellKeys=Object.keys(ws).filter(k=>!k.startsWith("!"));let maxR=0,maxC=0;for(const k of cellKeys){const a=XLSX.utils.decode_cell(k);if(a.r>maxR)maxR=a.r;if(a.c>maxC)maxC=a.c}ws["!ref"]=XLSX.utils.encode_range({r:0,c:0},{r:maxR,c:maxC});const rows=XLSX.utils.sheet_to_json<unknown[]>(ws,{header:1,defval:"",raw:false});
     let headerRow=-1;const headers=new Map<string,number>();
     for(let r=0;r<Math.min(rows.length,20);r++){
       const vals=(rows[r]||[]).map(norm);
