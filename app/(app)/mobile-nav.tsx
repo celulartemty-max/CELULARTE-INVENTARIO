@@ -16,7 +16,8 @@ function NavIcon({kind}:{kind:NavIconKind}){
   return <svg {...common}><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6"/></svg>;
 }
 
-export default function MobileNav({role,userName}:{role:string;userName:string}){
+export default function MobileNav({role,userName,permissions}:{role:string;userName:string;permissions:string[]|null}){
+  const can=(m:string)=>permissions===null||permissions.includes(m);
   const pathname=usePathname();
   const moreRef=useRef<HTMLDetailsElement>(null);
   const accountRef=useRef<HTMLDetailsElement>(null);
@@ -55,9 +56,9 @@ export default function MobileNav({role,userName}:{role:string;userName:string})
 
   return <nav className="mobileNav" aria-label="Navegación móvil">
     <Link href="/dashboard" onClick={closeMenus}><span><NavIcon kind="HOME"/></span><small>Inicio</small></Link>
-    <Link href="/movimientos" onClick={closeMenus}><span><NavIcon kind="MOVEMENTS"/></span><small>Movimientos</small></Link>
-    {role==='MASTER'?<Link href="/productos" onClick={closeMenus}><span><NavIcon kind="PRODUCTS"/></span><small>Productos</small></Link>:<Link href="/entradas/nueva" onClick={closeMenus}><span><NavIcon kind="RECEPTION"/></span><small>Entrada</small></Link>}
-    <details ref={moreRef} onToggle={()=>openOnly("more")}><summary><span><NavIcon kind="MORE"/></span><small>Más</small></summary><div className="mobileMoreMenu"><Link href="/entradas/nueva" onClick={closeMenus}>Nueva entrada</Link><Link href="/devoluciones/nueva" onClick={closeMenus}>Nueva devolución</Link><Link href="/salidas/nueva" onClick={closeMenus}>Nueva salida</Link><Link href="/traspasos/nuevo" onClick={closeMenus}>Nuevo traspaso</Link>{role==="MASTER"&&<Link href="/etiquetas-tiktok" onClick={closeMenus}>Etiquetas TikTok</Link>}</div></details>
+    {can("MOVIMIENTOS")&&<Link href="/movimientos" onClick={closeMenus}><span><NavIcon kind="MOVEMENTS"/></span><small>Movimientos</small></Link>}
+    {can("PRODUCTOS")?<Link href="/productos" onClick={closeMenus}><span><NavIcon kind="PRODUCTS"/></span><small>Productos</small></Link>:can("ENTRADAS")?<Link href="/entradas/nueva" onClick={closeMenus}><span><NavIcon kind="RECEPTION"/></span><small>Entrada</small></Link>:null}
+    <details ref={moreRef} onToggle={()=>openOnly("more")}><summary><span><NavIcon kind="MORE"/></span><small>Más</small></summary><div className="mobileMoreMenu"><Link href="/entradas/nueva" onClick={closeMenus}>Nueva entrada</Link><Link href="/devoluciones/nueva" onClick={closeMenus}>Nueva devolución</Link><Link href="/salidas/nueva" onClick={closeMenus}>Nueva salida</Link><Link href="/traspasos/nuevo" onClick={closeMenus}>Nuevo traspaso</Link>{can("ETIQUETAS_TIKTOK")&&<Link href="/etiquetas-tiktok" onClick={closeMenus}>Etiquetas TikTok</Link>}</div></details>
     <details ref={accountRef} className="mobileAccount" onToggle={()=>openOnly("account")}><summary><span><NavIcon kind="ACCOUNT"/></span><small>Mi cuenta</small></summary><div className="mobileMoreMenu"><b>{userName}</b><small>{role}</small><form action="/api/auth/logout" method="post"><button>Salir</button></form></div></details>
   </nav>;
 }
