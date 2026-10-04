@@ -1,5 +1,6 @@
 import Image from "next/image";
-import Link from "next/link";\nimport styles from "./login.module.css";
+import Link from "next/link";
+import styles from "./login.module.css";
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
