@@ -28,11 +28,13 @@ export async function POST(req:NextRequest){
     }
     if(headerRow<0)return NextResponse.json({error:"No se encontraron los encabezados de TikTok en la hoja Template"},{status:400});
     const at=(vals:string[],...names:string[])=>{for(const name of names){const i=headers.get(name);if(i!==undefined)return vals[i]||""}return""};
+    await sql`DELETE FROM tiktok_label_catalog WHERE product_name IN ('No editable','Obligatorio')`;
     let imported=0,missingSku=0;
     for(let r=headerRow+1;r<rows.length;r++){
       const vals=(rows[r]||[]).map(norm);
-      const product=at(vals,"nombre del producto");if(!product)continue;
+      const product=at(vals,"nombre del producto");
       const productId=at(vals,"id del producto"),variation=at(vals,"opción de variación","opcion de variacion"),tid=at(vals,"id de sku"),seller=at(vals,"sku de vendedor").toUpperCase();
+      if(!product||!/^\\d{8,}$/.test(productId)||!/^\\d{8,}$/.test(tid))continue;
       imported++;if(!seller)missingSku++;
       await sql`INSERT INTO tiktok_label_catalog(product_id,product_name,variation,tiktok_sku_id,seller_sku,sku_source) VALUES(${productId||null},${product},${variation},${tid||null},${seller||null},'TIKTOK') ON CONFLICT(product_name,variation) DO UPDATE SET product_id=COALESCE(EXCLUDED.product_id,tiktok_label_catalog.product_id),tiktok_sku_id=COALESCE(EXCLUDED.tiktok_sku_id,tiktok_label_catalog.tiktok_sku_id),seller_sku=CASE WHEN tiktok_label_catalog.sku_source='MANUAL' THEN tiktok_label_catalog.seller_sku ELSE COALESCE(EXCLUDED.seller_sku,tiktok_label_catalog.seller_sku) END,updated_at=now()`;
     }
