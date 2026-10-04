@@ -34,7 +34,7 @@ export async function POST(req:NextRequest){
       const vals=(rows[r]||[]).map(norm);
       const product=at(vals,"nombre del producto");
       const productId=at(vals,"id del producto"),variation=at(vals,"opción de variación","opcion de variacion"),tid=at(vals,"id de sku"),seller=at(vals,"sku de vendedor").toUpperCase();
-      if(!product||!/^\\d{8,}$/.test(productId)||!/^\\d{8,}$/.test(tid))continue;
+      if(!product||!productId||!tid||["no editable","obligatorio"].includes(product.toLowerCase())||["no editable","obligatorio"].includes(productId.toLowerCase())||["no editable","obligatorio"].includes(tid.toLowerCase()))continue;
       imported++;if(!seller)missingSku++;
       await sql`INSERT INTO tiktok_label_catalog(product_id,product_name,variation,tiktok_sku_id,seller_sku,sku_source) VALUES(${productId||null},${product},${variation},${tid||null},${seller||null},'TIKTOK') ON CONFLICT(product_name,variation) DO UPDATE SET product_id=COALESCE(EXCLUDED.product_id,tiktok_label_catalog.product_id),tiktok_sku_id=COALESCE(EXCLUDED.tiktok_sku_id,tiktok_label_catalog.tiktok_sku_id),seller_sku=CASE WHEN tiktok_label_catalog.sku_source='MANUAL' THEN tiktok_label_catalog.seller_sku ELSE COALESCE(EXCLUDED.seller_sku,tiktok_label_catalog.seller_sku) END,updated_at=now()`;
     }
