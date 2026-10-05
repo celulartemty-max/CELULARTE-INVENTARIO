@@ -1,6 +1,7 @@
 "use client";
 import "./tiktok-labels.css";
-import {useEffect,useMemo,useState} from "react";\nimport * as XLSX from "xlsx";
+import {useEffect,useMemo,useState} from "react";
+import * as XLSX from "xlsx";
 
 type Item={id:string;product_id:string|null;product_name:string;variation:string;tiktok_sku_id:string|null;seller_sku:string|null;sku_source:string;updated_at:string};type OrderItem={id:string;product_name:string;variation:string;seller_sku:string|null;qty:number};type Order={id:string;name:string;items:OrderItem[];printed_item_ids:string[];created_at:string;updated_at:string};
 export default function TikTokLabels(){
