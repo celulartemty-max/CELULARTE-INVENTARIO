@@ -33,7 +33,7 @@ export async function POST(req:NextRequest){
     }
     if(headerRow<0)return NextResponse.json({error:"No se encontraron los encabezados de TikTok en la hoja Template"},{status:400});
     const at=(vals:string[],...names:string[])=>{for(const name of names){const i=headers.get(name);if(i!==undefined)return vals[i]||""}return""};
-    await sql`INSERT INTO tiktok_label_sku_history(tiktok_sku_id,product_name,variation,seller_sku,updated_at) SELECT tiktok_sku_id,product_name,variation,seller_sku,now() FROM tiktok_label_catalog WHERE tiktok_sku_id IS NOT NULL AND seller_sku IS NOT NULL ON CONFLICT(tiktok_sku_id) DO UPDATE SET product_name=EXCLUDED.product_name,variation=EXCLUDED.variation,seller_sku=EXCLUDED.seller_sku,updated_at=now()`;
+    await sql`INSERT INTO tiktok_label_sku_history(tiktok_sku_id,product_name,variation,seller_sku,updated_at) SELECT DISTINCT ON (tiktok_sku_id) tiktok_sku_id,product_name,variation,seller_sku,now() FROM tiktok_label_catalog WHERE tiktok_sku_id IS NOT NULL AND seller_sku IS NOT NULL ORDER BY tiktok_sku_id,updated_at DESC ON CONFLICT(tiktok_sku_id) DO UPDATE SET product_name=EXCLUDED.product_name,variation=EXCLUDED.variation,seller_sku=EXCLUDED.seller_sku,updated_at=now()`;
     await sql`DELETE FROM tiktok_label_catalog`;
     let imported=0,missingSku=0;
     for(let r=headerRow+1;r<rows.length;r++){
