@@ -7,6 +7,7 @@ const norm=(v:unknown)=>String(v??"").trim();
 async function ready(){
   await sql`CREATE TABLE IF NOT EXISTS tiktok_label_catalog (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), product_name text NOT NULL, variation text NOT NULL DEFAULT '', tiktok_sku_id text, seller_sku text, sku_source text NOT NULL DEFAULT 'TIKTOK', updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(product_name,variation))`;
   await sql`ALTER TABLE tiktok_label_catalog ADD COLUMN IF NOT EXISTS product_id text`;
+  await sql`CREATE TABLE IF NOT EXISTS tiktok_label_import_source (id text PRIMARY KEY, filename text NOT NULL, file_base64 text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
 }
 export async function POST(req:NextRequest){
   try{
@@ -15,7 +16,10 @@ export async function POST(req:NextRequest){
     await ready();
     const fd=await req.formData();const file=fd.get("file");
     if(!(file instanceof File))return NextResponse.json({error:"Archivo inválido"},{status:400});
-    const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:false,cellText:true});
+    const bytes=await file.arrayBuffer();
+    const wb=XLSX.read(bytes,{type:"array",cellDates:false,cellText:true});
+    const base64=Buffer.from(bytes).toString("base64");
+    await sql`INSERT INTO tiktok_label_import_source(id,filename,file_base64,updated_at) VALUES (\'latest\',${file.name},${base64},now()) ON CONFLICT(id) DO UPDATE SET filename=EXCLUDED.filename,file_base64=EXCLUDED.file_base64,updated_at=now()`;
     const ws=wb.Sheets["Template"];
     if(!ws)return NextResponse.json({error:"No se encontró la hoja Template en el archivo"},{status:400});
     const cellKeys=Object.keys(ws).filter(k=>!k.startsWith("!"));let maxR=0,maxC=0;for(const k of cellKeys){const a=XLSX.utils.decode_cell(k);if(a.r>maxR)maxR=a.r;if(a.c>maxC)maxC=a.c}ws["!ref"]=XLSX.utils.encode_range({r:0,c:0},{r:maxR,c:maxC});const rows=XLSX.utils.sheet_to_json<unknown[]>(ws,{header:1,defval:"",raw:false});
