@@ -41,8 +41,7 @@ export async function POST(req:NextRequest){
       const product=at(vals,"nombre del producto");
       const productId=at(vals,"id del producto"),variation=at(vals,"opción de variación","opcion de variacion"),tid=at(vals,"id de sku"),seller=at(vals,"sku de vendedor").toUpperCase();
       if(!product||!productId||!tid||["no editable","obligatorio"].includes(product.toLowerCase())||["no editable","obligatorio"].includes(productId.toLowerCase())||["no editable","obligatorio"].includes(tid.toLowerCase()))continue;
-      let finalSeller=seller;let source='TIKTOK';
-      if(!finalSeller){const hist=await sql`SELECT seller_sku FROM tiktok_label_sku_history WHERE tiktok_sku_id=${tid} LIMIT 1`;if(hist.length){finalSeller=String(hist[0].seller_sku);source='HISTORY'}}
+      let finalSeller=seller;const source='TIKTOK';
       imported++;if(!finalSeller)missingSku++;
       await sql`INSERT INTO tiktok_label_catalog(product_id,product_name,variation,tiktok_sku_id,seller_sku,sku_source) VALUES(${productId||null},${product},${variation},${tid||null},${finalSeller||null},${source}) ON CONFLICT(product_name,variation) DO UPDATE SET product_id=EXCLUDED.product_id,tiktok_sku_id=EXCLUDED.tiktok_sku_id,seller_sku=EXCLUDED.seller_sku,sku_source=EXCLUDED.sku_source,updated_at=now()`;
       if(finalSeller)await sql`INSERT INTO tiktok_label_sku_history(tiktok_sku_id,product_name,variation,seller_sku,updated_at) VALUES(${tid},${product},${variation},${finalSeller},now()) ON CONFLICT(tiktok_sku_id) DO UPDATE SET product_name=EXCLUDED.product_name,variation=EXCLUDED.variation,seller_sku=EXCLUDED.seller_sku,updated_at=now()`;
