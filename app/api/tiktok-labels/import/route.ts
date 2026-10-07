@@ -8,6 +8,7 @@ async function ready(){
   await sql`CREATE TABLE IF NOT EXISTS tiktok_label_catalog (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), product_name text NOT NULL, variation text NOT NULL DEFAULT '', tiktok_sku_id text, seller_sku text, sku_source text NOT NULL DEFAULT 'TIKTOK', updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(product_name,variation))`;
   await sql`ALTER TABLE tiktok_label_catalog ADD COLUMN IF NOT EXISTS product_id text`;
   await sql`CREATE TABLE IF NOT EXISTS tiktok_label_import_source (id text PRIMARY KEY, filename text NOT NULL, file_base64 text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE TABLE IF NOT EXISTS tiktok_label_sku_history (tiktok_sku_id text PRIMARY KEY, product_name text NOT NULL, variation text NOT NULL DEFAULT '', seller_sku text NOT NULL UNIQUE, updated_at timestamptz NOT NULL DEFAULT now())`;
 }
 export async function POST(req:NextRequest){
   try{
@@ -32,15 +33,19 @@ export async function POST(req:NextRequest){
     }
     if(headerRow<0)return NextResponse.json({error:"No se encontraron los encabezados de TikTok en la hoja Template"},{status:400});
     const at=(vals:string[],...names:string[])=>{for(const name of names){const i=headers.get(name);if(i!==undefined)return vals[i]||""}return""};
-    await sql`DELETE FROM tiktok_label_catalog WHERE product_name IN ('No editable','Obligatorio')`;
+    await sql`INSERT INTO tiktok_label_sku_history(tiktok_sku_id,product_name,variation,seller_sku,updated_at) SELECT tiktok_sku_id,product_name,variation,seller_sku,now() FROM tiktok_label_catalog WHERE tiktok_sku_id IS NOT NULL AND seller_sku IS NOT NULL ON CONFLICT(tiktok_sku_id) DO UPDATE SET product_name=EXCLUDED.product_name,variation=EXCLUDED.variation,seller_sku=EXCLUDED.seller_sku,updated_at=now()`;
+    await sql`DELETE FROM tiktok_label_catalog`;
     let imported=0,missingSku=0;
     for(let r=headerRow+1;r<rows.length;r++){
       const vals=(rows[r]||[]).map(norm);
       const product=at(vals,"nombre del producto");
       const productId=at(vals,"id del producto"),variation=at(vals,"opción de variación","opcion de variacion"),tid=at(vals,"id de sku"),seller=at(vals,"sku de vendedor").toUpperCase();
       if(!product||!productId||!tid||["no editable","obligatorio"].includes(product.toLowerCase())||["no editable","obligatorio"].includes(productId.toLowerCase())||["no editable","obligatorio"].includes(tid.toLowerCase()))continue;
-      imported++;if(!seller)missingSku++;
-      await sql`INSERT INTO tiktok_label_catalog(product_id,product_name,variation,tiktok_sku_id,seller_sku,sku_source) VALUES(${productId||null},${product},${variation},${tid||null},${seller||null},'TIKTOK') ON CONFLICT(product_name,variation) DO UPDATE SET product_id=COALESCE(EXCLUDED.product_id,tiktok_label_catalog.product_id),tiktok_sku_id=COALESCE(EXCLUDED.tiktok_sku_id,tiktok_label_catalog.tiktok_sku_id),seller_sku=CASE WHEN tiktok_label_catalog.sku_source='MANUAL' THEN tiktok_label_catalog.seller_sku ELSE COALESCE(EXCLUDED.seller_sku,tiktok_label_catalog.seller_sku) END,updated_at=now()`;
+      let finalSeller=seller;let source='TIKTOK';
+      if(!finalSeller){const hist=await sql`SELECT seller_sku FROM tiktok_label_sku_history WHERE tiktok_sku_id=${tid} LIMIT 1`;if(hist.length){finalSeller=String(hist[0].seller_sku);source='HISTORY'}}
+      imported++;if(!finalSeller)missingSku++;
+      await sql`INSERT INTO tiktok_label_catalog(product_id,product_name,variation,tiktok_sku_id,seller_sku,sku_source) VALUES(${productId||null},${product},${variation},${tid||null},${finalSeller||null},${source}) ON CONFLICT(product_name,variation) DO UPDATE SET product_id=EXCLUDED.product_id,tiktok_sku_id=EXCLUDED.tiktok_sku_id,seller_sku=EXCLUDED.seller_sku,sku_source=EXCLUDED.sku_source,updated_at=now()`;
+      if(finalSeller)await sql`INSERT INTO tiktok_label_sku_history(tiktok_sku_id,product_name,variation,seller_sku,updated_at) VALUES(${tid},${product},${variation},${finalSeller},now()) ON CONFLICT(tiktok_sku_id) DO UPDATE SET product_name=EXCLUDED.product_name,variation=EXCLUDED.variation,seller_sku=EXCLUDED.seller_sku,updated_at=now()`;
     }
     return NextResponse.json({imported,missingSku});
   }catch(error){console.error("TikTok import failed",error);return NextResponse.json({error:"No se pudo leer el Excel de TikTok. Revisa el archivo e intenta nuevamente."},{status:500})}
