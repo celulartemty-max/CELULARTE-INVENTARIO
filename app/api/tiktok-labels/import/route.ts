@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from "next/server";
 import * as XLSX from "xlsx";
 import {sql} from "@/lib/db";
-import {requireUser} from "@/lib/auth/authorization";
+import {getSession} from "@/lib/auth/session";
 
 const norm=(v:unknown)=>String(v??"").trim();
 async function ready(){
@@ -12,7 +12,9 @@ async function ready(){
 }
 export async function POST(req:NextRequest){
   try{
-    const u=await requireUser();
+    const session=await getSession();
+    if(!session)return NextResponse.json({error:"Tu sesión expiró. Vuelve a iniciar sesión."},{status:401});
+    const u=session.user;
     if(u.role!=="MASTER")return NextResponse.json({error:"Sin permiso"},{status:403});
     await ready();
     const fd=await req.formData();const file=fd.get("file");
