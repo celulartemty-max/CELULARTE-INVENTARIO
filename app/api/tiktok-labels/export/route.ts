@@ -21,10 +21,13 @@ export async function GET(){
  const workbookXml=await zip.file("xl/workbook.xml")?.async("string");
  const relsXml=await zip.file("xl/_rels/workbook.xml.rels")?.async("string");
  if(!workbookXml||!relsXml)return NextResponse.json({error:"El archivo de TikTok no tiene una estructura XLSX válida"},{status:400});
- const sheetTag=(workbookXml.match(/<sheet\b[^>]*name="Template"[^>]*\/>/)||[])[0];
- const relId=(sheetTag?.match(/r:id="([^"]+)"/)||[])[1];
- const target=relId?(relsXml.match(new RegExp('<Relationship\\b[^>]*Id="'+relId.replace(/[.*+?^$()|[\\]\\]/g,"\\$&")+'"[^>]*Target="([^"]+)"[^>]*/>'))||[])[1]:"";
- const sheetPath=target?("xl/"+target.replace(/^\//,"").replace(/^xl\//,"")):"";
+ const sheetTag=[...workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/g)].map(m=>m[0]).find(s=>/\bname="Template"/i.test(s));
+ const relId=(sheetTag?.match(/(?:r:)?id="([^"]+)"/i)||[])[1];
+ const relTags=[...relsXml.matchAll(/<Relationship\b[^>]*\/?\s*>/g)].map(m=>m[0]);
+ const relTag=relId?relTags.find(s=>(s.match(/\bId="([^"]+)"/i)||[])[1]===relId):undefined;
+ const target=(relTag?.match(/\bTarget="([^"]+)"/i)||[])[1]||"";
+ const normalizedTarget=target.replace(/\\/g,"/").replace(/^\//,"").replace(/^xl\//,"");
+ const sheetPath=normalizedTarget?("xl/"+normalizedTarget):"";
  if(!sheetPath||!zip.file(sheetPath))return NextResponse.json({error:"No se encontró la hoja Template en el Excel original"},{status:400});
  const sharedXml=await zip.file("xl/sharedStrings.xml")?.async("string")||"";
  const shared=[...sharedXml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m=>unescapeXml([...m[1].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(x=>x[1]).join("")));
