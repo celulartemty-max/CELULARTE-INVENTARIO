@@ -21,9 +21,9 @@ export async function GET(){
  const workbookXml=await zip.file("xl/workbook.xml")?.async("string");
  const relsXml=await zip.file("xl/_rels/workbook.xml.rels")?.async("string");
  if(!workbookXml||!relsXml)return NextResponse.json({error:"El archivo de TikTok no tiene una estructura XLSX válida"},{status:400});
- const sheetTag=[...workbookXml.matchAll(/<sheet\b[^>]*\/?\s*>/g)].map(m=>m[0]).find(s=>/\bname="Template"/i.test(s));
+ const sheetTag=(workbookXml.match(/<sheet\b[^>]*\bname="Template"[^>]*>/i)||[])[0];
  const relId=(sheetTag?.match(/(?:r:)?id="([^"]+)"/i)||[])[1];
- const relTags=[...relsXml.matchAll(/<Relationship\b[^>]*\/?\s*>/g)].map(m=>m[0]);
+ const relTags=[...relsXml.matchAll(/<Relationship\b[^>]*>/g)].map(m=>m[0]);
  const relTag=relId?relTags.find(s=>(s.match(/\bId="([^"]+)"/i)||[])[1]===relId):undefined;
  const target=(relTag?.match(/\bTarget="([^"]+)"/i)||[])[1]||"";
  const normalizedTarget=target.replace(/\\/g,"/").replace(/^\//,"").replace(/^xl\//,"");
