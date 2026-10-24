@@ -61,10 +61,10 @@ export default function ProductAdmin({initial}:{initial:ProductAdminRow[]}){
 
       <div className="colorEditorList">
         {p.colors.filter(c=>c.status==='ACTIVE').map(c=>editingColor===c.id?
-          <form key={c.id} className="renameForm colorRename" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'renameColor',id:c.id,name:f.get('name'),hex:f.get('hex')})}}>
+          <form key={c.id} className="renameForm colorRename" autoComplete="off" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'renameColor',id:c.id,name:f.get('name'),hex:f.get('hex')})}}>
             <span className="colorSwatch colorSwatchLarge" style={{background:swatch(c.name,c.hex)}} aria-hidden="true"/>
             <div className="colorEditHeading"><b>Editar color o diseño</b><small>{c.hex&&validHex(c.hex)?`Tono actual: ${c.hex.toUpperCase()}`:'Sin tono HEX guardado'}</small></div>
-            <input name="name" defaultValue={c.name} required autoFocus aria-label="Nombre del color o diseño"/>
+            <label className="colorNameField"><span>Nombre</span><input name="name" defaultValue={c.name} required autoFocus autoComplete="off" spellCheck={false}/></label>
             <HexField initial={c.hex}/>
             <div className="colorFormActions">
               <button className="saveButton" disabled={busy}><span aria-hidden="true">✓</span> {busy?'Guardando…':'Guardar cambios'}</button>
