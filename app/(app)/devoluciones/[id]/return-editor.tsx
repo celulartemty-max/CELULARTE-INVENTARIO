@@ -9,7 +9,6 @@ export type Evidence={slot:number;fileUrl:string};
 export type ReturnProduct={id:string;name:string;colors:{id:string;name:string}[]};
 
 const origins:Record<string,string>={RETURN_ML:'Mercado Libre',RETURN_TIKTOK:'TikTok',RETURN_CUSTOMER:'Cliente'};
-const conditions:Record<string,string>={GOOD:'Buen estado',DAMAGED:'Dañado'};
 const statusLabels:Record<string,string>={DRAFT:'En captura',CLOSED:'Captura terminada',PENDING_POS:'Pendiente de registrar',POS_REGISTERED:'Registrado en sistema',POS_CORRECTION_PENDING:'Corrección pendiente',POS_RECONCILED:'Registrado en sistema',CANCELLED:'Cancelada'};
 
 async function prepareEvidenceImage(file:File){
@@ -31,7 +30,6 @@ export default function ReturnEditor({movement,lines,evidence,products,role}:{mo
   const editable=movement.status==='DRAFT'||(role==='MASTER'&&movement.status!=='CANCELLED');
   const [capture,setCapture]=useState(movement.status==='DRAFT'&&lines.length===0);
   const [product,setProduct]=useState('');
-  const [condition,setCondition]=useState('');
   const [uploadingSlot,setUploadingSlot]=useState<number|null>(null);
   const total=lines.reduce((s,l)=>s+l.quantity,0);
   const hasDamaged=lines.some(l=>l.condition==='DAMAGED');
@@ -64,11 +62,9 @@ export default function ReturnEditor({movement,lines,evidence,products,role}:{mo
     return <div style={{width:'100%',maxWidth:680,minWidth:0,margin:'0 auto',overflowX:'clip'}}>
       <header style={{marginBottom:20,minWidth:0}}><div style={{minWidth:0}}><small style={{color:'#667085',fontWeight:700}}>DEVOLUCIÓN · {origins[movement.origin]}</small><h1 style={{marginTop:6,overflowWrap:'anywhere'}}>Agregar producto</h1><p>{movement.branch} · Captura únicamente lo necesario.</p></div></header>
       <section className="card pad" style={{width:'100%',maxWidth:'100%',minWidth:0,padding:22,borderRadius:18,overflow:'hidden'}}>
-        <form className="formGrid" autoComplete="off" style={{width:'100%',maxWidth:'100%',minWidth:0}} onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),selected=products.find(p=>p.id===String(f.get('product'))),colorId=selected?.colors[0]?.id;if(!colorId){alert('Este producto necesita al menos un color activo en el catálogo para poder registrarse.');return}act({action:'saveLine',productId:f.get('product'),colorId,modelReference:'N/A',quantity:Number(f.get('quantity')),condition:f.get('condition'),reason:condition==='DAMAGED'?f.get('reason'):''})}}>
+        <form className="formGrid" autoComplete="off" style={{width:'100%',maxWidth:'100%',minWidth:0}} onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),selected=products.find(p=>p.id===String(f.get('product'))),colorId=selected?.colors[0]?.id;if(!colorId){alert('Este producto necesita al menos un color activo en el catálogo para poder registrarse.');return}act({action:'saveLine',productId:f.get('product'),colorId,modelReference:'N/A',quantity:Number(f.get('quantity')),condition:'GOOD',reason:''})}}>
           <label>Producto<select name="product" value={product} onChange={e=>setProduct(e.target.value)} required><option value="" disabled>Selecciona un producto…</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
           <label>Cantidad<input name="quantity" type="number" min="1" inputMode="numeric" placeholder="Cantidad" autoComplete="off" required/></label>
-          <label>Condición<select name="condition" value={condition} onChange={e=>setCondition(e.target.value)} required><option value="" disabled>Selecciona una condición…</option><option value="GOOD">Buen estado</option><option value="DAMAGED">Dañado</option></select></label>
-          {condition==='DAMAGED'&&<><label>Motivo del daño<input name="reason" placeholder="Describe brevemente el daño" autoComplete="off" required/></label><div style={{padding:'12px 14px',borderRadius:12,background:'#fff4e5',color:'#7a4b00',fontSize:14,lineHeight:1.4}}><b>Se requiere evidencia.</b><br/>Después de agregar el producto podrás adjuntar hasta 2 fotografías en el resumen de la devolución.</div></>}
           <button className="primary" style={{width:'100%',marginTop:4,padding:14}}>Agregar producto</button>
           {lines.length>0&&<button type="button" onClick={()=>setCapture(false)} style={{width:'100%',background:'#f2f4f7'}}>Cancelar y volver</button>}
         </form>
@@ -80,8 +76,8 @@ export default function ReturnEditor({movement,lines,evidence,products,role}:{mo
     <header style={{marginBottom:18,minWidth:0,maxWidth:'100%'}}><div style={{minWidth:0,maxWidth:'100%'}}><small style={{color:'#667085',fontWeight:700}}>DEVOLUCIÓN · {origins[movement.origin]}</small><h1 style={{fontSize:'clamp(25px,7vw,38px)',lineHeight:1.08,overflowWrap:'anywhere',wordBreak:'break-word',marginTop:6,maxWidth:'100%'}}>{movement.folio}</h1><p style={{overflowWrap:'anywhere'}}>{movement.branch} · {statusLabels[movement.status]||movement.status}</p></div></header>
 
     <section className="card pad" style={{width:'100%',maxWidth:'100%',minWidth:0,padding:22,borderRadius:18,overflow:'hidden'}}>
-      <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',alignItems:'end',gap:12,marginBottom:14,minWidth:0}}><div style={{minWidth:0}}><h2 style={{margin:'0 0 4px'}}>Productos</h2><small style={{color:'#667085'}}>{lines.length} producto{lines.length===1?'':'s'} · {total} pieza{total===1?'':'s'}</small></div>{editable&&<button type="button" onClick={()=>{setCondition('');setProduct('');setCapture(true)}} style={{background:'#eaf3ff',color:'#0868d9',maxWidth:'100%'}}>+ Agregar producto</button>}</div>
-      <div className="lines" style={{minWidth:0}}>{lines.map(l=><div className="line" key={l.id} style={{padding:14,minWidth:0,maxWidth:'100%'}}><div style={{minWidth:0,overflowWrap:'anywhere'}}><b>{l.product}</b><small>{l.quantity} pieza{l.quantity===1?'':'s'} · {conditions[l.condition]||l.condition}</small>{l.condition==='DAMAGED'&&l.reason&&<small>{l.reason}</small>}</div>{editable&&<button onClick={()=>act({action:'deleteLine',lineId:l.id},'¿Eliminar este producto de la devolución?')}>Eliminar</button>}</div>)}</div>
+      <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',alignItems:'end',gap:12,marginBottom:14,minWidth:0}}><div style={{minWidth:0}}><h2 style={{margin:'0 0 4px'}}>Productos</h2><small style={{color:'#667085'}}>{lines.length} producto{lines.length===1?'':'s'} · {total} pieza{total===1?'':'s'}</small></div>{editable&&<button type="button" onClick={()=>{setProduct('');setCapture(true)}} style={{background:'#eaf3ff',color:'#0868d9',maxWidth:'100%'}}>+ Agregar producto</button>}</div>
+      <div className="lines" style={{minWidth:0}}>{lines.map(l=><div className="line" key={l.id} style={{padding:14,minWidth:0,maxWidth:'100%'}}><div style={{minWidth:0,overflowWrap:'anywhere'}}><b>{l.product}</b><small>{l.quantity} pieza{l.quantity===1?'':'s'}</small>{l.condition==='DAMAGED'&&l.reason&&<small>{l.reason}</small>}</div>{editable&&<button onClick={()=>act({action:'deleteLine',lineId:l.id},'¿Eliminar este producto de la devolución?')}>Eliminar</button>}</div>)}</div>
       {movement.status==='DRAFT'&&<><button className="primary" style={{width:'100%',maxWidth:'100%',marginTop:18,padding:14,whiteSpace:'normal',opacity:missingDamageEvidence?.5:1,cursor:missingDamageEvidence?'not-allowed':'pointer'}} disabled={lines.length===0||missingDamageEvidence} onClick={()=>act({action:'close'},`Cerrar devolución con ${lines.length} producto${lines.length===1?'':'s'} y ${total} pieza${total===1?'':'s'}?`)}>Terminar captura de devolución</button>{missingDamageEvidence&&<small style={{display:'block',marginTop:9,color:'#9a5b00',fontWeight:700,textAlign:'center'}}>Agrega una evidencia del producto dañado para continuar.</small>}</>}
     </section>
 
