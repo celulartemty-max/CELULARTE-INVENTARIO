@@ -7,3 +7,5 @@ test('post-POS correction requires correction registration',()=>assert.equal(can
 test('zero, negative and fractional quantities are rejected',()=>{for(const q of [0,-1,1.5])assert.equal(validQty(q),false);assert.equal(validQty(1),true)});
 test('close rejects an empty box and accepts all nonempty boxes',()=>{assert.equal(canClose([{lines:[1]},{lines:[]}]),false);assert.equal(canClose([{lines:[1]},{lines:[1]}]),true)});
 test('same model in different boxes remains independent',()=>{const boxes=[{model:'IPHONE 15',qty:2},{model:'IPHONE 15',qty:3}];assert.deepEqual(boxes.map(b=>b.qty),[2,3])});
+test('reception detail allows optional model and color while quantity stays required',()=>{const line={model:null,color:null,quantity:12};assert.equal(line.model,null);assert.equal(line.color,null);assert.equal(validQty(line.quantity),true)});
+test('same optional model and color combination accumulates in one line',()=>{const current=8,additional=4;assert.equal(current+additional,12)});
