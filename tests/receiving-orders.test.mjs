@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import vm from 'node:vm';
+const require=createRequire(import.meta.url),ts=require('typescript');
+const source=readFileSync(new URL('../lib/inventory/receiving-validation.ts',import.meta.url),'utf8');
+const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+const m={exports:{}};vm.runInNewContext('(function(require,module,exports){'+code+'})') (require,m,m.exports);
+const {packingSchema,countSchema,arrivalSchema,isReviewer}=m.exports;
+const box=n=>({number:n,items:[{model:'A57',color:'NEGRO',expected:10}]});
+test('different cartons with identical contents remain independent',()=>assert.equal(packingSchema.parse({reference:'A',warnings:[],boxes:[box('1'),box('2')]}).boxes.length,2));
+test('duplicate carton number is rejected within an order',()=>assert.equal(packingSchema.safeParse({reference:'A',warnings:[],boxes:[box('1'),box('1')]}).success,false));
+test('unknown expected quantity remains null, not zero',()=>assert.equal(packingSchema.parse({reference:'A',warnings:[],boxes:[{number:'1',items:[{model:'',color:'',expected:null}]}]}).boxes[0].items[0].expected,null));
+test('empty, fractional, negative counts are invalid; explicit zero is valid',()=>{const id='00000000-0000-4000-8000-000000000001';for(const quantity of ['',null,-1,1.5])assert.equal(countSchema.safeParse([{id,quantity}]).success,false);assert.equal(countSchema.safeParse([{id,quantity:0}]).success,true)});
+test('duplicate arrival and duplicate count lines rejected',()=>{const id='00000000-0000-4000-8000-000000000001';assert.equal(arrivalSchema.safeParse([id,id]).success,false);assert.equal(countSchema.safeParse([{id,quantity:1},{id,quantity:2}]).success,false)});
+test('operative cannot review packing documents or expected quantities',()=>{assert.equal(isReviewer('OPERATIVE'),false);assert.equal(isReviewer('MASTER'),true);assert.equal(isReviewer('MANAGER'),true)});

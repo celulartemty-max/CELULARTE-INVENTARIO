@@ -1,4 +1,2 @@
-import { requireUser,getAuthorizedBranchIds } from "@/lib/auth/authorization";
-import { sql } from "@/lib/db";
-import NewReception,{type BranchOption,type ProductOption} from "./reception-new";
-export default async function NewReceptionPage(){const u=await requireUser();const ids=await getAuthorizedBranchIds(u);const controlled=await sql`SELECT id::text,name FROM branches WHERE status::text='ACTIVE' AND name IN ('Treviño','Plaza del Audio') ORDER BY name`;const branches=ids===null?controlled:controlled.filter(b=>ids.includes(String(b.id)));const products=await sql`SELECT id::text,name FROM products WHERE status::text='ACTIVE' ORDER BY name`;return <><header><h1>Nueva recepción</h1><p>Selecciona el producto y crea las cajas para iniciar el conteo.</p></header><NewReception branches={branches as unknown as BranchOption[]} products={products as unknown as ProductOption[]}/></>}
+import {redirect} from 'next/navigation';
+export default function Page(){redirect('/entradas/pedidos');}
