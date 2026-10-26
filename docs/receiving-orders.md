@@ -4,6 +4,14 @@ Ruta: /entradas/pedidos. Las recepciones anteriores se conservan en /entradas y 
 
 ## Estructura
 
+### Interfaz simplificada (2026-10-25)
+
+- La recepción muestra solo resumen físico y tabla de pedidos recibidos aquí. Los pedidos pendientes que aún no llegaron se buscan desde «Recibir faltantes», no se mezclan en la tabla principal.
+- «Agregar pedido» abre un diálogo modal con producto, marca, transporte, propias/ajenas, total y recibidas. Recibidas sigue al total hasta que el usuario la modifica. Números/rangos se piden únicamente para llegada parcial; una llegada completa genera 1..N.
+- La referencia del proveedor es opcional en la interfaz: si queda vacía se asigna una referencia interna única, estable durante los reintentos del mismo formulario. La validación de servidor se conserva.
+- «Abrir pedido» muestra solo sus cajas y documentos, con pestañas Packing list / Contar piezas. Las ajenas permanecen solo como registro. Las cantidades de piezas siguen vacías hasta su conteo y los permisos no cambian.
+- Flete/comprobantes y cierre/Excel se mantienen en secciones desplegables de la recepción. Sin migración ni modificación de datos guardados.
+
 ### Captura por bonches / pedido (2026-10-25)
 
 Aplicar `migrations/20261026_receiving_batches.sql` antes de desplegar. Conserva pedidos previos y registros ajenos anteriores.
