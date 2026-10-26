@@ -115,7 +115,7 @@ test('review navigation, pending filter and edits invalidate only the changed bo
  nodes(tree).find(n=>n.type==='button'&&text(n)==='✓ Marcar caja revisada').props.onClick();tree=render();
  assert.match(text(tree),/1 revisadas/);assert.ok(text(tree).includes('OTHER'));
  nodes(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});tree=render();
- assert.equal(nodes(tree).filter(n=>n.type==='option').length,1);
+ assert.equal(nodes(nodes(tree).find(n=>n.props?.['aria-label']==='Seleccionar caja para revisar')).filter(n=>n.type==='option').length,1);
  nodes(tree).find(n=>n.type==='button'&&text(n)==='✓ Marcar caja revisada').props.onClick();tree=render();
  assert.match(text(tree),/Todas las cajas están marcadas/);
  nodes(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:false}});tree=render();
