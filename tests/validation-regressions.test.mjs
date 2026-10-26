@@ -43,8 +43,15 @@ test('TikTok order Excel still preserves model/color totals and original SKU',()
  const XLSX=requireModule('xlsx');let workbook,filename;
  const stub={...XLSX,writeFile:(w,n)=>{workbook=w;filename=n}};
  const order={name:'Pedido de prueba',items:[{product_name:'COMBO CASE',variation:'Negro, A57',seller_sku:'ORIG123',qty:3},{product_name:'COMBO CASE',variation:'Rosa, A57',seller_sku:'ORIG456',qty:2}]};
- vm.runInNewContext(code+';excelOrder(order);',{XLSX:stub,order,Blob,URL});
+ vm.runInNewContext(code+';excelOrder(order);',{XLSX:stub,order,items:[],Blob,URL});
  assert.equal(filename,'Pedido_de_prueba_PEDIDO.xlsx');
  assert.deepEqual(XLSX.utils.sheet_to_json(workbook.Sheets['Detalle SKU'],{header:1}),[['PRODUCTO','MODELO','COLOR','SKU','CANTIDAD'],['COMBO CASE','A57','Negro','ORIG123',3],['COMBO CASE','A57','Rosa','ORIG456',2]]);
- assert.deepEqual(XLSX.utils.sheet_to_json(workbook.Sheets.Pedido,{header:1})[3],['A57',3,2,5]);
+ assert.ok(XLSX.utils.sheet_to_json(workbook.Sheets.Pedido,{header:1}).some(row=>JSON.stringify(row)===JSON.stringify(['A57',3,2,5])));
+ const multi={name:'Separados',items:[{id:'a',product_id:'1111111111111111111',product_name:'MISMO NOMBRE',variation:'Negro, A57',seller_sku:'SKU1',qty:3},{id:'b',product_id:'2222222222222222222',product_name:'MISMO NOMBRE',variation:'Negro, A57',seller_sku:'SKU2',qty:7}]};
+ vm.runInNewContext(code+';excelOrder(order);',{XLSX:stub,order:multi,items:[],Blob,URL});
+ const rows=XLSX.utils.sheet_to_json(workbook.Sheets.Pedido,{header:1});
+ assert.equal(rows.filter(row=>row[0]==='MODELO').length,2);
+ assert.ok(rows.some(row=>row[0]==='ID de producto: 1111111111111111111'));
+ assert.ok(rows.some(row=>row[0]==='ID de producto: 2222222222222222222'));
+ assert.deepEqual(rows.filter(row=>row[0]==='TOTAL').map(row=>row.at(-1)),[3,7]);
 });
