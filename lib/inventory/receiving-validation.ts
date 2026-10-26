@@ -1,5 +1,11 @@
 import { z } from 'zod';
 const text = z.string().trim().max(160);
+export const markingSchema = text.min(1, 'Escribe la marca de la caja.');
+export const foreignCartonSchema = z.object({
+    product: text.min(1), quantity: z.number().int().min(1).max(1000),
+    shipping: z.enum(['SEA', 'AIR']), marking: markingSchema,
+    notes: z.string().trim().max(2000).default('')
+});
 export const packingSchema = z.object({
     reference: text, warnings: z.array(z.string().max(500)).max(100),
     boxes: z.array(z.object({ number: text.min(1), items: z.array(z.object({

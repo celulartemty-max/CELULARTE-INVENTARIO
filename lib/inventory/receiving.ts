@@ -2,7 +2,7 @@ import 'server-only';
 import { sql, withTransaction } from '@/lib/db';
 import { assertBranchAccess, hasModulePermission } from '@/lib/auth/authorization';
 import type { SessionUser } from '@/lib/auth/types';
-import { arrivalSchema, countSchema, isReviewer, packingSchema } from './receiving-validation';
+import { arrivalSchema, countSchema, isReviewer, packingSchema, markingSchema, foreignCartonSchema } from './receiving-validation';
 import { z } from 'zod';
 export async function receivingAccess(u: SessionUser, review = false) {
     if (!await hasModulePermission(u, 'ENTRADAS') || (review && !isReviewer(u.role)))
@@ -16,13 +16,14 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
     const id = z.string().uuid();
     if (b.action === 'create') {
         const x = z.object({ branchId: id, reference: z.string().trim().min(1).max(160), date: z.string().date(), total: z.number().int().min(1).max(1000), cost: z.number().min(0).max(999999999).nullable(), currency: z.enum(['MXN', 'USD', 'CNY']), notes: z.string().max(2000) }).parse(b);
+        const carrier = z.string().trim().max(160).parse(b.carrier ?? ''), tracking = z.string().trim().max(160).parse(b.tracking ?? '');
         await receivingAccess(u, true);
         await assertBranchAccess(u, x.branchId);
         return withTransaction(async (c) => {
             const branch = await c.query("SELECT 1 FROM branches WHERE id=$1 AND status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')", [x.branchId]);
             if (!branch.rowCount)
                 throw new Error('Sucursal no válida.');
-            const r = await c.query('INSERT INTO receiving_sessions(branch_id,reference,arrival_date,total_boxes,cost,currency,notes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id', [x.branchId, x.reference, x.date, x.total, x.cost, x.currency, x.notes, u.id]);
+            const r = await c.query('INSERT INTO receiving_sessions(branch_id,reference,arrival_date,total_boxes,cost,currency,notes,created_by,carrier,tracking) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id', [x.branchId, x.reference, x.date, x.total, x.cost, x.currency, x.notes, u.id, carrier, tracking]);
             await audit(c, u, x.branchId, 'RECEIVING_CREATED', { id: r.rows[0].id });
             return { id: r.rows[0].id };
         });
@@ -44,6 +45,37 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         }
         if (s.status !== 'DRAFT')
             throw new Error('La recepción ya está cerrada.');
+        if (b.action === 'foreign' || b.action === 'voidForeign') {
+            await receivingAccess(u, true);
+            const recordId = b.recordId ? id.parse(b.recordId) : null;
+            const before = recordId ? (await c.query('SELECT * FROM receiving_foreign_cartons WHERE id=$1 AND session_id=$2 AND voided_at IS NULL FOR UPDATE', [recordId, sessionId])).rows[0] : null;
+            if (recordId && !before) throw new Error('Registro ajeno no disponible.');
+            if (b.action === 'voidForeign') {
+                if (!before) throw new Error('Selecciona el registro a anular.');
+                await c.query('UPDATE receiving_foreign_cartons SET voided_at=now() WHERE id=$1', [recordId]);
+                await audit(c, u, s.branch_id, 'RECEIVING_FOREIGN_VOIDED', { sessionId, previous: before });
+                return { ok: true };
+            }
+            const x = foreignCartonSchema.parse(b);
+            const n = await c.query('SELECT (SELECT count(*) FROM receiving_cartons WHERE session_id=$1)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n', [sessionId]);
+            if (n.rows[0].n - (before?.carton_count ?? 0) + x.quantity > s.total_boxes) throw new Error('Se excede el total físico de cajas de esta recepción.');
+            if (before) {
+                await c.query('UPDATE receiving_foreign_cartons SET product=$1,carton_count=$2,shipping=$3,marking=$4,notes=$5 WHERE id=$6', [x.product,x.quantity,x.shipping,x.marking,x.notes,recordId]);
+            } else {
+                await c.query('INSERT INTO receiving_foreign_cartons(session_id,product,carton_count,shipping,marking,notes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)', [sessionId,x.product,x.quantity,x.shipping,x.marking,x.notes,u.id]);
+            }
+            await audit(c, u, s.branch_id, 'RECEIVING_FOREIGN_SAVED', { sessionId, recordId, previous: before, ...x });
+            return { ok: true };
+        }
+        if (b.action === 'markBox') {
+            await receivingAccess(u, true);
+            const boxId = id.parse(b.boxId), marking = markingSchema.parse(b.marking);
+            const before = await c.query('SELECT COALESCE(b.marking,o.marking) marking FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.id=$1 AND b.session_id=$2 FOR UPDATE OF b', [boxId, sessionId]);
+            if (!before.rowCount) throw new Error('Caja no disponible.');
+            await c.query('UPDATE receiving_cartons SET marking=$1 WHERE id=$2', [marking,boxId]);
+            await audit(c,u,s.branch_id,'RECEIVING_BOX_MARKED',{sessionId,boxId,previous:before.rows[0].marking,marking});
+            return { ok: true };
+        }
         if (b.action === 'addItem') {
             const boxId = id.parse(b.boxId);
             const model = z.string().trim().max(160).parse(b.model).toUpperCase(), color = z.string().trim().max(160).parse(b.color).toUpperCase();
@@ -73,7 +105,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const p = packingSchema.parse(b.packing);
             const product = id.parse(b.productId);
             const shipping = z.enum(['AIR', 'SEA']).parse(b.shipping);
-            const marking = z.enum(['JAPS', 'PER']).parse(b.marking);
+            const marking = markingSchema.parse(b.marking);
             if (!p.reference)
                 throw new Error('Indica la referencia del pedido.');
             const valid = await c.query("SELECT 1 FROM products WHERE id=$1 AND status='ACTIVE'", [product]);
@@ -96,7 +128,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const boxes = await c.query('SELECT b.id,b.session_id,o.branch_id FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.id=ANY($1::uuid[]) ORDER BY b.id FOR UPDATE OF b', [ids]);
             if (boxes.rowCount !== ids.length || boxes.rows.some(x => x.session_id || x.branch_id !== s.branch_id))
                 throw new Error('Caja ya recibida o de otra sucursal.');
-            const n = await c.query('SELECT count(*)::int n FROM receiving_cartons WHERE session_id=$1', [sessionId]);
+            const n = await c.query('SELECT (SELECT count(*) FROM receiving_cartons WHERE session_id=$1)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n', [sessionId]);
             if (n.rows[0].n + ids.length > s.total_boxes)
                 throw new Error('Se excede el total de cajas de esta recepción.');
             await c.query('UPDATE receiving_cartons SET session_id=$1 WHERE id=ANY($2::uuid[])', [sessionId, ids]);
@@ -124,10 +156,12 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (b.action === 'close') {
             await receivingAccess(u, true);
             const n = await c.query('SELECT count(*)::int n,count(*) FILTER(WHERE counted_at IS NULL)::int pending FROM receiving_cartons WHERE session_id=$1', [sessionId]);
-            if (n.rows[0].n !== s.total_boxes || n.rows[0].pending)
-                throw new Error('Asigna y cuenta todas las cajas que llegaron en esta recepción.');
-            await c.query("UPDATE receiving_sessions SET status='CLOSED' WHERE id=$1", [sessionId]);
-            await audit(c, u, s.branch_id, 'RECEIVING_CLOSED', { sessionId });
+            const foreign = await c.query('SELECT COALESCE(sum(carton_count),0)::int n FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL', [sessionId]);
+            if (n.rows[0].n + foreign.rows[0].n !== s.total_boxes || n.rows[0].pending)
+                throw new Error('Completa el total físico entre cajas de la sucursal y ajenas. Cuenta solo las de esta sucursal.');
+            const status = n.rows[0].n === 0 ? 'ARCHIVED' : 'CLOSED';
+            await c.query('UPDATE receiving_sessions SET status=$1 WHERE id=$2', [status,sessionId]);
+            await audit(c, u, s.branch_id, 'RECEIVING_CLOSED', { sessionId, status, own: n.rows[0].n, foreign: foreign.rows[0].n });
             return { ok: true };
         }
         throw new Error('Acción no válida.');
@@ -135,18 +169,19 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
 }
 export async function receivingView(u: SessionUser, sessionId: string) {
     await receivingAccess(u);
-    const rows = await sql `SELECT id::text,branch_id::text,reference,arrival_date::text,total_boxes,status FROM receiving_sessions WHERE id=${sessionId}::uuid`;
+    const rows = await sql `SELECT id::text,branch_id::text,reference,arrival_date::text,total_boxes,status,carrier,tracking FROM receiving_sessions WHERE id=${sessionId}::uuid`;
     const session = rows[0];
     if (!session)
         throw new Error('No encontrada');
     await assertBranchAccess(u, String(session.branch_id));
     const review = isReviewer(u.role);
-    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid ORDER BY o.reference,b.carton_number`;
+    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,COALESCE(b.marking,o.marking) marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid ORDER BY o.reference,b.carton_number`;
+    const foreign = await sql `SELECT id::text,product,carton_count,shipping,marking,notes FROM receiving_foreign_cartons WHERE session_id=${sessionId}::uuid AND voided_at IS NULL ORDER BY created_at,id`;
     // Expected values never enter the operative response, including server component props.
     const items = review ? await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted,CASE WHEN b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid ORDER BY l.model,l.color` : await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid ORDER BY l.model,l.color`;
     const pending = review ? await sql `SELECT b.id::text,b.carton_number,o.reference,o.shipping,o.marking,p.name product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
     const cost = review ? await sql `SELECT cost,currency,notes FROM receiving_sessions WHERE id=${sessionId}::uuid` : [];
     const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text FROM receiving_documents d WHERE d.session_id=${sessionId}::uuid OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid)` : [];
     const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid ORDER BY created_at DESC` : [];
-    return { session, boxes, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER' };
+    return { session, boxes, foreign, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER' };
 }

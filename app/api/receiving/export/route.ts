@@ -9,6 +9,18 @@ export async function GET(req: Request) {
         const id = z.string().uuid().parse(new URL(req.url).searchParams.get('id'));
         const data = await receivingView(u, id);
         const w = new ExcelJS.Workbook();
+        const summary = w.addWorksheet('Recepción general');
+        summary.columns = [{header:'Dato',key:'key',width:32},{header:'Valor',key:'value',width:65}];
+        const foreignTotal = data.foreign.reduce((n,r)=>n+Number(r.carton_count),0);
+        for (const [key,value] of Object.entries({Referencia:data.session.reference,Fecha:data.session.arrival_date,Transportista:data.session.carrier,Guía:data.session.tracking,'Total físico':data.session.total_boxes,'Cajas de esta sucursal':data.boxes.length,'Cajas ajenas':foreignTotal,'Costo total de flete':data.cost?.cost ?? '',Moneda:data.cost?.currency ?? '',Estado:data.session.status})) summary.addRow({key,value});
+        summary.getRow(1).font = {bold:true};
+        const foreign = w.addWorksheet('Cajas ajenas');
+        foreign.columns = [{header:'Producto',key:'product',width:32},{header:'Cajas',key:'carton_count',width:12},{header:'SEA / AIR',key:'shipping',width:14},{header:'Marca',key:'marking',width:28},{header:'Observaciones',key:'notes',width:45}];
+        for(const r of data.foreign) foreign.addRow(r);
+        foreign.addRow({product:'TOTAL AJENAS',carton_count:foreignTotal});
+        foreign.getRow(1).font={bold:true};
+        foreign.views=[{state:'frozen',ySplit:1}];
+        foreign.autoFilter=`A1:E${Math.max(1,data.foreign.length+1)}`;
         const s = w.addWorksheet('Detalle por caja');
         s.columns = [{ header: 'Pedido', key: 'order', width: 25 }, { header: 'Caja', key: 'box', width: 12 }, { header: 'Producto', key: 'product', width: 30 }, { header: 'Transporte', key: 'shipping', width: 12 }, { header: 'Marca', key: 'marking', width: 12 }, { header: 'Modelo', key: 'model', width: 25 }, { header: 'Color', key: 'color', width: 22 }, { header: 'Contado', key: 'counted', width: 12 }, { header: 'Esperado', key: 'expected', width: 12 }, { header: 'Diferencia', key: 'diff', width: 12 }];
         for (const box of data.boxes)
