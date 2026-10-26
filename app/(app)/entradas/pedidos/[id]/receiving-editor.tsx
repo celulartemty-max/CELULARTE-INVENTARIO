@@ -7,6 +7,7 @@ import { packingSchema } from '@/lib/inventory/receiving-validation';
 import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 import BatchIntake, {type Batch, type PendingCarton} from './batch-intake';
 import PackingReview from './packing-review';
+import CountGrid from './count-grid';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -148,7 +149,8 @@ export default function ReceivingEditor({ data, products }: {
             } if (!saving && !confirm('¿Terminar el conteo de esta caja? Ya no podrás editarlo.'))
                 return; run(async () => { await act({ action: saving ? 'saveCount' : 'count', boxId: b.id, lines: items.map(l => ({ id: l.id, quantity: f.get(l.id) === '' ? null : Number(f.get(l.id)) })), notes: f.get('notes') }); if (!saving)
                 setActive(null); }); }}>
- {!data.items.some(l=>l.carton_id===b.id)&&<p>Esta caja aún no tiene contenido registrado. Agrega el packing list arriba o captura sus modelos/colores abajo; las cantidades empiezan vacías.</p>}{data.items.filter(l => l.carton_id === b.id).map(l => <label key={l.id}>{l.model || 'Sin modelo'} · {l.color || 'Sin color'}<input name={l.id} type="number" min={0} max={1000000} step={1} inputMode="numeric" required placeholder="Cantidad contada" defaultValue={l.counted ?? ''} disabled={!!b.counted_at || busy || !draft}/>{data.review && b.counted_at && <small>{l.expected === null ? 'Sin cantidad de referencia' : `Esperado: ${l.expected} · Diferencia: ${Number(l.counted) - Number(l.expected)}`}</small>}</label>)}
+ {!data.items.some(l=>l.carton_id===b.id)&&<p>Esta caja aún no tiene contenido registrado. Agrega el packing list arriba o captura sus modelos/colores abajo; las cantidades empiezan vacías.</p>}
+ <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} disabled={!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at}/>
  <label>Observaciones<textarea name="notes" maxLength={2000} defaultValue={b.notes} disabled={!!b.counted_at || !draft || busy}/></label>{!b.counted_at && draft && <div className="actions"><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)} value="draft" formNoValidate>Guardar avance</button><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)}>Terminar conteo de esta caja</button></div>}
  </form>}
  {active === b.id && !b.counted_at && draft && <details><summary>Encontré un modelo/color que no aparece</summary><form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); run(async () => { await act({ action: 'addItem', boxId: b.id, model: f.get('model'), color: f.get('color') }); }); }}><label>Modelo<input name="model" maxLength={160}/></label><label>Color<input name="color" maxLength={160}/></label><button disabled={busy}>Agregar línea al conteo</button></form></details>}

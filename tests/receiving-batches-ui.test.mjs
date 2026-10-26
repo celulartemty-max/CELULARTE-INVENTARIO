@@ -71,6 +71,13 @@ test('order workspace filters boxes and files to the opened order; foreign has n
 });
 
 const gridModule=load(base+'packing-review.tsx');
+test('count grid preserves IDs, blank and explicit zero, and hides reference during blind count',()=>{
+ const CountGrid=load(base+'count-grid.tsx').default;
+ const items=[{id:'one',model:'SAM A36',color:'negro',counted:null,expected:200},{id:'two',model:'SAM A36',color:'rojo',counted:0,expected:150}];
+ const html=renderToStaticMarkup(React.createElement(CountGrid,{items,disabled:false,showReference:false}));
+ assert.match(html,/Modelo \/ Color/);assert.match(html,/name="one"/);assert.match(html,/name="two"/);assert.match(html,/value="0"/);assert.doesNotMatch(html,/value="200"|Esperado:/);
+ const closed=renderToStaticMarkup(React.createElement(CountGrid,{items,disabled:true,showReference:true}));assert.match(closed,/disabled/);assert.match(closed,/Esperado: 150/);
+});
 const samplePacking=()=>({reference:'PED-A',warnings:[],boxes:[
  {number:'1',items:[{model:'SAM A36',color:'negro',expected:200},{model:'SAM A36',color:'rojo',expected:150},{model:'SAM A32',color:'negro',expected:0},{model:'SAM A32',color:'rojo',expected:null}]},
  {number:'3',items:[{model:'OTHER',color:'',expected:70}]}
