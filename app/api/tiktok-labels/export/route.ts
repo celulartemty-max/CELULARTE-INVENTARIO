@@ -33,7 +33,7 @@ export async function GET(){
  const shared=[...sharedXml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m=>unescapeXml([...m[1].matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(x=>x[1]).join("")));
  let sheetXml=await zip.file(sheetPath)!.async("string");
  const catalog=await sql`SELECT tiktok_sku_id,seller_sku FROM tiktok_label_catalog WHERE seller_sku IS NOT NULL AND tiktok_sku_id IS NOT NULL`;
- const byTid=new Map(catalog.map((x:any)=>[String(x.tiktok_sku_id).trim(),String(x.seller_sku).trim()]));
+ const byTid=new Map(catalog.map(x=>[String(x.tiktok_sku_id).trim(),String(x.seller_sku).trim()]));
  let updated=0;
  sheetXml=sheetXml.replace(/<row\b[^>]*\br="(\d+)"[^>]*>[\s\S]*?<\/row>/g,(row:string,rowNum:string)=>{
    const cells=[...row.matchAll(/<c\b[^>]*\br="([A-Z]+)\d+"[^>]*>[\s\S]*?<\/c>/g)];

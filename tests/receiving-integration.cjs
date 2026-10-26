@@ -1,15 +1,17 @@
 // Isolated branch only. Connection is read from stdin, never logged or stored.
-const {createInterface}=require('node:readline');
+const {createRequire}=process.getBuiltinModule('node:module');
+const requireModule=createRequire(__filename);
+const {createInterface}=process.getBuiltinModule('node:readline');
 const rl=createInterface({input:process.stdin});
 rl.once('line',async line=>{rl.close();let pool;
 try{
  const url=JSON.parse(line).url;if(!url||!url.includes('ep-'))throw Error('Test connection required');
- const fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm'),assert=require('node:assert/strict');
- const neon=require('@neondatabase/serverless');neon.neonConfig.webSocketConstructor=WebSocket;pool=new neon.Pool({connectionString:url});
+ const fs=requireModule('node:fs'),ts=requireModule('typescript'),vm=requireModule('node:vm'),assert=requireModule('node:assert/strict');
+ const neon=requireModule('@neondatabase/serverless');neon.neonConfig.webSocketConstructor=WebSocket;pool=new neon.Pool({connectionString:url});
  const client=await pool.connect();await client.query('BEGIN');
  const db={sql:async(strings,...args)=>(await client.query(strings.reduce((s,x,i)=>s+x+(i<args.length?'$'+(i+1):''),''),args)).rows,withTransaction:async fn=>{await client.query('SAVEPOINT action');try{return await fn(client)}catch(e){await client.query('ROLLBACK TO SAVEPOINT action');throw e}}};
  const auth={hasModulePermission:async()=>true,assertBranchAccess:async(u,b)=>{if(u.role!=='MASTER'&&b!==u.primaryBranchId)throw Error('FORBIDDEN_BRANCH')}};
- function load(p){const mod={exports:{}};const code=ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;const req=s=>s==='server-only'?{}:s==='@/lib/db'?db:s==='@/lib/auth/authorization'?auth:s==='./receiving-validation'?load('lib/inventory/receiving-validation.ts'):require(s);vm.runInNewContext('(function(require,module,exports){'+code+'})',{console,Set,JSON})(req,mod,mod.exports);return mod.exports;}
+ function load(p){const mod={exports:{}};const code=ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;const req=s=>s==='server-only'?{}:s==='@/lib/db'?db:s==='@/lib/auth/authorization'?auth:s==='./receiving-validation'?load('lib/inventory/receiving-validation.ts'):requireModule(s);vm.runInNewContext('(function(require,module,exports){'+code+'})',{console,Set,JSON})(req,mod,mod.exports);return mod.exports;}
  const api=load('lib/inventory/receiving.ts');const [u]=(await client.query("SELECT id::text,email,name,role::text FROM users WHERE role='MASTER' LIMIT 1")).rows;
  const branch=(await client.query("SELECT id::text FROM branches WHERE name='Treviño'")).rows[0].id;const product=(await client.query("SELECT id::text FROM products WHERE status='ACTIVE' LIMIT 1")).rows[0].id;
  const create=total=>api.receivingAction(u,{action:'create',branchId:branch,reference:'INTEGRATION',date:'2026-10-25',total,cost:100,currency:'MXN',notes:''});
