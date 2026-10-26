@@ -69,3 +69,71 @@ test('order workspace filters boxes and files to the opened order; foreign has n
  nodes(tree).find(n=>n.type==='button'&&text(n)==='← Todos los pedidos').props.onClick();tree=render();nodes(tree).find(n=>n.props?.onOpen).props.onOpen('C');tree=render();
  assert.match(text(tree),/Cajas ajenas · solo registro/);assert.ok(!nodes(tree).some(n=>n.props?.className==='receivingBoxButton'));assert.ok(!text(tree).includes('Leer packing list con IA'));
 });
+
+const gridModule=load(base+'packing-review.tsx');
+const samplePacking=()=>({reference:'PED-A',warnings:[],boxes:[
+ {number:'1',items:[{model:'SAM A36',color:'negro',expected:200},{model:'SAM A36',color:'rojo',expected:150},{model:'SAM A32',color:'negro',expected:0},{model:'SAM A32',color:'rojo',expected:null}]},
+ {number:'3',items:[{model:'OTHER',color:'',expected:70}]}
+]});
+function gridMount(packing=samplePacking()){
+ const props={packing,busy:false,onChange:value=>{props.packing=value}};
+ return {props,render:mount(base+'packing-review.tsx','default',props)};
+}
+test('packing grid pivots models and colors without summing or losing original indexes',()=>{
+ const box=samplePacking().boxes[0];box.items.push({...box.items[0],expected:3});
+ const grid=gridModule.boxGrid(box);
+ assert.deepEqual([...grid.models],['SAM A36','SAM A32']);assert.deepEqual([...grid.colors],['negro','rojo']);
+ assert.deepEqual([...grid.cells.get(JSON.stringify(['SAM A36','negro']))],[0,4]);
+ const html=renderToStaticMarkup(React.createElement(gridModule.default,{packing:{reference:'',warnings:[],boxes:[box]},busy:false,onChange(){}}));
+ assert.match(html,/Duplicado 1/);assert.match(html,/Duplicado 2/);assert.match(html,/value="200"/);assert.match(html,/value="3"/);
+});
+test('packing review renders one Excel-style box with real zero and unknown quantity distinct',()=>{
+ const {render}=gridMount();const tree=render();
+ const inputs=nodes(tree).filter(n=>n.props?.type==='number');assert.equal(inputs.length,4);
+ assert.deepEqual(inputs.map(n=>n.props.value),[200,150,0,'']);
+ assert.ok(!text(tree).includes('OTHER'));assert.ok(text(tree).includes('Modelo / Color'));
+ assert.ok(text(tree).includes('350 piezas de referencia conocidas'));
+ assert.equal(nodes(tree).filter(n=>n.type==='td'&&n.props.className==='packingUnclear').length,1);
+});
+test('grid cell edit affects only reference on the original selected box; empty remains null',()=>{
+ const {render,props}=gridMount();let tree=render();
+ nodes(tree).find(n=>n.props?.type==='number').props.onChange({target:{value:'210'}});
+ assert.equal(props.packing.boxes[0].items[0].expected,210);assert.equal(props.packing.boxes[1].items[0].expected,70);
+ tree=render();nodes(tree).find(n=>n.props?.type==='number').props.onChange({target:{value:''}});
+ assert.equal(props.packing.boxes[0].items[0].expected,null);
+ assert.ok(props.packing.boxes.every(b=>b.items.every(i=>!('counted' in i))));
+});
+test('review navigation, pending filter and edits invalidate only the changed box mark',()=>{
+ const {render}=gridMount();let tree=render();
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='✓ Marcar caja revisada').props.onClick();tree=render();
+ assert.match(text(tree),/1 revisadas/);assert.ok(text(tree).includes('OTHER'));
+ nodes(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});tree=render();
+ assert.equal(nodes(tree).filter(n=>n.type==='option').length,1);
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='✓ Marcar caja revisada').props.onClick();tree=render();
+ assert.match(text(tree),/Todas las cajas están marcadas/);
+ nodes(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:false}});tree=render();
+ nodes(tree).find(n=>n.props?.type==='number').props.onChange({target:{value:'71'}});tree=render();
+ assert.match(text(tree),/1 revisadas/);assert.match(text(tree),/1 pendientes/);
+});
+test('missing matrix combinations are absent, not zeros, and only added on explicit click',()=>{
+ const packing=samplePacking();packing.boxes[0].items.pop();const {render,props}=gridMount(packing);let tree=render();
+ assert.equal(nodes(tree).filter(n=>n.props?.type==='number').length,3);
+ nodes(tree).find(n=>n.props?.className==='packingAbsent').props.onClick();tree=render();
+ assert.equal(props.packing.boxes[0].items.length,4);assert.equal(props.packing.boxes[0].items[3].expected,null);
+ assert.equal(nodes(tree).filter(n=>n.props?.type==='number').length,4);
+});
+test('add box chooses an unused number and delete preserves independent contents',()=>{
+ const {render,props}=gridMount();let tree=render();
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='+ Otra caja independiente').props.onClick();tree=render();
+ assert.equal(props.packing.boxes[2].number,'2');assert.equal(props.packing.boxes[2].items[0].expected,null);
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='Quitar esta caja de la lectura').props.onClick();
+ assert.deepEqual([...props.packing.boxes.map(b=>b.number)],['1','3']);assert.equal(props.packing.boxes[0].items[0].expected,200);
+});
+test('packing form integrates the grid and keeps explicit per-order confirmation',()=>{
+ const data={review:true,canRecount:true,session:{id:'session',reference:'Llegada',total_boxes:20,status:'DRAFT'},batches:[batch],orders:[{id:'A',reference:'PED-20'}],boxes:[],items:[],foreign:[],foreignBoxes:[],documents:[],cost:null,pending:[]};
+ const render=mount(base+'receiving-editor.tsx','default',{data,products});let tree=render();
+ nodes(tree).find(n=>n.props?.onOpen).props.onOpen('A');tree=render();
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='Capturar sin archivo').props.onClick();tree=render();
+ const grid=nodes(tree).find(n=>n.props?.onChange&&n.props?.packing);assert.ok(grid);assert.equal(grid.props.packing.reference,'PED-20');
+ assert.match(text(tree),/Las cantidades contadas seguirán vacías/);assert.match(text(tree),/Confirmar contenido para este pedido/);
+});

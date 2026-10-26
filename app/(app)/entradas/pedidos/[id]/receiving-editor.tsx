@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import { packingSchema } from '@/lib/inventory/receiving-validation';
 import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 import BatchIntake, {type Batch, type PendingCarton} from './batch-intake';
+import PackingReview from './packing-review';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -70,6 +71,7 @@ export default function ReceivingEditor({ data, products }: {
     const [busy, setBusy] = useState(false), [error, setError] = useState(''), [packing, setPacking] = useState<Packing | null>(null), [raw, setRaw] = useState(''), [file, setFile] = useState<File | null>(null), [packingOrder, setPackingOrder] = useState(''), [active, setActive] = useState<string | null>(null);
     const s = data.session, draft = s.status === 'DRAFT';
     const [detailTab, setDetailTab] = useState<'packing'|'count'>('packing');
+    const [reviewVersion, setReviewVersion] = useState(0);
     const foreignTotal = data.foreignBoxes.length + data.foreign.reduce((n, r) => n + r.carton_count, 0);
 
     const targetOrder = data.orders.find(o=>o.id===packingOrder);
@@ -97,7 +99,7 @@ export default function ReceivingEditor({ data, products }: {
     }) { const form = new FormData(); form.set('file', f); for (const [k, v] of Object.entries(owner))
         form.set(k, v); const r = await fetch('/api/receiving/documents', { method: 'POST', body: form }); const j = await r.json(); if (!r.ok)
         throw new Error(j.error); }
-    function manual() { const p: Packing = { reference: targetOrder?.reference ?? '', warnings: [], boxes: [{ number: '1', items: [{ model: '', color: '', expected: null }] }] }; setPacking(p); setRaw(JSON.stringify(p, null, 2)); setFile(null); }
+    function manual() { const p: Packing = { reference: targetOrder?.reference ?? '', warnings: [], boxes: [{ number: '1', items: [{ model: '', color: '', expected: null }] }] }; setReviewVersion(v => v + 1); setPacking(p); setRaw(JSON.stringify(p, null, 2)); setFile(null); }
     function editPacking(p: Packing) { setPacking(p); setRaw(JSON.stringify(p, null, 2)); }
     return <main className="receivingOrders"><header>{packingOrder?<><button className="receivingSecondary" disabled={busy} onClick={back}>← Todos los pedidos</button><h1>{currentBatch?.product||currentBoxes[0]?.product||currentForeign[0]?.product||'Pedido'}</h1><p>{currentBatch?.shipping||currentBoxes[0]?.shipping||currentForeign[0]?.shipping} · {currentBatch?.marking||currentBoxes[0]?.marking||currentForeign[0]?.marking} · {currentBatch?.received_here??currentBoxes.length+currentForeign.length} cajas en esta recepción{currentBatch&&' · '+currentBatch.remaining+' pendientes de llegar'}</p></>:<><Link href="/entradas/pedidos">← Recepciones</Link><h1>{s.reference}</h1><p>{s.total_boxes} cajas recibidas · <b>{data.boxes.length+foreignTotal} identificadas</b> · Faltan {Math.max(0,s.total_boxes-data.boxes.length-foreignTotal)}</p><progress aria-label="Cajas identificadas" value={data.boxes.length+foreignTotal} max={s.total_boxes}/></>}</header>
  {error && <div className="card pad" role="alert" style={{ color: '#b42318' }}>{error}</div>}
@@ -113,8 +115,8 @@ export default function ReceivingEditor({ data, products }: {
  <section className="card pad"><h2>Packing list</h2><p>Sube el archivo de este pedido o captura su contenido.</p>
  <label>Excel o imagen (hasta 2 MB)<input type="file" accept=".xlsx,.png,.jpg,.jpeg" disabled={busy} onChange={e => { setFile(e.target.files?.[0] ?? null); setPacking(null); }}/></label>
  <div className="actions"><button disabled={busy || !file || !targetOrder} onClick={() => run(async () => { const f = new FormData(); f.set('file', file!); const r = await fetch('/api/receiving/interpret', { method: 'POST', body: f }); const j = await r.json(); if (!r.ok)
-            throw new Error(j.error); setPacking(j); setRaw(JSON.stringify(j, null, 2)); })}>{busy ? 'Procesando…' : 'Leer packing list con IA'}</button><button disabled={busy || !targetOrder} onClick={manual}>Capturar sin archivo</button></div>
- {packing && <form className="formGrid" onSubmit={e => { e.preventDefault(); const form = new FormData(e.currentTarget); run(async () => { const p = packingSchema.parse(JSON.parse(raw)); if(!targetOrder)throw new Error('Selecciona el pedido.'); p.reference = targetOrder.reference; const j = await act({ action: 'packing', orderId: targetOrder.id, packing: p, documentReference: String(form.get('reference')||'') }); setPacking(null); setRaw(''); if (file) {
+            throw new Error(j.error); setReviewVersion(v => v + 1); setPacking(j); setRaw(JSON.stringify(j, null, 2)); })}>{busy ? 'Procesando…' : 'Leer packing list con IA'}</button><button disabled={busy || !targetOrder} onClick={manual}>Capturar sin archivo</button></div>
+ {packing && <form className="formGrid receivingPackingForm" onSubmit={e => { e.preventDefault(); const form = new FormData(e.currentTarget); run(async () => { const p = packingSchema.parse(JSON.parse(raw)); if(!targetOrder)throw new Error('Selecciona el pedido.'); p.reference = targetOrder.reference; const j = await act({ action: 'packing', orderId: targetOrder.id, packing: p, documentReference: String(form.get('reference')||'') }); setPacking(null); setRaw(''); if (file) {
                 try {
                     await upload(file, { orderId: j.orderId });
                 }
@@ -122,13 +124,12 @@ export default function ReceivingEditor({ data, products }: {
                     throw new Error('Contenido guardado en el pedido, pero el archivo no se adjuntó. Puedes volver a adjuntarlo en la sección de documentos del pedido.');
                 }
             } setFile(null); }); }}>
- <h3>Revisar y confirmar</h3>{packing.warnings.map((w, i) => <p key={i} style={{ color: '#b54708' }}>{w}</p>)}
+ <h3>Revisar y confirmar</h3>{packing.warnings.length > 0 && <details className="packingWarnings"><summary>{packing.warnings.length} avisos de la lectura · revisar antes de confirmar</summary>{packing.warnings.map((w, i) => <p key={i}>{w.replace(/expected\s*:\s*null/gi, 'cantidad de referencia vacía')}</p>)}</details>}
  <label>Referencia leída en el documento (verifica que sea el pedido correcto)<input name="reference" defaultValue={packing.reference} maxLength={160}/></label>
- <p>{packing.boxes.length} cajas detectadas. Revisa los campos antes de confirmar.</p>
- {packing.boxes.map((b, bi) => <div className="card pad" key={bi}><label>Número de caja<input required value={b.number} onChange={e => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, number: e.target.value } : x) })}/></label>{b.items.map((l, li) => <div className="receivingImportLine" key={li}>{(['model', 'color', 'expected'] as const).map(k => <label key={k}>{k === 'model' ? 'Modelo' : k === 'color' ? 'Color' : 'Esperado (solo revisión)'}<input aria-label={`${k} caja ${b.number} línea ${li + 1}`} type={k === 'expected' ? 'number' : 'text'} min={0} step={1} value={l[k] ?? ''} onChange={e => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, items: x.items.map((item, j) => j === li ? { ...item, [k]: k === 'expected' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value } : item) } : x) })}/></label>)}<button type="button" disabled={b.items.length === 1} onClick={() => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, items: x.items.filter((_, j) => j !== li) } : x) })}>Quitar línea</button></div>)}<div className="actions"><button type="button" onClick={() => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, items: [...x.items, { model: '', color: '', expected: null }] } : x) })}>+ Modelo/color</button><button type="button" disabled={packing.boxes.length === 1} onClick={() => editPacking({ ...packing, boxes: packing.boxes.filter((_, i) => i !== bi) })}>Quitar caja</button></div></div>)}
- <button type="button" onClick={() => editPacking({ ...packing, boxes: [...packing.boxes, { number: String(packing.boxes.length + 1), items: [{ model: '', color: '', expected: null }] }] })}>+ Otra caja independiente</button>
+ <PackingReview key={reviewVersion} packing={packing} busy={busy} onChange={editPacking}/>
  <details><summary>Corregir lectura o captura manual</summary><p>Edita las cajas y líneas. expected puede ser null si no hay cantidad de referencia. Si no se entiende el archivo, no confirmes: revisémoslo juntos.</p><textarea aria-label="Detalle del packing list" rows={14} style={{ fontFamily: 'monospace', width: '100%' }} value={raw} onChange={e => setRaw(e.target.value)}/><button type="button" onClick={() => { try {
                 setPacking(packingSchema.parse(JSON.parse(raw)));
+                setReviewVersion(v => v + 1);
                 setError('');
             }
             catch {
