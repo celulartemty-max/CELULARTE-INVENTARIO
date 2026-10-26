@@ -32,6 +32,7 @@ export default function PackingReview({ packing, busy, onChange }: {
     const box = packing.boxes[index];
     const position = visible.indexOf(index);
     const grid = box ? boxGrid(box) : null;
+    const availableColors = Array.from(new Set(packing.boxes.flatMap(value => value.items.map(item => item.color)).filter(Boolean)));
     const missing = box?.items.filter(item => item.expected === null).length ?? 0;
     const total = box?.items.reduce((sum, item) => sum + (item.expected ?? 0), 0) ?? 0;
 
@@ -100,7 +101,7 @@ export default function PackingReview({ packing, busy, onChange }: {
                 </div>)}</div>
                 <div className="packingAdjustLine">
                     <input aria-label="Nuevo modelo" placeholder="Nuevo modelo" maxLength={160} value={newModel} onChange={event => setNewModel(event.target.value)} />
-                    <input aria-label="Nuevo color" placeholder="Color (opcional)" maxLength={160} value={newColor} onChange={event => setNewColor(event.target.value)} />
+                    <select aria-label="Nuevo color" value={newColor} onChange={event => setNewColor(event.target.value)}><option value="">Sin color</option>{availableColors.map(color=><option key={color} value={color}>{color}</option>)}</select>
                     <button type="button" className="receivingSecondary" disabled={!newModel.trim() || box.items.length >= 500} onClick={() => { addLine(newModel.trim(), newColor.trim()); setNewModel(''); setNewColor(''); }}>+ Modelo / color</button>
                 </div>
                 <button type="button" className="packingDanger" disabled={packing.boxes.length === 1} onClick={() => { if (!confirm(`¿Quitar la caja ${box.number} de la lectura?`)) return; onChange({ ...packing, boxes: packing.boxes.filter((_, i) => i !== index) }); setReviewed([]); setSelected(0); }}>Quitar esta caja de la lectura</button>

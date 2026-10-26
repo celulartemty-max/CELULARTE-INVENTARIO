@@ -37,7 +37,11 @@ export async function POST(req: Request) {
                 const range = XLSX.utils.decode_range(s['!ref'] || 'A1');
                 if (range.e.r >= 5000 || range.e.c > 100)
                     throw new Error('Excel demasiado extenso. Divídelo por pedido.');
-                text += `HOJA ${name}\n` + XLSX.utils.sheet_to_csv(s) + '\n';
+                const merged = (s['!merges'] || []).map(m => {
+                    const address = XLSX.utils.encode_cell(m.s);
+                    return { range: XLSX.utils.encode_range(m), value: s[address]?.w ?? s[address]?.v ?? '' };
+                });
+                text += `HOJA ${name}\nCELDAS COMBINADAS (el valor pertenece al rango completo, no son cajas nuevas): ${JSON.stringify(merged)}\n` + XLSX.utils.sheet_to_csv(s) + '\n';
             }
             if (text.length > 100000)
                 throw new Error('Documento demasiado grande para una sola lectura.');
