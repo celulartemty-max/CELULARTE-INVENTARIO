@@ -19,7 +19,7 @@ export async function POST(req: Request) {
             throw new Error('Selecciona pedido o recepción.');
         const { data, mime, filename } = await readReceivingFile(file);
         await withTransaction(async (c) => {
-            const owner = await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId]);
+            const owner = await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 AND NOT is_foreign FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId]);
             const row = owner.rows[0];
             if (!row)
                 throw new Error('No encontrado.');
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
         const u = await requireUser();
         await receivingAccess(u, true);
         const id = z.string().uuid().parse(new URL(req.url).searchParams.get('id'));
-        const r = await sql `SELECT COALESCE(o.branch_id,s.branch_id)::text branch_id FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=${id}::uuid`;
+        const r = await sql `SELECT COALESCE(o.branch_id,s.branch_id)::text branch_id FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=${id}::uuid AND (d.order_id IS NULL OR NOT o.is_foreign)`;
         if (!r[0])
             return new Response('No encontrado', { status: 404 });
         await assertBranchAccess(u, String(r[0].branch_id));
