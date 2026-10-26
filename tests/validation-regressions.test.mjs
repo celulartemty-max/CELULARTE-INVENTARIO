@@ -39,7 +39,7 @@ test('missing or inactive user cannot log in through legacy fallback',async()=>{
 test('TikTok order Excel still preserves model/color totals and original SKU',()=>{
  const source=ts.createSourceFile('page.tsx',readFileSync(new URL('../app/(app)/etiquetas-tiktok/page.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  let fn;function visit(node){if(ts.isFunctionDeclaration(node)&&node.name?.text==='excelOrder')fn=node;ts.forEachChild(node,visit)}visit(source);assert.ok(fn);
- const code=ts.transpileModule(fn.getText(source),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+ const code=ts.transpileModule(fn.getText(source),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const XLSX=requireModule('xlsx');let workbook,filename;
  const stub={...XLSX,writeFile:(w,n)=>{workbook=w;filename=n}};
  const order={name:'Pedido de prueba',items:[{product_name:'COMBO CASE',variation:'Negro, A57',seller_sku:'ORIG123',qty:3},{product_name:'COMBO CASE',variation:'Rosa, A57',seller_sku:'ORIG456',qty:2}]};
