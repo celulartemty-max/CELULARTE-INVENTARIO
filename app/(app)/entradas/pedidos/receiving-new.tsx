@@ -9,7 +9,7 @@ export default function ReceivingNew({ branches }: {
 }) {
     const [busy, setBusy] = useState(false), [error, setError] = useState('');
     const router = useRouter();
-    return <details className="card pad"><summary>+ Crear recepción general</summary><form className="formGrid" style={{ marginTop: 16 }} onSubmit={async (e) => {
+    return <details className="receivingCreate"><summary>+ Nueva recepción</summary><form className="formGrid card pad receivingCompactForm" style={{ marginTop: 16 }} onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
             setError('');
@@ -34,6 +34,6 @@ export default function ReceivingNew({ branches }: {
  <label>Transportista (opcional)<input name="carrier" maxLength={160} placeholder="Ej. Castores"/></label>
  <label>Número de cajas<input name="total" type="number" min={1} max={1000} step={1} required placeholder="80"/></label>
  <label>Costo en MXN (opcional)<input name="cost" type="number" min={0} max={999999999} step="0.01" placeholder="0.00"/></label>
- {error && <p role="alert">{error}</p>}<button disabled={busy || !branches.length}>{busy ? 'Creando…' : 'Crear recepción'}</button>
+ {error && <p role="alert">{error}</p>}<button className="receivingSave" disabled={busy || !branches.length}>{busy ? 'Creando…' : 'Guardar recepción'}</button>
  </form></details>;
 }
