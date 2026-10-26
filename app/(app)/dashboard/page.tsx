@@ -1,3 +1,4 @@
+import ReceivingSummary from "./receiving-summary";
 import Link from "next/link";
 import { requireUser, getAuthorizedBranchIds } from "@/lib/auth/authorization";
 import { sql } from "@/lib/db";
@@ -28,7 +29,7 @@ export default async function Dashboard(){
   const branchName=user.primaryBranchId?(await sql`SELECT name FROM branches WHERE id=${user.primaryBranchId}::uuid`)[0]?.name:null;
   const firstName=user.name.split(/\s+/)[0]||user.name;
 
-  return <div className="dashboardV2">
+  return <div className="dashboardV2"><ReceivingSummary/>
     <section className="dashTop">
       <div className="dashGreeting"><h1>Hola, {firstName}</h1><p>{branchName?`Sucursal ${String(branchName)}`:user.role==='MASTER'?'Acceso global':'Sucursal asignada'}</p></div>
       <div className="dateBadge">{badgeDateFmt.format(new Date())}</div>
