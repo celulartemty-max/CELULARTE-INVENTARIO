@@ -8,6 +8,7 @@ import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 import BatchIntake, {type Batch, type PendingCarton} from './batch-intake';
 import PackingReview from './packing-review';
 import CountGrid from './count-grid';
+import ReceivingModal from './receiving-modal';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -74,6 +75,7 @@ export default function ReceivingEditor({ data, products }: {
     const [detailTab, setDetailTab] = useState<'packing'|'count'>('packing');
     const [reviewVersion, setReviewVersion] = useState(0);
     const [attachmentOptions, setAttachmentOptions] = useState(false);
+    const [addingBox, setAddingBox] = useState<string|null>(null);
     const foreignTotal = data.foreignBoxes.length + data.foreign.reduce((n, r) => n + r.carton_count, 0);
 
     const targetOrder = data.orders.find(o=>o.id===packingOrder);
@@ -153,10 +155,9 @@ export default function ReceivingEditor({ data, products }: {
                 return; run(async () => { await act({ action: saving ? 'saveCount' : 'count', boxId: b.id, lines: items.map(l => ({ id: l.id, quantity: f.get(l.id) === '' ? null : Number(f.get(l.id)) })), notes: f.get('notes') }); if (!saving)
                 setActive(null); }); }}>
  {!data.items.some(l=>l.carton_id===b.id)&&<p>Esta caja aún no tiene contenido registrado. Agrega el packing list arriba o captura sus modelos/colores abajo; las cantidades empiezan vacías.</p>}
- <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} disabled={!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at}/>
+ <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} disabled={!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at} onAdd={()=>setAddingBox(b.id)}/>
  <label>Observaciones<textarea name="notes" maxLength={2000} defaultValue={b.notes} disabled={!!b.counted_at || !draft || busy}/></label>{!b.counted_at && draft && <div className="actions"><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)} value="draft" formNoValidate>Guardar avance</button><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)}>Terminar conteo de esta caja</button></div>}
  </form>}
- {active === b.id && !b.counted_at && draft && <details><summary>Encontré un modelo/color que no aparece</summary><form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); run(async () => { await act({ action: 'addItem', boxId: b.id, model: f.get('model'), color: f.get('color') }); }); }}><label>Modelo<input name="model" maxLength={160}/></label><label>Color<input name="color" maxLength={160}/></label><button disabled={busy}>Agregar línea al conteo</button></form></details>}
  {active === b.id && b.counted_at && draft && data.canRecount && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Las cantidades quedarán vacías y se conservará el conteo anterior en auditoría.'))
             run(async () => { await act({ action: 'reopenBox', boxId: b.id }); setActive(null); }); }}>Autorizar reconteo</button>}
  {active === b.id && draft && data.review && <form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); run(async () => { await act({ action: 'markBox', boxId: b.id, marking: f.get('marking') }); }); }}><label>Marca de esta caja<input name="marking" required maxLength={160} defaultValue={b.marking}/></label><button disabled={busy}>Guardar marca de esta caja</button></form>}
@@ -167,5 +168,6 @@ export default function ReceivingEditor({ data, products }: {
  {!packingOrder&&data.review && <details className="card pad"><summary>Cerrar recepción / Descargar Excel</summary><h2>Cierre de recepción</h2><p><a href={`/api/receiving/export?id=${s.id}`}>Descargar detalle por caja en Excel</a></p><p>El total físico incluye cajas propias y ajenas. Solo las propias requieren conteo y registro en sistema.</p>{draft ? <button disabled={busy} onClick={() => { if (confirm('¿Cerrar esta recepción? Debe estar registrado el total físico y terminado el conteo de las cajas de esta sucursal. Las ajenas quedan solo archivadas.'))
         run(async () => { await act({ action: 'close' }); }); }}>Terminar recepción</button> : s.status === 'CLOSED' ? <button disabled={busy} onClick={() => { if (confirm('¿Confirmas que registraste esta recepción en el sistema?'))
         run(async () => { await act({ action: 'pos' }); }); }}>Registrado en sistema</button> : <p>{s.status === 'ARCHIVED' ? '✓ Archivada. Solo cajas ajenas: no requiere registro de inventario.' : '✓ Registrada en sistema.'}</p>}</details>}
+ {addingBox&&<ReceivingModal title={`Añadir modelo · Caja ${currentBoxes.find(b=>b.id===addingBox)?.carton_number||''}`} busy={busy} onClose={()=>setAddingBox(null)}><form className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{await act({action:'addItem',boxId:addingBox,model:f.get('model'),color:f.get('color')});setAddingBox(null)})}}><label className="receivingField">Modelo<input name="model" required maxLength={160} placeholder="Ej. SAM A36"/></label><label className="receivingField">Color (opcional)<input name="color" maxLength={160} placeholder="Ej. Negro"/></label><p className="receivingMuted">Se añadirá solo a esta caja, con la cantidad vacía.</p><button className="receivingSave" disabled={busy}>{busy?'Añadiendo…':'Añadir modelo'}</button><button type="button" className="receivingSecondary" disabled={busy} onClick={()=>setAddingBox(null)}>Cancelar</button></form></ReceivingModal>}
  </main>;
 }

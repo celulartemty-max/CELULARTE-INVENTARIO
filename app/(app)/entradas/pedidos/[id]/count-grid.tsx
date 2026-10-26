@@ -2,7 +2,7 @@
 
 type CountItem = { id: string; model: string; color: string; counted: number | null; expected?: number | null };
 
-export default function CountGrid({ items, disabled, showReference }: { items: CountItem[]; disabled: boolean; showReference: boolean }) {
+export default function CountGrid({ items, disabled, showReference, onAdd }: { items: CountItem[]; disabled: boolean; showReference: boolean; onAdd?: () => void }) {
     const models = Array.from(new Set(items.map(item => item.model)));
     const colors = Array.from(new Set(items.map(item => item.color)));
     return <div className="packingSheetScroll" role="region" aria-label="Tabla de conteo por modelo y color" tabIndex={0}>
@@ -15,6 +15,7 @@ export default function CountGrid({ items, disabled, showReference }: { items: C
                     {showReference && <small>{item.expected == null ? 'Sin referencia' : `Esperado: ${item.expected} · Diferencia: ${Number(item.counted) - item.expected}`}</small>}
                 </div>) : <span aria-label="Combinación no incluida">—</span>}</td>;
             })}</tr>)}</tbody>
+            {onAdd && !disabled && <tfoot><tr><td colSpan={colors.length+1}><button type="button" className="countAddModel" onClick={onAdd}>＋ Añadir modelo</button></td></tr></tfoot>}
         </table>
     </div>;
 }
