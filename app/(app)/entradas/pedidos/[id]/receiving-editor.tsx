@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { z } from 'zod';
 import { packingSchema } from '@/lib/inventory/receiving-validation';
+import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -36,8 +37,11 @@ type Data = {
         arrival_date: string;
         status: string;
         total_boxes: number;
+        carrier: string;
+        tracking: string;
     };
     boxes: Box[];
+    foreign: ForeignCarton[];
     items: Item[];
     pending: Box[];
     documents: {
@@ -61,6 +65,8 @@ export default function ReceivingEditor({ data, products }: {
     const router = useRouter();
     const [busy, setBusy] = useState(false), [error, setError] = useState(''), [packing, setPacking] = useState<Packing | null>(null), [raw, setRaw] = useState(''), [file, setFile] = useState<File | null>(null), [selected, setSelected] = useState<string[]>([]), [active, setActive] = useState<string | null>(null);
     const s = data.session, draft = s.status === 'DRAFT';
+    const [tab, setTab] = useState<'own' | 'foreign'>('own');
+    const foreignTotal = data.foreign.reduce((n, r) => n + r.carton_count, 0);
     async function act(body: Record<string, unknown>) { const r = await fetch('/api/receiving', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s.id, ...body }) }); const j = await r.json(); if (!r.ok)
         throw new Error(j.error); return j; }
     async function run(work: () => Promise<void>) { setBusy(true); setError(''); try {
@@ -81,10 +87,14 @@ export default function ReceivingEditor({ data, products }: {
         throw new Error(j.error); }
     function manual() { const p: Packing = { reference: '', warnings: [], boxes: [{ number: '1', items: [{ model: '', color: '', expected: null }] }] }; setPacking(p); setRaw(JSON.stringify(p, null, 2)); setFile(null); }
     function editPacking(p: Packing) { setPacking(p); setRaw(JSON.stringify(p, null, 2)); }
-    return <main className="receivingOrders"><header><Link href="/entradas/pedidos">← Recepciones por pedido</Link><h1>{s.reference}</h1><p>{s.arrival_date} · {data.boxes.length}/{s.total_boxes} cajas asignadas · {data.boxes.filter(b => b.counted_at).length} contadas</p><small>{s.status === 'DRAFT' ? 'En captura' : s.status === 'CLOSED' ? 'Conteo terminado · pendiente de registrar en sistema' : 'Registrada en sistema'}</small></header>
+    return <main className="receivingOrders"><header><Link href="/entradas/pedidos">← Recepciones por pedido</Link><h1>{s.reference}</h1><p>{s.arrival_date} · {data.boxes.length + foreignTotal}/{s.total_boxes} cajas físicas registradas</p><p>{data.boxes.length} de esta sucursal · {foreignTotal} ajenas · {data.boxes.filter(b => b.counted_at).length} contadas</p>{(s.carrier || s.tracking) && <p>Transportista: {s.carrier || '—'} · Guía: {s.tracking || '—'}</p>}<small>{s.status === 'DRAFT' ? 'En captura' : s.status === 'CLOSED' ? 'Conteo terminado · pendiente de registrar en sistema' : s.status === 'ARCHIVED' ? 'Archivada · solo cajas ajenas, sin registro de inventario' : 'Registrada en sistema'}</small></header>
  {error && <div className="card pad" role="alert" style={{ color: '#b42318' }}>{error}</div>}
  {data.review && <section className="card pad"><h2>Costo y comprobantes</h2><p>{data.cost?.cost !== null ? `${data.cost?.cost} ${data.cost?.currency}` : 'Sin costo registrado'}</p>{data.cost?.notes && <p>{data.cost.notes}</p>}{draft && <label>Adjuntar cobro (PDF o imagen, hasta 2 MB)<input type="file" accept=".pdf,.png,.jpg,.jpeg" disabled={busy} onChange={e => { const f = e.target.files?.[0]; if (f)
         run(() => upload(f, { sessionId: s.id })); e.target.value = ''; }}/></label>}{data.documents.filter(d => !d.order_id).map(d => <p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>Descargar {d.filename}</a></p>)}</section>}
+ <div className="receivingTabs" aria-label="Clasificación de cajas"><button id="own-tab" aria-pressed={tab === 'own'} aria-controls="own-panel" onClick={() => setTab('own')}>Cajas de esta sucursal ({data.boxes.length})</button><button id="foreign-tab" aria-pressed={tab === 'foreign'} aria-controls="foreign-panel" onClick={() => setTab('foreign')}>Cajas ajenas ({foreignTotal})</button></div>
+ <div id="foreign-panel" hidden={tab !== 'foreign'} aria-labelledby="foreign-tab"><ForeignCartons rows={data.foreign} editable={data.review && draft} busy={busy} save={async value => { setBusy(true); setError(''); try { await act(value); router.refresh(); return true; } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar'); return false; } finally { setBusy(false); } }} voidRecord={id => run(async () => { await act({ action: 'voidForeign', recordId: id }); })}/></div>
+ <div id="own-panel" hidden={tab !== 'own'} aria-labelledby="own-tab">
+ <p>Solo agrega aquí cajas destinadas a esta sucursal. Las de otra sucursal van en “Cajas ajenas”, sin packing list ni conteo.</p>
  {data.review && draft && <>
  <section className="card pad"><h2>1. Preparar un pedido</h2><p>El packing list pertenece únicamente a este pedido. La IA no crea cajas hasta que confirmes.</p>
  <label>Excel o imagen (hasta 2 MB)<input type="file" accept=".xlsx,.png,.jpg,.jpeg" disabled={busy} onChange={e => { setFile(e.target.files?.[0] ?? null); setPacking(null); }}/></label>
@@ -102,7 +112,7 @@ export default function ReceivingEditor({ data, products }: {
  <label>Pedido<input name="reference" defaultValue={packing.reference} required maxLength={160}/></label>
  <label>Producto<select name="product" required><option value="">Seleccionar…</option>{products.map(p => <option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
  <label>Transporte<select name="shipping" required defaultValue=""><option value="" disabled>Confirma…</option><option>AIR</option><option>SEA</option></select></label>
- <label>Marca de sucursal<select name="marking" required defaultValue=""><option value="" disabled>Confirma…</option><option>JAPS</option><option>PER</option></select></label>
+ <label>Marca escrita en las cajas<input name="marking" required maxLength={160} placeholder="Ej. JAPS LISA / PER NICO"/><small>Texto libre. Puedes ajustarla por caja después de registrar su llegada.</small></label>
  <p>{packing.boxes.length} cajas detectadas. Revisa los campos antes de confirmar.</p>
  {packing.boxes.map((b, bi) => <div className="card pad" key={bi}><label>Número de caja<input required value={b.number} onChange={e => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, number: e.target.value } : x) })}/></label>{b.items.map((l, li) => <div className="receivingImportLine" key={li}>{(['model', 'color', 'expected'] as const).map(k => <label key={k}>{k === 'model' ? 'Modelo' : k === 'color' ? 'Color' : 'Esperado (solo revisión)'}<input aria-label={`${k} caja ${b.number} línea ${li + 1}`} type={k === 'expected' ? 'number' : 'text'} min={0} step={1} value={l[k] ?? ''} onChange={e => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, items: x.items.map((item, j) => j === li ? { ...item, [k]: k === 'expected' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value } : item) } : x) })}/></label>)}<button type="button" disabled={b.items.length === 1} onClick={() => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, items: x.items.filter((_, j) => j !== li) } : x) })}>Quitar línea</button></div>)}<div className="actions"><button type="button" onClick={() => editPacking({ ...packing, boxes: packing.boxes.map((x, i) => i === bi ? { ...x, items: [...x.items, { model: '', color: '', expected: null }] } : x) })}>+ Modelo/color</button><button type="button" disabled={packing.boxes.length === 1} onClick={() => editPacking({ ...packing, boxes: packing.boxes.filter((_, i) => i !== bi) })}>Quitar caja</button></div></div>)}
  <button type="button" onClick={() => editPacking({ ...packing, boxes: [...packing.boxes, { number: String(packing.boxes.length + 1), items: [{ model: '', color: '', expected: null }] }] })}>+ Otra caja independiente</button>
@@ -132,9 +142,11 @@ export default function ReceivingEditor({ data, products }: {
  {active === b.id && !b.counted_at && draft && <details><summary>Encontré un modelo/color que no aparece</summary><form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); run(async () => { await act({ action: 'addItem', boxId: b.id, model: f.get('model'), color: f.get('color') }); }); }}><label>Modelo<input name="model" maxLength={160}/></label><label>Color<input name="color" maxLength={160}/></label><button disabled={busy}>Agregar línea al conteo</button></form></details>}
  {active === b.id && b.counted_at && draft && data.canRecount && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Las cantidades quedarán vacías y se conservará el conteo anterior en auditoría.'))
             run(async () => { await act({ action: 'reopenBox', boxId: b.id }); setActive(null); }); }}>Autorizar reconteo</button>}
+ {active === b.id && draft && data.review && <form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); run(async () => { await act({ action: 'markBox', boxId: b.id, marking: f.get('marking') }); }); }}><label>Marca de esta caja<input name="marking" required maxLength={160} defaultValue={b.marking}/></label><button disabled={busy}>Guardar marca de esta caja</button></form>}
  </article>)}</section>
- {data.review && <section className="card pad"><h2>Cierre y registro en sistema</h2><p><a href={`/api/receiving/export?id=${s.id}`}>Descargar detalle por caja en Excel</a></p>{draft ? <button disabled={busy} onClick={() => { if (confirm('¿Cerrar esta recepción? Todas las cajas que llegaron deben estar contadas.'))
+ </div>
+ {data.review && <section className="card pad"><h2>Cierre y registro en sistema</h2><p><a href={`/api/receiving/export?id=${s.id}`}>Descargar detalle por caja en Excel</a></p><p>El total físico incluye cajas propias y ajenas. Solo las propias requieren conteo y registro en sistema.</p>{draft ? <button disabled={busy} onClick={() => { if (confirm('¿Cerrar esta recepción? Debe estar registrado el total físico y terminado el conteo de las cajas de esta sucursal. Las ajenas quedan solo archivadas.'))
         run(async () => { await act({ action: 'close' }); }); }}>Terminar recepción</button> : s.status === 'CLOSED' ? <button disabled={busy} onClick={() => { if (confirm('¿Confirmas que registraste esta recepción en el sistema?'))
-        run(async () => { await act({ action: 'pos' }); }); }}>Registrado en sistema</button> : <p>✓ Registrada en sistema.</p>}</section>}
+        run(async () => { await act({ action: 'pos' }); }); }}>Registrado en sistema</button> : <p>{s.status === 'ARCHIVED' ? '✓ Archivada. Solo cajas ajenas: no requiere registro de inventario.' : '✓ Registrada en sistema.'}</p>}</section>}
  </main>;
 }

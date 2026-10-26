@@ -1,15 +1,17 @@
 // Isolated branch only. Connection is read from stdin, never logged or stored.
-const {createInterface}=require('node:readline');
+const {createRequire}=process.getBuiltinModule('node:module');
+const requireModule=createRequire(__filename);
+const {createInterface}=process.getBuiltinModule('node:readline');
 const rl=createInterface({input:process.stdin});
 rl.once('line',async line=>{rl.close();let pool;
 try{
  const url=JSON.parse(line).url;if(!url||!url.includes('ep-'))throw Error('Test connection required');
- const fs=require('node:fs'),ts=require('typescript'),vm=require('node:vm'),assert=require('node:assert/strict');
- const neon=require('@neondatabase/serverless');neon.neonConfig.webSocketConstructor=WebSocket;pool=new neon.Pool({connectionString:url});
+ const fs=requireModule('node:fs'),ts=requireModule('typescript'),vm=requireModule('node:vm'),assert=requireModule('node:assert/strict');
+ const neon=requireModule('@neondatabase/serverless');neon.neonConfig.webSocketConstructor=WebSocket;pool=new neon.Pool({connectionString:url});
  const client=await pool.connect();await client.query('BEGIN');
  const db={sql:async(strings,...args)=>(await client.query(strings.reduce((s,x,i)=>s+x+(i<args.length?'$'+(i+1):''),''),args)).rows,withTransaction:async fn=>{await client.query('SAVEPOINT action');try{return await fn(client)}catch(e){await client.query('ROLLBACK TO SAVEPOINT action');throw e}}};
  const auth={hasModulePermission:async()=>true,assertBranchAccess:async(u,b)=>{if(u.role!=='MASTER'&&b!==u.primaryBranchId)throw Error('FORBIDDEN_BRANCH')}};
- function load(p){const mod={exports:{}};const code=ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;const req=s=>s==='server-only'?{}:s==='@/lib/db'?db:s==='@/lib/auth/authorization'?auth:s==='./receiving-validation'?load('lib/inventory/receiving-validation.ts'):require(s);vm.runInNewContext('(function(require,module,exports){'+code+'})',{console,Set,JSON})(req,mod,mod.exports);return mod.exports;}
+ function load(p){const mod={exports:{}};const code=ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;const req=s=>s==='server-only'?{}:s==='@/lib/db'?db:s==='@/lib/auth/authorization'?auth:s==='./receiving-validation'?load('lib/inventory/receiving-validation.ts'):requireModule(s);vm.runInNewContext('(function(require,module,exports){'+code+'})',{console,Set,JSON})(req,mod,mod.exports);return mod.exports;}
  const api=load('lib/inventory/receiving.ts');const [u]=(await client.query("SELECT id::text,email,name,role::text FROM users WHERE role='MASTER' LIMIT 1")).rows;
  const branch=(await client.query("SELECT id::text FROM branches WHERE name='Treviño'")).rows[0].id;const product=(await client.query("SELECT id::text FROM products WHERE status='ACTIVE' LIMIT 1")).rows[0].id;
  const create=total=>api.receivingAction(u,{action:'create',branchId:branch,reference:'INTEGRATION',date:'2026-10-25',total,cost:100,currency:'MXN',notes:''});
@@ -28,6 +30,36 @@ try{
  await assert.rejects(()=>api.receivingAction(u,{action:'reopenBox',sessionId:a.id,boxId:boxes[0]}));
  await api.receivingAction(u,{action:'arrive',sessionId:b.id,boxIds:[boxes[9]]});
  const later=await api.receivingView(u,b.id);assert.equal(later.boxes[0].reference,packing.reference);
+ const mixed=await create(3);
+ const ownPacking={reference:'MIXED-'+Date.now(),warnings:[],boxes:[{number:'A',items:[{model:'A57',color:'NEGRO',expected:60}]}]};
+ await api.receivingAction(u,{action:'order',sessionId:mixed.id,productId:product,shipping:'SEA',marking:'JAPS LISA',packing:ownPacking});
+ view=await api.receivingView(u,mixed.id);const own=view.pending.find(x=>x.reference===ownPacking.reference);
+ await api.receivingAction(u,{action:'arrive',sessionId:mixed.id,boxIds:[own.id]});
+ await api.receivingAction(u,{action:'markBox',sessionId:mixed.id,boxId:own.id,marking:'PER NICO'});
+ const foreignEntry={action:'foreign',sessionId:mixed.id,product:'PREMIUM LENS',quantity:2,shipping:'SEA',marking:'CDMX',notes:'Sin abrir'};
+ await assert.rejects(()=>api.receivingAction(operative,foreignEntry));
+ await api.receivingAction(u,foreignEntry);
+ await assert.rejects(()=>api.receivingAction(u,{...foreignEntry,quantity:1}));
+ await assert.rejects(()=>api.receivingAction(u,{action:'arrive',sessionId:mixed.id,boxIds:[boxes[9]]}));
+ view=await api.receivingView(u,mixed.id);assert.equal(view.foreign.length,1);assert.equal(view.items.length,1);assert.equal(view.boxes[0].marking,'PER NICO');
+ await assert.rejects(()=>api.receivingAction(u,{action:'count',sessionId:mixed.id,boxId:view.foreign[0].id,lines:[{id:view.items[0].id,quantity:1}]}));
+ await assert.rejects(()=>api.receivingAction(u,{action:'close',sessionId:mixed.id}));
+ await api.receivingAction(operative,{action:'count',sessionId:mixed.id,boxId:own.id,lines:[{id:view.items[0].id,quantity:3}],notes:''});
+ await api.receivingAction(u,{action:'close',sessionId:mixed.id});
+ await api.receivingAction(u,{action:'pos',sessionId:mixed.id});
+ const external=await create(2);
+ await api.receivingAction(u,{...foreignEntry,sessionId:external.id});
+ view=await api.receivingView(u,external.id);const recordId=view.foreign[0].id;
+ await api.receivingAction(u,{...foreignEntry,sessionId:external.id,recordId,quantity:1});
+ await assert.rejects(()=>api.receivingAction(u,{action:'close',sessionId:external.id}));
+ await api.receivingAction(u,{action:'voidForeign',sessionId:external.id,recordId});
+ view=await api.receivingView(u,external.id);assert.equal(view.foreign.length,0);
+ await api.receivingAction(u,{...foreignEntry,sessionId:external.id});
+ await api.receivingAction(u,{action:'close',sessionId:external.id});
+ view=await api.receivingView(u,external.id);assert.equal(view.session.status,'ARCHIVED');assert.equal(view.items.length,0);assert.equal(view.boxes.length,0);
+ await assert.rejects(()=>api.receivingAction(u,{action:'pos',sessionId:external.id}));
+ await assert.rejects(()=>api.receivingAction(u,{...foreignEntry,sessionId:external.id}));
+ console.log('PASS: mixed receipts, foreign capacity/permissions/isolation, free per-carton marks, edit/void audits, all-foreign archive without POS.');
  await client.query('ROLLBACK');client.release();console.log('PASS: actual service integration: partial 9/10, separate receipts, blind payloads, zero, duplicates, permissions, close and POS. Fixtures rolled back.');
 }catch(e){console.error('Integration failed:',e.message);process.exitCode=1;}finally{if(pool)await pool.end();}
 });
