@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url),ts=require('typescript');
 const source=readFileSync(new URL('../lib/inventory/receiving-validation.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
 const m={exports:{}};vm.runInNewContext('(function(require,module,exports){'+code+'})') (require,m,m.exports);
-const {packingSchema,countSchema,arrivalSchema,isReviewer,markingSchema,foreignCartonSchema}=m.exports;
+const {packingSchema,countSchema,arrivalSchema,isReviewer,markingSchema,foreignCartonSchema,parseCartonNumbers,batchSchema}=m.exports;
 const box=n=>({number:n,items:[{model:'A57',color:'NEGRO',expected:10}]});
 test('different cartons with identical contents remain independent',()=>assert.equal(packingSchema.parse({reference:'A',warnings:[],boxes:[box('1'),box('2')]}).boxes.length,2));
 test('duplicate carton number is rejected within an order',()=>assert.equal(packingSchema.safeParse({reference:'A',warnings:[],boxes:[box('1'),box('1')]}).success,false));
@@ -17,3 +17,6 @@ test('duplicate arrival and duplicate count lines rejected',()=>{const id='00000
 test('operative cannot review packing documents or expected quantities',()=>{assert.equal(isReviewer('OPERATIVE'),false);assert.equal(isReviewer('MASTER'),true);assert.equal(isReviewer('MANAGER'),true)});
 test('marks are manual free text, including other branches',()=>{for(const mark of ['CDMX','SAN LUIS','JAPS LISA','PER NICO'])assert.equal(markingSchema.parse(mark),mark);assert.equal(markingSchema.safeParse('   ').success,false)});
 test('foreign registry validates carton counts without inventory items',()=>{const entry={product:'PREMIUM LENS',quantity:10,shipping:'SEA',marking:'CDMX'};const result=foreignCartonSchema.parse(entry);assert.equal(result.quantity,10);assert.equal(Object.hasOwn(result,'items'),false);for(const quantity of [0,-1,1.5,1001])assert.equal(foreignCartonSchema.safeParse({...entry,quantity}).success,false)});
+test('bulk numbers support 200 cartons and noncontiguous partial delivery',()=>{assert.equal(parseCartonNumbers('1-200',200).length,200);const v=parseCartonNumbers('1-12, 15-20',20);assert.equal(v.length,18);assert.ok(!v.includes('13')&&!v.includes('14'));assert.equal(parseCartonNumbers('1 – 18',20).length,18)});
+test('bulk numbers reject overlap, duplicates, unknowns and invalid bounds',()=>{for(const value of ['', '1-18,18','0-2','1-21','20-1','1.5','A','1/20'])assert.throws(()=>parseCartonNumbers(value,20))});
+test('a batch is one order; total and received numbers must agree',()=>{const b={reference:'PED-20',productId:'00000000-0000-4000-8000-000000000001',isForeign:false,shipping:'SEA',marking:'PER NICO',total:20,received:18,numbers:'1-12,15-20'};assert.equal(batchSchema.parse(b).received,18);assert.equal(batchSchema.safeParse({...b,received:20}).success,false);assert.equal(batchSchema.safeParse({...b,productId:null}).success,false);assert.equal(batchSchema.safeParse({...b,productId:null,isForeign:true,productLabel:'ANILLO CDMX'}).success,true)});

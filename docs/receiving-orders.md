@@ -4,6 +4,20 @@ Ruta: /entradas/pedidos. Las recepciones anteriores se conservan en /entradas y 
 
 ## Estructura
 
+### Captura por bonches / pedido (2026-10-25)
+
+Aplicar `migrations/20261026_receiving_batches.sql` antes de desplegar. Conserva pedidos previos y registros ajenos anteriores.
+
+1. Crear la recepción con su total físico (ej. 200).
+2. Agregar cada bonche como un pedido único: referencia, producto, SEA/AIR, marca manual, propias/ajenas, total marcado en cajas (ej. 20), recibidas hoy (18) y números/rangos (1-12,15-20). No se suponen números faltantes.
+3. El servidor genera cajas independientes 1..20 y asigna únicamente las 18 indicadas a esta recepción. Las otras dos permanecen pendientes del mismo pedido. Ninguna cantidad de piezas se precarga.
+4. Subir/leer/revisar el packing list seleccionando ese pedido propio ya creado. Se agrega contenido a cajas vacías del pedido, sin crear pedidos ni sumar cajas. No se sobrescriben líneas o conteos existentes. Se aceptan números simples y `1/20` con denominador validado. Los originales se conservan por pedido y acompañan llegadas posteriores.
+5. En otra recepción usar «Recibir faltantes de un pedido ya registrado» y rangos, o selección individual solo para formatos especiales. Evita duplicados, números fuera de rango, superposición y cantidades discrepantes.
+
+Los pedidos ajenos usan el mismo control de cajas/llegadas parciales, pero el servidor prohíbe packing lists, alta de modelos y conteo de piezas para ellos. No bloquean el cierre: este exige solo el conteo de las propias recibidas. Exclusivamente ajenas → ARCHIVED sin POS. El total físico/flete incluye ambas clases.
+
+La tabla muestra total del pedido, recibidas aquí, acumuladas y pendientes. El Excel añade «Pedidos por bonche» y mantiene ajenas separadas. Los registros ajenos anteriores permanecen archivados en su tabla original.
+
 - receiving_sessions: llegada física por sucursal, fecha, total de cajas, costo opcional y moneda. Estado DRAFT → CLOSED → POS_REGISTERED, o DRAFT → ARCHIVED si solo hay ajenas.
 - receiving_orders: pedido único por referencia (sin distinguir mayúsculas) y sucursal. Producto, AIR/SEA y marca libre confirmados por encargado.
 - receiving_cartons: caja única por pedido y número del proveedor. session_id nulo significa pendiente; se asigna una sola vez al llegar. Un pedido puede repartirse entre recepciones.

@@ -1,6 +1,32 @@
 import { z } from 'zod';
 const text = z.string().trim().max(160);
 export const markingSchema = text.min(1, 'Escribe la marca de la caja.');
+export function parseCartonNumbers(value: string, total: number): string[] {
+    if (!Number.isInteger(total) || total < 1 || total > 1000) throw new Error('Total del pedido no válido.');
+    const numbers = new Set<number>();
+    const parts = value.trim().replace(/[–—]/g, '-').replace(/\s*-\s*/g, '-').split(/[,;\s]+/).filter(Boolean);
+    if (!parts.length) throw new Error('Indica cuáles cajas llegaron, por ejemplo 1-18 o 1-12,15-20.');
+    for (const part of parts) {
+        if (!/^\d+(?:-\d+)?$/.test(part)) throw new Error('Usa números y rangos: 1-12,15-20.');
+        const [start, end = start] = part.split('-').map(Number);
+        if (start < 1 || end < start || end > total) throw new Error(`Los números deben estar entre 1 y ${total}.`);
+        for (let n = start; n <= end; n++) {
+            if (numbers.has(n)) throw new Error(`La caja ${n} está repetida.`);
+            numbers.add(n);
+        }
+    }
+    return Array.from(numbers).sort((a,b) => a-b).map(String);
+}
+export const batchSchema = z.object({
+    reference: text.min(1), productId: z.string().uuid().nullable(), productLabel: text.default(''),
+    shipping: z.enum(['SEA','AIR']), marking: markingSchema, isForeign: z.boolean(),
+    total: z.number().int().min(1).max(1000), received: z.number().int().min(1).max(1000), numbers: z.string().trim().max(6000)
+}).superRefine((x,ctx) => {
+    if (!x.productId && (!x.isForeign || !x.productLabel)) ctx.addIssue({code:'custom',message:'Selecciona el producto; para ajenas puedes escribirlo manualmente.'});
+    if (x.received > x.total) ctx.addIssue({code:'custom',message:'No pueden llegar más cajas que el total del pedido.'});
+    try { if (parseCartonNumbers(x.numbers,x.total).length !== x.received) ctx.addIssue({code:'custom',message:'Los números de caja no coinciden con la cantidad recibida hoy.'}); }
+    catch(e) { ctx.addIssue({code:'custom',message:e instanceof Error ? e.message : 'Números de caja no válidos.'}); }
+});
 export const foreignCartonSchema = z.object({
     product: text.min(1), quantity: z.number().int().min(1).max(1000),
     shipping: z.enum(['SEA', 'AIR']), marking: markingSchema,

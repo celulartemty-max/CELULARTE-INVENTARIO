@@ -2,7 +2,7 @@ import 'server-only';
 import { sql, withTransaction } from '@/lib/db';
 import { assertBranchAccess, hasModulePermission } from '@/lib/auth/authorization';
 import type { SessionUser } from '@/lib/auth/types';
-import { arrivalSchema, countSchema, isReviewer, packingSchema, markingSchema, foreignCartonSchema } from './receiving-validation';
+import { arrivalSchema, countSchema, isReviewer, packingSchema, markingSchema, foreignCartonSchema, batchSchema, parseCartonNumbers } from './receiving-validation';
 import { z } from 'zod';
 export async function receivingAccess(u: SessionUser, review = false) {
     if (!await hasModulePermission(u, 'ENTRADAS') || (review && !isReviewer(u.role)))
@@ -45,6 +45,41 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         }
         if (s.status !== 'DRAFT')
             throw new Error('La recepción ya está cerrada.');
+        if (b.action === 'batch') {
+            await receivingAccess(u, true);
+            const x = batchSchema.parse(b), numbers = parseCartonNumbers(x.numbers,x.total);
+            if (x.productId && !(await c.query("SELECT 1 FROM products WHERE id=$1 AND status='ACTIVE'",[x.productId])).rowCount) throw new Error('Producto no válido.');
+            const physical = await c.query('SELECT (SELECT count(*) FROM receiving_cartons WHERE session_id=$1)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n',[sessionId]);
+            if (physical.rows[0].n + x.received > s.total_boxes) throw new Error('Se excede el total físico de esta recepción. Solo se suman las recibidas hoy.');
+            const order = await c.query('INSERT INTO receiving_orders(branch_id,reference,product_id,product_label,shipping,marking,is_foreign,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING id',[s.branch_id,x.reference,x.productId,x.productLabel||null,x.shipping,x.marking,x.isForeign,u.id]);
+            if (!order.rowCount) throw new Error('Ese pedido ya existe. Registra sus faltantes sin crear otro pedido.');
+            const orderId = order.rows[0].id;
+            await c.query('INSERT INTO receiving_cartons(order_id,carton_number,session_id) SELECT $1,n::text,CASE WHEN n::text=ANY($4::text[]) THEN $3::uuid ELSE NULL END FROM generate_series(1,$2::int) n',[orderId,x.total,sessionId,numbers]);
+            await audit(c,u,s.branch_id,'RECEIVING_BATCH_CREATED',{sessionId,orderId,...x});
+            return {orderId};
+        }
+        if (b.action === 'packing') {
+            await receivingAccess(u,true);
+            const orderId = id.parse(b.orderId), p = packingSchema.parse(b.packing);
+            const order = (await c.query('SELECT branch_id,is_foreign,reference FROM receiving_orders WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+            if (!order || order.branch_id !== s.branch_id || order.is_foreign) throw new Error('Selecciona un pedido propio de esta sucursal.');
+            if (p.reference !== order.reference) throw new Error('Confirma que el packing list corresponde al pedido seleccionado.');
+            const cartons = await c.query('SELECT id,carton_number,counted_at FROM receiving_cartons WHERE order_id=$1 ORDER BY id FOR UPDATE',[orderId]);
+            const used = new Set<string>();
+            for (const box of p.boxes) {
+                const match = box.number.match(/^(\d+)\s*\/\s*(\d+)$/);
+                if (match && Number(match[2]) !== cartons.rows.length) throw new Error('El total marcado en el packing list no coincide con el pedido.');
+                const number = match ? String(Number(match[1])) : box.number;
+                const carton = cartons.rows.find(r => r.carton_number === box.number) ?? cartons.rows.find(r => r.carton_number === number);
+                if (!carton || used.has(carton.id)) throw new Error(`Caja ${box.number} no válida o repetida para este pedido.`);
+                used.add(carton.id);
+                const lines = await c.query('SELECT 1 FROM receiving_items WHERE carton_id=$1 LIMIT 1',[carton.id]);
+                if (carton.counted_at || lines.rowCount) throw new Error(`La caja ${box.number} ya tiene contenido o conteo. No se sobrescribirá ni mezclará.`);
+                await c.query("INSERT INTO receiving_items(carton_id,model,color,expected) SELECT $1,upper(item->>'model'),upper(item->>'color'),(item->>'expected')::int FROM jsonb_array_elements($2::jsonb) item",[carton.id,JSON.stringify(box.items)]);
+            }
+            await audit(c,u,s.branch_id,'RECEIVING_BATCH_PACKING_APPROVED',{sessionId,orderId,boxes:p.boxes.map(x=>x.number),documentReference:b.documentReference??null});
+            return {orderId};
+        }
         if (b.action === 'foreign' || b.action === 'voidForeign') {
             await receivingAccess(u, true);
             const recordId = b.recordId ? id.parse(b.recordId) : null;
@@ -81,7 +116,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const model = z.string().trim().max(160).parse(b.model).toUpperCase(), color = z.string().trim().max(160).parse(b.color).toUpperCase();
             if (!model && !color)
                 throw new Error('Indica modelo o color del artículo adicional.');
-            const box = await c.query('SELECT id FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND counted_at IS NULL FOR UPDATE', [boxId, sessionId]);
+            const box = await c.query('SELECT id FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND counted_at IS NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) FOR UPDATE', [boxId, sessionId]);
             if (!box.rowCount)
                 throw new Error('Caja no disponible.');
             await c.query('INSERT INTO receiving_items(carton_id,model,color) VALUES($1,$2,$3)', [boxId, model, color]);
@@ -93,7 +128,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
                 throw new Error('Solo un administrador puede autorizar un reconteo.');
             const boxId = id.parse(b.boxId);
             const before = await c.query('SELECT l.id,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.id=$1 AND b.session_id=$2', [boxId, sessionId]);
-            const q = await c.query('UPDATE receiving_cartons SET counted_at=NULL,counted_by=NULL WHERE id=$1 AND session_id=$2 AND counted_at IS NOT NULL RETURNING id', [boxId, sessionId]);
+            const q = await c.query('UPDATE receiving_cartons SET counted_at=NULL,counted_by=NULL WHERE id=$1 AND session_id=$2 AND counted_at IS NOT NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) RETURNING id', [boxId, sessionId]);
             if (!q.rowCount)
                 throw new Error('Caja no disponible.');
             await audit(c, u, s.branch_id, 'RECEIVING_RECOUNT_AUTHORIZED', { sessionId, boxId, previous: before.rows });
@@ -138,12 +173,12 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (b.action === 'count' || b.action === 'saveCount') {
             const saving = b.action === 'saveCount';
             const boxId = id.parse(b.boxId), lines = saving ? z.array(z.object({ id, quantity: z.number().int().min(0).max(1000000).nullable() })).min(1).max(500).refine(v => new Set(v.map(l => l.id)).size === v.length).parse(b.lines) : countSchema.parse(b.lines), notes = z.string().max(2000).parse(b.notes ?? '');
-            const box = await c.query('SELECT id,counted_at FROM receiving_cartons WHERE id=$1 AND session_id=$2 FOR UPDATE', [boxId, sessionId]);
+            const box = await c.query('SELECT id,counted_at FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) FOR UPDATE', [boxId, sessionId]);
             if (!box.rowCount || box.rows[0].counted_at)
                 throw new Error('Caja no disponible para conteo.');
             const expected = await c.query('SELECT id FROM receiving_items WHERE carton_id=$1', [boxId]);
             const keys = new Set(expected.rows.map(x => x.id));
-            if (lines.length !== keys.size || lines.some(x => !keys.has(x.id)))
+            if (!keys.size || lines.length !== keys.size || lines.some(x => !keys.has(x.id)))
                 throw new Error('Cuenta todas las líneas. Vacío no es cero.');
             await c.query('UPDATE receiving_items l SET counted=x.quantity FROM jsonb_to_recordset($1::jsonb) x(id uuid,quantity integer) WHERE l.id=x.id AND l.carton_id=$2',[JSON.stringify(lines),boxId]);
             if (!saving)
@@ -155,8 +190,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         }
         if (b.action === 'close') {
             await receivingAccess(u, true);
-            const n = await c.query('SELECT count(*)::int n,count(*) FILTER(WHERE counted_at IS NULL)::int pending FROM receiving_cartons WHERE session_id=$1', [sessionId]);
-            const foreign = await c.query('SELECT COALESCE(sum(carton_count),0)::int n FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL', [sessionId]);
+            const n = await c.query('SELECT count(*)::int n,count(*) FILTER(WHERE counted_at IS NULL)::int pending FROM receiving_cartons WHERE session_id=$1 AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign)', [sessionId]);
+            const foreign = await c.query('SELECT (SELECT count(*) FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=$1 AND o.is_foreign)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n', [sessionId]);
             if (n.rows[0].n + foreign.rows[0].n !== s.total_boxes || n.rows[0].pending)
                 throw new Error('Completa el total físico entre cajas de la sucursal y ajenas. Cuenta solo las de esta sucursal.');
             const status = n.rows[0].n === 0 ? 'ARCHIVED' : 'CLOSED';
@@ -175,13 +210,15 @@ export async function receivingView(u: SessionUser, sessionId: string) {
         throw new Error('No encontrada');
     await assertBranchAccess(u, String(session.branch_id));
     const review = isReviewer(u.role);
-    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,COALESCE(b.marking,o.marking) marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid ORDER BY o.reference,b.carton_number`;
+    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,COALESCE(b.marking,o.marking) marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND NOT o.is_foreign ORDER BY o.reference,b.carton_number`;
+    const foreignBoxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND o.is_foreign ORDER BY o.reference,b.carton_number`;
     const foreign = await sql `SELECT id::text,product,carton_count,shipping,marking,notes FROM receiving_foreign_cartons WHERE session_id=${sessionId}::uuid AND voided_at IS NULL ORDER BY created_at,id`;
     // Expected values never enter the operative response, including server component props.
-    const items = review ? await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted,CASE WHEN b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid ORDER BY l.model,l.color` : await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid ORDER BY l.model,l.color`;
-    const pending = review ? await sql `SELECT b.id::text,b.carton_number,o.reference,o.shipping,o.marking,p.name product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
+    const items = review ? await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted,CASE WHEN b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) ORDER BY l.model,l.color` : await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) ORDER BY l.model,l.color`;
+    const pending = review ? await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,o.is_foreign,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
+    const batches = review ? await sql `SELECT o.id::text,o.reference,o.shipping,o.marking,o.is_foreign,COALESCE(p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid GROUP BY o.id,p.name HAVING count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid OR b.session_id IS NULL)>0 ORDER BY o.created_at DESC` : [];
     const cost = review ? await sql `SELECT cost,currency,notes FROM receiving_sessions WHERE id=${sessionId}::uuid` : [];
-    const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text FROM receiving_documents d WHERE d.session_id=${sessionId}::uuid OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid)` : [];
-    const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid ORDER BY created_at DESC` : [];
-    return { session, boxes, foreign, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER' };
+    const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text FROM receiving_documents d WHERE d.session_id=${sessionId}::uuid OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign)` : [];
+    const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign ORDER BY created_at DESC` : [];
+    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER' };
 }
