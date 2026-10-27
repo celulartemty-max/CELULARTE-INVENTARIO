@@ -8,6 +8,7 @@ import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 import BatchIntake, {type Batch, type PendingCarton} from './batch-intake';
 import PackingReview from './packing-review';
 import CountGrid from './count-grid';
+import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
 import ReceivingModal from './receiving-modal';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
@@ -114,7 +115,7 @@ export default function ReceivingEditor({ data, products }: {
  {data.review?<BatchIntake batches={data.batches} pending={data.pending} products={products} busy={busy} draft={draft} save={saveBatch} onOpen={openOrder} error={error}/>:<section className="card pad"><h2>Pedidos</h2>{Array.from(new Map(data.boxes.map(b=>[b.order_id,b])).values()).map(b=><p key={b.order_id}><button onClick={()=>openOrder(b.order_id)}>{b.product} · {b.marking} · Abrir pedido</button></p>)}</section>}
  {data.foreign.length>0&&<details className="card pad"><summary>Registros ajenos anteriores</summary><ForeignCartons rows={data.foreign} editable={data.review&&draft} busy={busy} save={saveBatch} voidRecord={id=>run(async()=>{await act({action:'voidForeign',recordId:id})})}/></details>}
  </>}
- {packingOrder&&<>{foreignOrder?<section className="card pad"><h2>Cajas ajenas · solo registro</h2><p>No requieren packing list ni conteo.</p><p>Números recibidos: {currentForeign.map(b=>b.carton_number).join(', ')||'—'}</p></section>:<>
+ {packingOrder&&<>{data.review&&draft&&<details className="card pad"><summary>Editar datos del pedido</summary><form key={packingOrder+':'+currentBatch?.marking+':'+currentBatch?.supplier} className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{await act({action:'editOrder',orderId:packingOrder,marking:f.get('marking'),supplier:f.get('supplier')});setPacking(null);setActive(null)})}}><label className="receivingField">Shipping Mark<select name="marking" required defaultValue={currentBatch?.marking}>{SHIPPING_MARKS.map(mark=><option key={mark}>{mark}</option>)}</select></label><label className="receivingField">Proveedor (opcional)<input name="supplier" maxLength={160} defaultValue={currentBatch?.supplier||''}/></label><p className="receivingMuted">Se aplica a todas las cajas del pedido. No cambia ni borra cantidades contadas.</p><button className="receivingSave" disabled={busy}>Guardar datos del pedido</button></form></details>}{foreignOrder?<section className="card pad"><h2>Cajas ajenas · solo registro</h2><p>No requieren packing list ni conteo.</p><p>Números recibidos: {currentForeign.map(b=>b.carton_number).join(', ')||'—'}</p></section>:<>
  {data.review&&<div className="receivingTabs" aria-label="Trabajo del pedido"><button aria-pressed={detailTab==='packing'} onClick={()=>setDetailTab('packing')}>Packing list</button><button aria-pressed={detailTab==='count'} onClick={()=>setDetailTab('count')}>Contar piezas</button></div>}
  <div hidden={data.review&&detailTab!=='packing'}>
  {data.review && draft && <>
@@ -160,7 +161,6 @@ export default function ReceivingEditor({ data, products }: {
  </form>}
  {active === b.id && b.counted_at && draft && data.canRecount && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Las cantidades quedarán vacías y se conservará el conteo anterior en auditoría.'))
             run(async () => { await act({ action: 'reopenBox', boxId: b.id }); setActive(null); }); }}>Autorizar reconteo</button>}
- {active === b.id && draft && data.review && <form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); run(async () => { await act({ action: 'markBox', boxId: b.id, marking: f.get('marking') }); }); }}><label>Marca de esta caja<input name="marking" required maxLength={160} defaultValue={b.marking}/></label><button disabled={busy}>Guardar marca de esta caja</button></form>}
  </article>)}</section>
  </div>
  </>}

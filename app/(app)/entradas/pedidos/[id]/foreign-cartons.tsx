@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
 export type ForeignCarton = { id: string; product: string; carton_count: number; shipping: string; marking: string; notes: string };
 export default function ForeignCartons({ rows, editable, busy, save, voidRecord }: {
     rows: ForeignCarton[]; editable: boolean; busy: boolean;
@@ -19,7 +20,7 @@ export default function ForeignCartons({ rows, editable, busy, save, voidRecord 
             <label>Tipo de producto (según etiqueta)<input name="product" required maxLength={160} defaultValue={editing?.product ?? ''} placeholder="Ej. PREMIUM LENS"/></label>
             <label>Cantidad de cajas<input name="quantity" type="number" min={1} max={1000} step={1} required defaultValue={editing?.carton_count ?? ''}/></label>
             <label>Transporte<select name="shipping" required defaultValue={editing?.shipping ?? ''}><option value="" disabled>Selecciona…</option><option>SEA</option><option>AIR</option></select></label>
-            <label>Marca de la caja<input name="marking" required maxLength={160} defaultValue={editing?.marking ?? ''} placeholder="Ej. CDMX / JAPS LISA / SAN LUIS"/></label>
+            <label>Shipping Mark<select name="marking" required defaultValue={editing?.marking ?? ''}><option value="" disabled>Selecciona…</option>{SHIPPING_MARKS.map(mark=><option key={mark}>{mark}</option>)}</select></label>
             <label>Observaciones<textarea name="notes" maxLength={2000} defaultValue={editing?.notes ?? ''}/></label>
             <div className="actions"><button disabled={busy}>{editing ? 'Guardar cambios' : 'Registrar cajas ajenas'}</button>{editing && <button type="button" disabled={busy} onClick={() => { setEditing(null); setFormKey(k => k + 1); }}>Cancelar edición</button>}</div>
             <small>Cada registro se conserva por separado; no se combina automáticamente con otros.</small>

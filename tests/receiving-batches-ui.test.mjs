@@ -10,7 +10,7 @@ const requireModule=createRequire(import.meta.url),ts=requireModule('typescript'
 function load(path,react=React){
  const mod={exports:{}},source=readFileSync(new URL('../'+path,import.meta.url),'utf8');
  const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
- const req=name=>name==='react'?react:name==='next/navigation'?{useRouter:()=>({refresh(){}})}:name==='next/link'?{default:p=>React.createElement('a',p,p.children)}:name==='@/lib/inventory/receiving-validation'?load('lib/inventory/receiving-validation.ts',react):name.startsWith('./')?load(posix.join(posix.dirname(path),name+'.tsx'),react):requireModule(name);
+ const req=name=>name==='react'?react:name==='next/navigation'?{useRouter:()=>({refresh(){}})}:name==='next/link'?{default:p=>React.createElement('a',p,p.children)}:name.startsWith('@/lib/inventory/')?load(name.replace('@/','')+'.ts',react):name.startsWith('./')?load(posix.join(posix.dirname(path),name+'.tsx'),react):requireModule(name);
  class FixtureFormData {constructor(form){this.fields=form.fields}get(key){return this.fields[key]??null}}
  vm.runInNewContext('(function(require,module,exports){'+code+'})',{FormData:FixtureFormData,crypto:{randomUUID:()=> '01234567-1234-4000-8000-000000000001'},window:{scrollTo(){}},confirm:()=>true})(req,mod,mod.exports);
  return mod.exports;
@@ -71,6 +71,14 @@ test('order workspace filters boxes and files to the opened order; foreign has n
 });
 
 const gridModule=load(base+'packing-review.tsx');
+test('shipping marks are a closed list and only PER/JAPS map to internal destinations',()=>{
+ const {SHIPPING_MARKS,shippingMarkSchema,destinationName}=load('lib/inventory/shipping-marks.ts');
+ assert.equal(SHIPPING_MARKS.length,8);
+ for(const mark of SHIPPING_MARKS)assert.equal(shippingMarkSchema.parse(mark),mark);
+ for(const mark of ['PER LISA','CDMX','NICO',''])assert.equal(shippingMarkSchema.safeParse(mark).success,false);
+ assert.equal(destinationName('PER'),'Treviño');assert.equal(destinationName('JAPS'),'Plaza del Audio');
+ for(const mark of ['GAL','AD','JAPU','JACG','ASL','MCFE'])assert.equal(destinationName(mark),null);
+});
 test('count grid preserves IDs, blank and explicit zero, and hides reference during blind count',()=>{
  const CountGrid=load(base+'count-grid.tsx').default;
  const items=[{id:'one',model:'SAM A36',color:'negro',counted:null,expected:200},{id:'two',model:'SAM A36',color:'rojo',counted:0,expected:150}];
