@@ -18,3 +18,44 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .destinationArrivalSquare:has(input:checked){background:#e5efff;border-color:#2563eb;color:#1d4ed8}
 .destinationArrivalSquare input{width:18px;height:18px}
 .receivingOrders [hidden]{display:none!important}
+.packingUploadCard{overflow:hidden}
+.packingUploadHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.packingUploadHeading h2{margin:0;font-size:21px;letter-spacing:-.4px;color:#162c4a}
+.packingUploadHeading p{margin:5px 0 0;color:#718096;font-size:13px}
+.packingUploadCount{white-space:nowrap;border-radius:20px;background:#edf3fb;color:#3e5f87;padding:6px 10px;font-size:12px;font-weight:600}
+.packingUploadEmpty{display:flex;align-items:center;flex-direction:column;text-align:center;padding:23px 16px;background:#f6f9fe;border:1px dashed #c8d8ed;border-radius:16px}
+.packingUploadIllustration{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:#e6effe;color:#2b65be;margin-bottom:12px}
+.packingUploadIllustration svg{width:25px;height:25px}
+.packingUploadEmpty p{margin:0 0 6px;color:#203d60;font-size:15px;font-weight:700}
+.packingUploadEmpty>span:not(.packingUploadIllustration){font-size:13px;color:#72829a}
+.receivingOrders button.packingUploadAdd,.receivingOrders button.packingUploadRead{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 20px;background:#145dcc;color:#fff;border:1px solid #145dcc;border-radius:12px;font-size:14px;font-weight:700;box-shadow:0 4px 10px #145dcc16}
+.receivingOrders button.packingUploadAdd{margin-top:17px}
+.packingUploadFormats{display:block;text-align:center;margin-top:12px;font-size:11px;color:#718096;line-height:1.6}
+.packingUploadSelected{display:flex;align-items:center;gap:12px;padding:15px;background:#f6f9fe;border:1px solid #dce6f3;border-radius:14px}
+.packingUploadFileIcon{display:grid;place-items:center;flex-shrink:0;width:40px;height:46px;background:#e5edfb;color:#2b65be;border-radius:10px}
+.packingUploadFileInfo{flex:1;min-width:0}
+.packingUploadFileInfo strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#203d60;font-size:14px}
+.packingUploadFileInfo>span{display:block;margin-top:5px;color:#718096;font-size:12px}
+.receivingOrders button.packingUploadChange{flex-shrink:0;background:transparent;color:#2563ba;font-size:12px;font-weight:600;padding:10px 6px;border:0;box-shadow:none;min-height:44px}
+.packingUploadActions{display:flex;gap:10px;margin-top:14px}
+.packingUploadActions>button{flex:1;min-width:0}
+.receivingOrders button.packingUploadStore{min-height:46px;padding:11px 12px;border:1px solid #cbd9eb;border-radius:12px;background:#fff;color:#2a4e7c;box-shadow:none;font-size:13px;font-weight:600}
+.packingUploadHint{margin:12px 0 0;text-align:center;color:#718096;font-size:12px;line-height:1.5}
+.packingUploadModalHint{color:#718096;font-size:14px;margin:12px 0 18px}
+.packingUploadChoices{display:grid;gap:10px}
+.packingUploadChoice{position:relative;display:flex;align-items:center;gap:14px;padding:14px;border:1px solid #dce5f0;border-radius:14px;min-height:70px;box-sizing:border-box;cursor:pointer;background:#fff;overflow:hidden}
+.packingUploadChoice:hover{background:#f6f9fe;border-color:#91b4e8}
+.packingUploadChoice:focus-within{outline:3px solid #60a5fa;outline-offset:2px}
+.packingUploadChoiceIcon{display:grid;place-items:center;flex-shrink:0;width:42px;height:42px;border-radius:12px;background:#edf3fd;color:#2b65be}
+.packingUploadChoice b{display:block;font-size:14px;color:#203d60}
+.packingUploadChoice small{display:block;font-size:12px;color:#718096;margin-top:4px}
+.packingUploadChoiceArrow{margin-left:auto;color:#8294ad;font-size:23px}
+.packingUploadChoice input[type=file]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.packingUploadSaved{margin-top:20px;padding-top:16px;border-top:1px solid #edf1f7}
+.packingUploadSaved summary{min-height:44px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#48688e;cursor:pointer}
+.packingUploadSaved summary::after{content:'⌄';margin-left:auto}
+.packingUploadDocument{display:flex;align-items:center;gap:10px;padding:13px 0;font-size:13px;color:#235796;text-decoration:none;border-bottom:1px solid #edf1f7;min-width:0}
+.packingUploadDocument>span:nth-child(2){overflow-wrap:anywhere;min-width:0;flex:1}
+.packingUploadDocument>b{font-size:18px}
+.receivingOrders .packingUpload button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+@media(max-width:420px){.packingUploadHeading{margin-bottom:14px}.packingUploadEmpty{padding:22px 10px}.packingUploadEmpty .packingUploadAdd{width:100%;max-width:260px}.packingUploadActions{flex-direction:column}.packingUploadSelected{gap:9px;padding:12px}.packingUploadFileIcon{width:34px;height:42px}}

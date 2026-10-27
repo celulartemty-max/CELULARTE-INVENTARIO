@@ -17,7 +17,7 @@ function load(path,react=React){
 }
 function mount(path,name,props){
  const state=[];let cursor=0;
- const react={...React,useTransition:()=>[false,fn=>fn()],useState:initial=>{const i=cursor++;if(!(i in state))state[i]=typeof initial==='function'?initial():initial;return [state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value}]},useRef:initial=>{const i=cursor++;if(!(i in state))state[i]={current:initial};return state[i]}};
+ const react={...React,useId:()=> 'fixture-upload-help',useTransition:()=>[false,fn=>fn()],useState:initial=>{const i=cursor++;if(!(i in state))state[i]=typeof initial==='function'?initial():initial;return [state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value}]},useRef:initial=>{const i=cursor++;if(!(i in state))state[i]={current:initial};return state[i]}};
  const Component=load(path,react)[name];
  return ()=>{cursor=0;return Component(props)};
 }
@@ -71,6 +71,40 @@ test('order workspace filters boxes and files to the opened order; foreign has n
 });
 
 const gridModule=load(base+'packing-review.tsx');
+const uploadProps={file:null,busy:false,attached:false,onChange(){},onInterpret(){},onAttach(){}};
+test('packing upload starts with one clear action, not a native file input or disabled action clutter',()=>{
+ const tree=mount(base+'packing-upload.tsx','default',uploadProps)();
+ assert.deepEqual(nodes(tree).filter(n=>n.type==='button').map(n=>text(n)),['Agregar archivo']);
+ assert.equal(nodes(tree).filter(n=>n.props?.type==='file').length,0);
+ assert.doesNotMatch(text(tree),/No file chosen|Leer con IA|Guardar original/);
+});
+test('single add action offers camera, gallery and file; only the camera input requests capture',()=>{
+ let chosen;const render=mount(base+'packing-upload.tsx','default',{...uploadProps,onChange:file=>{chosen=file}});
+ let tree=render();nodes(tree).find(n=>n.type==='button').props.onClick();tree=render();
+ const inputs=nodes(tree).filter(n=>n.props?.type==='file');
+ assert.deepEqual(inputs.map(n=>n.props['aria-label']),['Tomar foto','Elegir foto','Seleccionar archivo']);
+ assert.equal(inputs[0].props.capture,'environment');assert.equal(inputs[1].props.capture,undefined);assert.equal(inputs[2].props.capture,undefined);
+ const file={name:'packing.xlsx',size:25000,type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
+ inputs[2].props.onChange({target:{files:[file],value:'packing.xlsx'}});assert.equal(chosen,file);
+ tree=render();assert.ok(!nodes(tree).some(n=>n.props?.title==='Agregar archivo'));
+});
+test('canceling the picker preserves the selected file and invalid files never reach parent state',()=>{
+ let calls=0;const render=mount(base+'packing-upload.tsx','default',{...uploadProps,file:{name:'original.xlsx',size:200},onChange:()=>calls++});
+ let tree=render();nodes(tree).find(n=>n.type==='button'&&text(n)==='Cambiar').props.onClick();tree=render();
+ const pick=file=>nodes(tree).find(n=>n.props?.['aria-label']==='Seleccionar archivo').props.onChange({target:{files:file?[file]:[],value:''}});
+ pick();assert.equal(calls,0);
+ pick({name:'grande.xlsx',size:3*1024*1024});tree=render();assert.match(text(tree),/hasta 2 MB/);
+ pick({name:'foto.heic',size:200});tree=render();assert.match(text(tree),/Usa Excel .xlsx/);assert.equal(calls,0);
+});
+test('PDF offers storage only; saved original and busy actions cannot be submitted twice',()=>{
+ let read=0,attach=0;
+ const tree=mount(base+'packing-upload.tsx','default',{...uploadProps,file:{name:'cobro.pdf',size:200,type:'application/pdf'},onInterpret:()=>read++,onAttach:()=>attach++})();
+ assert.doesNotMatch(text(tree),/Leer con IA/);nodes(tree).find(n=>n.type==='button'&&text(n)==='Guardar comprobante').props.onClick();assert.equal(attach,1);assert.equal(read,0);
+ const saved=mount(base+'packing-upload.tsx','default',{...uploadProps,file:{name:'packing.xlsx',size:200},attached:true})();
+ assert.equal(nodes(saved).find(n=>n.type==='button'&&text(n)==='✓ Original guardado').props.disabled,true);
+ const busy=mount(base+'packing-upload.tsx','default',{...uploadProps,file:{name:'packing.xlsx',size:200},busy:true})();
+ assert.ok(nodes(busy).filter(n=>n.type==='button').every(n=>n.props.disabled));
+});
 const destinationPath='app/(app)/entradas/pedidos/destino/[orderId]/destination-editor.tsx';
 function destinationFixture(review=true){return {review,canRecount:false,order:{id:'order',product:'Combo Case',reference:'JAPS-20',marking:'JAPS',shipping:'SEA',supplier:'LISA',destination:'Plaza del Audio',origin:'Treviño',total:4,physical:3,arrived:2,counted:0},boxes:[{id:'a',carton_number:'1',session_id:'s',received_at:'2026-10-27',counted_at:null,notes:''},{id:'b',carton_number:'2',session_id:'s',received_at:'2026-10-27',counted_at:null,notes:''},{id:'c',carton_number:'3',session_id:'s',received_at:null,counted_at:null,notes:''},{id:'d',carton_number:'4',session_id:null,received_at:null,counted_at:null,notes:''}],items:[],documents:[]}}
 test('destination shows only confirmed boxes for count and only physically registered boxes for arrival',()=>{

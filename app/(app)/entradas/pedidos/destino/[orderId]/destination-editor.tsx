@@ -8,6 +8,7 @@ import { packingSchema } from '@/lib/inventory/receiving-validation';
 import CountGrid from '../../[id]/count-grid';
 import PackingReview from '../../[id]/packing-review';
 import ReceivingModal from '../../[id]/receiving-modal';
+import PackingUpload from '../../[id]/packing-upload';
 
 type Packing = z.infer<typeof packingSchema>;
 type Save = (body: Record<string, unknown>) => Promise<boolean>;
@@ -23,6 +24,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
     const [activeBox, setActiveBox] = useState('');
     const [visited, setVisited] = useState<string[]>([]);
     const [file, setFile] = useState<File | null>(null);
+    const [attachedFile, setAttachedFile] = useState<File | null>(null);
     const [packing, setPacking] = useState<Packing | null>(null);
     const [excluded, setExcluded] = useState(0);
     const [addBox, setAddBox] = useState<string | null>(null);
@@ -80,15 +82,14 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
                 </> : <p>Un encargado debe confirmar la llegada para habilitar el conteo.</p>}</>}
             {order.total > order.physical && <p className="receivingMuted">{order.total - order.physical} cajas todavía no llegan al origen.</p>}
         </section>
-        {data.review && arrived.length > 0 && <section className="card pad"><details><summary>Packing list y archivos</summary><p>Solo se habilitan las cajas confirmadas aquí. Los archivos siempre pertenecen a este pedido.</p>
-            <label className="receivingField">Seleccionar packing list o comprobante<input type="file" disabled={busy} accept=".xlsx,.xls,.csv,.pdf,image/*" onChange={e => { setFile(e.target.files?.[0] ?? null); setPacking(null); }}/></label>
-            <div className="actions"><button className="receivingSecondary" disabled={busy || !file} onClick={interpret}>Leer packing list con IA</button>
-                <button className="receivingSecondary" disabled={busy || !file} onClick={() => run(async () => {
+        {data.review && arrived.length > 0 && <section className="card pad packingUploadCard"><div className="packingUploadHeading"><div><h2>Packing list</h2><p>Archivos de este pedido</p></div>{data.documents.length > 0 && <span className="packingUploadCount">{data.documents.length} {data.documents.length === 1 ? 'archivo' : 'archivos'}</span>}</div>
+            <PackingUpload file={file} busy={busy} attached={Boolean(file && attachedFile === file)} onChange={next => { setFile(next); setAttachedFile(null); setPacking(null); }} onInterpret={interpret} onAttach={() => run(async () => {
+                    if (!file) return;
                     const form = new FormData(); form.set('file', file!); form.set('orderId', order.id); form.set('destination', 'true');
                     const r = await fetch('/api/receiving/documents', { method: 'POST', body: form }); const result = await r.json();
-                    if (!r.ok) throw new Error(result.error); setNotice('Archivo adjuntado al pedido.'); startTransition(() => router.refresh());
-                })}>Adjuntar archivo original</button></div>
-            {data.documents.map(d => <p key={d.id}><a href={`/api/receiving/documents?id=${d.id}&destination=true`}>{d.filename}</a></p>)}
+                    if (!r.ok) throw new Error(result.error); setAttachedFile(file); setNotice('Archivo adjuntado al pedido.'); startTransition(() => router.refresh());
+                })}/>
+            {data.documents.length > 0 && <details className="packingUploadSaved"><summary>Ver archivos guardados ({data.documents.length})</summary>{data.documents.map(d => <a className="packingUploadDocument" key={d.id} href={`/api/receiving/documents?id=${d.id}&destination=true`}><span aria-hidden="true">📄</span><span>{d.filename}</span><b aria-hidden="true">↓</b></a>)}</details>}
             {packing && <><p>Referencia leída: <b>{packing.reference || 'No identificada'}</b>. Verifica que corresponda a <b>{order.reference}</b>.</p>
                 {excluded > 0 && <p role="status">Se excluyeron {excluded} cajas: aún no recibidas aquí o con contenido ya cargado. No se modificarán.</p>}
                 {packing.warnings.map((w, i) => <p key={i} className="receivingMuted">{w}</p>)}
@@ -97,7 +98,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
                     if (!confirm('¿Revisaste los modelos, colores y números de caja de este pedido?')) return;
                     if (await save({ action: 'packing', packing: { ...packing, reference: order.reference } })) setPacking(null);
                 }}>Confirmar packing list de este pedido</button></>}
-        </details></section>}
+        </section>}
         {arrived.length > 0 && <section className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
             <div className="receivingCartonSquares">{arrived.map(b => <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-pressed={shown === b.id} aria-label={`Caja ${b.carton_number}${b.counted_at ? ', terminada' : ''}`} onClick={() => { setVisited(v => [...new Set([...v, shown ?? '', b.id])]); setActiveBox(b.id); }}>{b.carton_number}{b.counted_at ? ' ✓' : ''}</button>)}</div>
             {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} busy={busy} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}

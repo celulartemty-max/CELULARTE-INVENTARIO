@@ -91,7 +91,7 @@ test('completed cartons block edits and only MASTER can reopen with audit of pre
     assert.equal(f.audit[0].previous[0].counted,12);
 });
 test('destination documents require reviewer, destination branch and confirmed arrival',async()=>{
-    for(const opts of [{allowed:[ORIGIN]},{confirmed:false}]) await assert.rejects(fixture(opts).destinationDocumentBranch({query:async(sql,args)=>{
+    for(const opts of [{allowed:[ORIGIN]},{confirmed:false}]) await assert.rejects(fixture(opts).destinationDocumentBranch({query:async(sql)=>{
         if(sql.startsWith('SELECT *'))return {rows:[{id:ORDER,branch_id:ORIGIN,destination_branch_id:DEST}]};return {rows:[],rowCount:0};
     }},manager,ORDER));
 });
