@@ -1,10 +1,11 @@
+import { auditRoute } from '@/lib/audit/route';
 import { requireUser, assertBranchAccess } from '@/lib/auth/authorization';
 import { withTransaction } from '@/lib/db';
 import { destinationDocumentBranch } from '@/lib/inventory/receiving-destination';
 import { receivingAccess } from '@/lib/inventory/receiving';
 import { readReceivingFile } from '@/lib/inventory/receiving-files';
 import { z } from 'zod';
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
     try {
         const u = await requireUser();
         await receivingAccess(u, true);
@@ -63,3 +64,5 @@ export async function GET(req: Request) {
         return new Response('Sin acceso', { status: 403 });
     }
 }
+
+export const POST = auditRoute(handlePOST);

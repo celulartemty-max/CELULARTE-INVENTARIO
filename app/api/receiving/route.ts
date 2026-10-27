@@ -1,6 +1,7 @@
+import { auditRoute } from '@/lib/audit/route';
 import { requireUser } from '@/lib/auth/authorization';
 import { receivingAction } from '@/lib/inventory/receiving';
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
     try {
         if (Number(req.headers.get('content-length') || 0) > 3000000)
             throw new Error('Solicitud demasiado grande.');
@@ -10,3 +11,5 @@ export async function POST(req: Request) {
         return Response.json({ error: e instanceof Error && e.message.includes('duplicate key') ? 'Ese pedido ya existe. Usa sus cajas pendientes.' : e instanceof Error ? e.message : 'No se pudo guardar.' }, { status: 400 });
     }
 }
+
+export const POST = auditRoute(handlePOST);

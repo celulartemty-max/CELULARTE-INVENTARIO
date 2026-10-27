@@ -1,8 +1,9 @@
+import { auditRoute } from '@/lib/audit/route';
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/authorization";
 import { createColor,createProduct,renameColor,renameProduct,setColorStatus,setProductStatus } from "@/lib/inventory/products";
 
-export async function POST(req:Request){
+async function handlePOST(req:Request){
   try{
     const u=await requireUser();
     const b=await req.json();
@@ -16,3 +17,5 @@ export async function POST(req:Request){
     return NextResponse.json({ok:true});
   }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'ERROR'},{status:400})}
 }
+
+export const POST = auditRoute(handlePOST);

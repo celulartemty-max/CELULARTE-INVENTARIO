@@ -1,0 +1,17 @@
+import Link from 'next/link';
+import { requireUser } from '@/lib/auth/authorization';
+import { auditLog } from '@/lib/audit/read';
+import '../registros/registration.css';
+export const dynamic='force-dynamic';
+type Search={page?:string;actor?:string;entity?:string;date?:string};
+export default async function Page({searchParams}:{searchParams:Promise<Search>}){
+    const search=await searchParams,data=await auditLog(await requireUser(),search);
+    const fmt=new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'medium',timeStyle:'short'});
+    const pageLink=(page:number)=>'/bitacora?'+new URLSearchParams({...Object.fromEntries(Object.entries(search).filter(([,v])=>v!==undefined)) as Record<string,string>,page:String(page)});
+    const titles:Record<string,string>={users:'Usuarios',user_module_permissions:'Permisos',user_login_credentials:'Contraseña (sin contenido)',products:'Productos',product_colors:'Colores',receiving_sessions:'Recepciones por pedidos',receiving_orders:'Pedidos',receiving_cartons:'Cajas',receiving_items:'Conteos',receiving_documents:'Archivos',inventory_movements:'Movimientos',reception_box_lines:'Conteo anterior',exit_lines:'Salidas',return_lines:'Devoluciones',transfer_lines:'Traspasos',transfers:'Traspasos',tiktok_label_catalog:'Catálogo TikTok',tiktok_label_orders:'Pedidos de etiquetas'};
+    return <div className="registrationPage"><Link href="/dashboard">← Inicio</Link><header className="registrationHero"><span>ACCESO ESPECIAL</span><h1>Bitácora de cambios</h1><p>Quién cambió qué y cuándo. Los cambios anteriores a la activación solo aparecen si ya tenían auditoría; no se inventa historial.</p></header>
+        <form className="registrationListHeading"><label>Fecha<input name="date" type="date" defaultValue={search.date}/></label><label>Sección<select name="entity" defaultValue={search.entity??''}><option value="">Todas</option>{Object.entries(titles).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>{search.actor&&<input type="hidden" name="actor" value={search.actor}/>}<button className="registrationPrimary">Filtrar</button><Link href="/bitacora">Limpiar</Link></form>
+        <div className="registrationList">{data.rows.map(r=><article className="registrationCard" key={r.id}><div><span className="registrationType">{titles[r.entity_type]??r.entity_type??'Evento operativo'}</span><h3>{r.action==='ROW_INSERT'?'Creación':r.action==='ROW_UPDATE'?'Modificación':r.action==='ROW_DELETE'?'Eliminación':r.action.replaceAll('_',' ')}</h3><p>{r.actor} · {r.branch??'Administración general'}</p><small>{fmt.format(new Date(r.created_at))}</small><details><summary>Ver cambio</summary><small>Referencia: {r.entity_id??r.movement_id??r.id}</small><p>Anterior</p><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontSize:11}}>{r.previous_value===null?'No disponible':JSON.stringify(r.previous_value,null,2)}</pre><p>Nuevo</p><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontSize:11}}>{r.new_value===null?'No disponible':JSON.stringify(r.new_value,null,2)}</pre><Link href={'/bitacora?'+new URLSearchParams({actor:r.user_id})}>Ver cambios de esta persona</Link></details></div></article>)}</div>
+        {!data.rows.length&&<p>No hay cambios con estos filtros.</p>}<nav className="registrationListHeading" aria-label="Páginas de bitácora">{data.page>1&&<Link href={pageLink(data.page-1)}>← Anterior</Link>}<span>Página {data.page}</span>{data.more&&<Link href={pageLink(data.page+1)}>Siguiente →</Link>}</nav>
+    </div>;
+}

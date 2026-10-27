@@ -72,7 +72,7 @@ test('order workspace filters boxes and files to the opened order; foreign has n
 
 const gridModule=load(base+'packing-review.tsx');
 const CloseSummary=load(base+'receiving-close.tsx').default;
-const closeProps={sessionId:'receipt',status:'DRAFT',total:43,boxes:Array.from({length:35},(_,i)=>({id:'box-'+i,order_id:'own-order',counted_at:i===0?'2026-10-26':null})),foreignTotal:8,busy:false,onClose(){},onPos(){},onReview(){}};
+const closeProps={canRegisterSystem:true,sessionId:'receipt',status:'DRAFT',total:43,boxes:Array.from({length:35},(_,i)=>({id:'box-'+i,order_id:'own-order',counted_at:i===0?'2026-10-26':null})),foreignTotal:8,busy:false,onClose(){},onPos(){},onReview(){}};
 test('closure summary is visible without a dropdown and has an independent Excel download link',()=>{
  const html=renderToStaticMarkup(React.createElement(CloseSummary,closeProps));
  assert.match(html,/Resumen y cierre/);assert.doesNotMatch(html,/<details|Cerrar recepción \/ Descargar Excel/);

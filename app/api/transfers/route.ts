@@ -1,6 +1,7 @@
+import { auditRoute } from '@/lib/audit/route';
 import{requireUser}from'@/lib/auth/authorization';import{createTransfer,deleteTransferLine,receiveTransfer,registerTransferPos,resolveDifferences,saveTransferLine,sendTransfer}from'@/lib/inventory/transfers';
 
-export async function POST(req:Request){
+async function handlePOST(req:Request){
   try{
     const u=await requireUser(),b=await req.json()as Record<string,unknown>;
     switch(b.action){
@@ -16,3 +17,5 @@ export async function POST(req:Request){
     return Response.json({ok:true});
   }catch(e){return Response.json({error:e instanceof Error?e.message:'ERROR'},{status:400})}
 }
+
+export const POST = auditRoute(handlePOST);

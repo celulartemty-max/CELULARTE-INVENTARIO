@@ -1,11 +1,14 @@
+import { auditRoute } from '@/lib/audit/route';
 import {requireUser,assertBranchAccess} from "@/lib/auth/authorization";
 import {sql} from "@/lib/db";
+import { requireSystemRegistration } from '@/lib/auth/special-permissions';
 
 const allowedPath=/^\/(entradas|devoluciones|salidas|traspasos)\/[0-9a-f-]+\/?$/i;
 
-export async function POST(req:Request){
+async function handlePOST(req:Request){
   try{
     const user=await requireUser();
+    await requireSystemRegistration(user);
     const body=await req.json() as {movementId?:unknown;evidence?:unknown;context?:unknown;pathname?:unknown};
     const movementId=String(body.movementId||"");
     const evidence=String(body.evidence||"");
@@ -32,3 +35,5 @@ export async function POST(req:Request){
     return Response.json({error:message},{status:400});
   }
 }
+
+export const POST = auditRoute(handlePOST);

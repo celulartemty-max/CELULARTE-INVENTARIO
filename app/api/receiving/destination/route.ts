@@ -1,7 +1,8 @@
+import { auditRoute } from '@/lib/audit/route';
 import { requireUser } from '@/lib/auth/authorization';
 import { destinationAction } from '@/lib/inventory/receiving-destination';
 
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
     try {
         if (Number(req.headers.get('content-length') || 0) > 3000000) throw new Error('Solicitud demasiado grande.');
         return Response.json(await destinationAction(await requireUser(), await req.json()));
@@ -10,3 +11,5 @@ export async function POST(req: Request) {
         return Response.json({ error: message }, { status: 400 });
     }
 }
+
+export const POST = auditRoute(handlePOST);

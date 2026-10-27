@@ -1,3 +1,4 @@
+import RegistrationNotice from './registration-notice';
 import Link from "next/link";
 import { requireUser, getAuthorizedBranchIds } from "@/lib/auth/authorization";
 import { sql } from "@/lib/db";
@@ -39,6 +40,7 @@ export default async function Dashboard(){
       <Link href="/movimientos?view=exits-registered" className="statV2"><span className="statV2Icon toneRed"><MovementIcon kind="EXIT"/></span><strong>{Number(stats.exits_registered_30??0).toLocaleString('es-MX')}</strong><small>Salidas registradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></Link>
       <Link href="/movimientos?view=transfers-active" className="statV2"><span className="statV2Icon tonePurple"><MovementIcon kind="TRANSFER"/></span><strong>{Number(stats.active_transfers??0).toLocaleString('es-MX')}</strong><small>Traspasos<br/>activos</small><span className="statV2Arrow">›</span></Link>
     </section>
+    <RegistrationNotice/>
     <section id="movimientos" className="dashSection">
       <div className="dashSectionHead"><h2>Movimientos recientes</h2><Link href="/movimientos">Últimos {rows.length} ›</Link></div>
       <div className="recentV2">{rows.length===0?<div className="dashEmpty">Aún no hay movimientos para mostrar.</div>:rows.map(r=>{const id=String(r.id),type=String(r.type);const isReception=type==='RECEPTION'&&r.product_name;const title=isReception?String(r.product_name):typeLabel(type);const meta=isReception?`${receptionDateFmt.format(new Date(String(r.created_at)))} · ${Number(r.expected_boxes)} caja${Number(r.expected_boxes)===1?'':'s'} · ${String(r.branch)}`:`${String(r.folio)} · ${String(r.branch)}`;return <Link href={detail(id,type)} className="recentV2Row" key={id}><span className={`recentV2Icon ${tone(type)}`}><MovementIcon kind={iconKind(type)}/></span><span className="recentV2Text"><b>{title}</b><small>{meta}</small></span><span className="recentV2Date">{fmt.format(new Date(String(r.created_at)))}</span><span className="recentV2Arrow">›</span></Link>})}</div>

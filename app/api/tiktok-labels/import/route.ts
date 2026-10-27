@@ -1,7 +1,8 @@
+import { auditRoute } from '@/lib/audit/route';
 import {NextRequest,NextResponse} from "next/server";
 import * as XLSX from "xlsx";
 import {sql} from "@/lib/db";
-import {getSession} from "@/lib/auth/session";
+import {requireUser} from "@/lib/auth/authorization";
 
 const norm=(v:unknown)=>String(v??"").trim();
 async function ready(){
@@ -10,11 +11,9 @@ async function ready(){
   await sql`CREATE TABLE IF NOT EXISTS tiktok_label_import_source (id text PRIMARY KEY, filename text NOT NULL, file_base64 text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
   await sql`CREATE TABLE IF NOT EXISTS tiktok_label_sku_history (tiktok_sku_id text PRIMARY KEY, product_name text NOT NULL, variation text NOT NULL DEFAULT '', seller_sku text NOT NULL UNIQUE, updated_at timestamptz NOT NULL DEFAULT now())`;
 }
-export async function POST(req:NextRequest){
+async function handlePOST(req:NextRequest){
   try{
-    const session=await getSession();
-    if(!session)return NextResponse.json({error:"Tu sesión expiró. Vuelve a iniciar sesión."},{status:401});
-    const u=session.user;
+    const u=await requireUser();
     if(u.role!=="MASTER")return NextResponse.json({error:"Sin permiso"},{status:403});
     await ready();
     const fd=await req.formData();const file=fd.get("file");
@@ -62,3 +61,4 @@ export async function POST(req:NextRequest){
     return NextResponse.json({error:"No se pudo importar el Excel de TikTok.",detail},{status:500});
   }
 }
+export const POST = auditRoute(handlePOST);

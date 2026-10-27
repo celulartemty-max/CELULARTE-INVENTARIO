@@ -1,4 +1,5 @@
 "use client";
+import { useRegistrationAccess } from "../../registration-access";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppRole } from "@/lib/auth/types";
@@ -41,6 +42,7 @@ export default function ReceptionEditor({
   role: AppRole;
 }) {
   const router = useRouter();
+  const canRegisterSystem = useRegistrationAccess();
   const firstReceived = boxes.find((b) => b.received_at)?.id;
   const [box, setBox] = useState(() => {
     if (typeof window !== "undefined") {
@@ -192,7 +194,7 @@ export default function ReceptionEditor({
               Cerrar recepción
             </button>
           )}
-          {posPending && (
+          {posPending && canRegisterSystem && (
             <button
               className="primary"
               onClick={() =>

@@ -12,6 +12,7 @@ test('dashboard starts with greeting and indicators without the extra receiving 
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
     const queries = [], mod = { exports: {} };
     const mocks = {
+        './registration-notice': { default: () => null },
         'next/link': { default: props => React.createElement('a', props, props.children) },
         '@/lib/auth/authorization': { requireUser: async () => ({ id: 'user', name: 'Alejandro', role: 'MASTER', primaryBranchId: null }), getAuthorizedBranchIds: async () => null },
         '@/lib/db': { sql: async parts => { queries.push(parts.join('?')); return []; } },

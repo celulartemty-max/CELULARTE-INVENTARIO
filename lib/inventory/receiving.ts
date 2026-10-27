@@ -1,4 +1,5 @@
 import 'server-only';
+import { requireSystemRegistration } from '@/lib/auth/special-permissions';
 import { sql, withTransaction } from '@/lib/db';
 import { assertBranchAccess, hasModulePermission } from '@/lib/auth/authorization';
 import type { SessionUser } from '@/lib/auth/types';
@@ -13,7 +14,8 @@ async function audit(c: Parameters<Parameters<typeof withTransaction>[0]>[0], u:
     await c.query('INSERT INTO audit_events(user_id,branch_id,action,new_value) VALUES($1,$2,$3,$4::jsonb)', [u.id, branch, action, JSON.stringify(value)]);
 }
 export async function receivingAction(u: SessionUser, b: Record<string, unknown>) {
-    await receivingAccess(u);
+    if (b.action === 'pos') await requireSystemRegistration(u);
+    else await receivingAccess(u);
     const id = z.string().uuid();
     if (b.action === 'create') {
         const x = z.object({ branchId: id, reference: z.string().trim().min(1).max(160), date: z.string().date(), total: z.number().int().min(1).max(1000), cost: z.number().min(0).max(999999999).nullable(), currency: z.enum(['MXN', 'USD', 'CNY']), notes: z.string().max(2000) }).parse(b);
@@ -37,7 +39,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             throw new Error('Recepción no encontrada.');
         await assertBranchAccess(u, s.branch_id);
         if (b.action === 'pos') {
-            await receivingAccess(u, true);
+            await requireSystemRegistration(u);
             if (s.status !== 'CLOSED')
                 throw new Error('Primero termina el conteo.');
             await c.query("UPDATE receiving_sessions SET status='POS_REGISTERED' WHERE id=$1", [sessionId]);
@@ -235,5 +237,5 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const cost = review ? await sql `SELECT cost,currency,notes FROM receiving_sessions WHERE id=${sessionId}::uuid` : [];
     const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text FROM receiving_documents d WHERE d.session_id=${sessionId}::uuid OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign)` : [];
     const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign ORDER BY created_at DESC` : [];
-    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER' };
+    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER', canRegisterSystem: await hasModulePermission(u,'REGISTRO_SISTEMA') };
 }

@@ -1,4 +1,5 @@
 "use client";
+import { useRegistrationAccess } from "../../registration-access";
 
 import type {AppRole} from '@/lib/auth/types';
 
@@ -10,11 +11,11 @@ const ch:Record<string,string>={MERCADO_LIBRE:'Mercado Libre',TIKTOK:'TikTok'};
 const ty:Record<string,string>={FULL:'Full',INDEPENDENT_SALE:'Venta independiente'};
 const statusLabels:Record<string,string>={DRAFT:'En captura',CLOSED:'Salida cerrada',PENDING_POS:'Pendiente de registrar',POS_REGISTERED:'Registrado en sistema',POS_CORRECTION_PENDING:'Corrección pendiente',POS_RECONCILED:'Registrado en sistema',CANCELLED:'Cancelada'};
 
-export default function ExitEditor({movement,lines,products,role}:{movement:ExitMovement;lines:ExitLine[];products:Product[];role:AppRole}){
+export default function ExitEditor({movement,lines,products}:{movement:ExitMovement;lines:ExitLine[];products:Product[];role:AppRole}){
   const total=lines.reduce((s,l)=>s+l.quantity,0);
   const isDraft=movement.status==='DRAFT';
   const posPending=movement.status==='POS_CORRECTION_PENDING'||(!isDraft&&!movement.pos_registered_at&&movement.status!=='CANCELLED');
-  const canRegisterPos=role==='MASTER'||role==='MANAGER';
+  const canRegisterPos=useRegistrationAccess();
 
   async function act(body:Record<string,unknown>,msg?:string){
     if(msg&&!confirm(msg))return;
@@ -54,7 +55,7 @@ export default function ExitEditor({movement,lines,products,role}:{movement:Exit
           :<>
             <p style={{color:'#667085',lineHeight:1.45}}>La captura ya está cerrada. Este paso corresponde únicamente al encargado de la sucursal.</p>
             <button className="primary" style={{width:'100%',padding:15,opacity:canRegisterPos?1:.45,cursor:canRegisterPos?'pointer':'not-allowed'}} disabled={!canRegisterPos} onClick={()=>act({action:'pos'},'¿Confirmas que esta salida ya fue registrada en el sistema?')}>Registrado en sistema</button>
-            {!canRegisterPos&&<small style={{display:'block',marginTop:10,color:'#667085',textAlign:'center'}}>Visible para consulta · Solo el encargado puede confirmarlo</small>}
+            {!canRegisterPos&&<small style={{display:'block',marginTop:10,color:'#667085',textAlign:'center'}}>Visible para consulta · Requiere permiso de Registro en sistema</small>}
           </>}
       </section>
     </div>;

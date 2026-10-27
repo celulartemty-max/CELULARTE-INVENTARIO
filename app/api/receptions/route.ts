@@ -1,3 +1,4 @@
+import { auditRoute } from '@/lib/audit/route';
 import { NextResponse } from "next/server";
 import { requireUser, assertBranchAccess } from "@/lib/auth/authorization";
 import { sql, withTransaction } from "@/lib/db";
@@ -63,7 +64,7 @@ async function removeLastEmptyBox(
     );
   });
 }
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   try {
     const u = await requireUser();
     const b = await req.json();
@@ -141,3 +142,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export const POST = auditRoute(handlePOST);

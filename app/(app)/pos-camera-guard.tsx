@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from "react";
 
-async function preparePhoto(file:File){
+export async function preparePhoto(file:File){
   if(!file.type.startsWith("image/"))throw new Error("Toma una fotografía válida.");
   if(file.size>15*1024*1024)throw new Error("La fotografía es demasiado grande. Intenta nuevamente.");
   const objectUrl=URL.createObjectURL(file);

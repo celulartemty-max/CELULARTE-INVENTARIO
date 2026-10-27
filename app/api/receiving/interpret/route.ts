@@ -1,3 +1,4 @@
+import { auditRoute } from '@/lib/audit/route';
 import { requireUser } from '@/lib/auth/authorization';
 import { withTransaction } from '@/lib/db';
 import { receivingAccess } from '@/lib/inventory/receiving';
@@ -5,7 +6,7 @@ import { readReceivingFile } from '@/lib/inventory/receiving-files';
 import { packingSchema } from '@/lib/inventory/receiving-validation';
 import * as XLSX from 'xlsx';
 export const maxDuration = 60;
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
     try {
         const u = await requireUser();
         await receivingAccess(u, true);
@@ -77,3 +78,5 @@ export async function POST(req: Request) {
         return Response.json({ error: e instanceof Error ? e.message : 'No se pudo interpretar. No se importó nada.' }, { status: 400 });
     }
 }
+
+export const POST = auditRoute(handlePOST);

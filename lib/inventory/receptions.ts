@@ -1,4 +1,5 @@
 import "server-only";
+import { requireSystemRegistration } from '@/lib/auth/special-permissions';
 import type { PoolClient } from "@neondatabase/serverless";
 import { sql, withTransaction } from "@/lib/db";
 import { assertBranchAccess } from "@/lib/auth/authorization";
@@ -353,6 +354,7 @@ export async function closeReception(user: SessionUser, id: string) {
   });
 }
 export async function registerPos(user: SessionUser, id: string) {
+  await requireSystemRegistration(user);
   return withTransaction(async (client) => {
     const m = await lockMovement(client, user, id);
     const correction = canRegisterPosCorrection(m.status, m.pos_registered_at);

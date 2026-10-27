@@ -12,3 +12,5 @@
   .appSidebar .profile small{color:#667085;opacity:1}
   .appSidebar .profile button{background:#111!important;color:#fff!important;border-radius:10px;width:100%}
 }
+
+.registrationDashboardNotice{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:18px 0;padding:16px 18px;border:1px solid #dbe6f6;border-radius:14px;background:#f3f7fe;color:#234d80;text-decoration:none}.registrationDashboardNotice b{display:block;font-size:14px}.registrationDashboardNotice small{display:block;margin-top:5px;font-size:12px;color:#6b809c}.registrationDashboardNotice:focus-visible{outline:3px solid #60a5fa;outline-offset:3px}

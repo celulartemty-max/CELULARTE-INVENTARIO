@@ -2,11 +2,11 @@
 
 type Box = { id: string; order_id: string; counted_at: string | null };
 type Props = {
-    sessionId: string; status: string; total: number; boxes: Box[]; foreignTotal: number; busy: boolean;
+    sessionId: string; status: string; total: number; boxes: Box[]; foreignTotal: number; busy: boolean; canRegisterSystem?: boolean;
     onClose: () => void; onPos: () => void; onReview: (orderId: string) => void;
 };
 
-export default function ReceivingClose({ sessionId, status, total, boxes, foreignTotal, busy, onClose, onPos, onReview }: Props) {
+export default function ReceivingClose({ sessionId, status, total, boxes, foreignTotal, busy, canRegisterSystem = false, onClose, onPos, onReview }: Props) {
     const identified = boxes.length + foreignTotal;
     const pending = boxes.filter(box => !box.counted_at);
     const counted = boxes.length - pending.length;
@@ -25,7 +25,7 @@ export default function ReceivingClose({ sessionId, status, total, boxes, foreig
         {draft && ready && <p className="receivingCloseNote">{boxes.length ? 'Todo listo. Puedes finalizar la recepción.' : 'Solo llegaron cajas de otras sucursales. Se archivará su llegada.'}</p>}
         {!draft && <p className="receivingCloseNote">{status === 'CLOSED' ? 'El conteo está cerrado. Falta confirmar el registro en tu sistema.' : status === 'ARCHIVED' ? 'Solo cajas de otras sucursales. No requiere registro de inventario aquí.' : status === 'POS_REGISTERED' ? 'Registro confirmado. Puedes descargar el Excel cuando lo necesites.' : 'Actualiza la página antes de continuar.'}</p>}
         <div className="receivingCloseActions"><a className="receivingCloseExport" href={`/api/receiving/export?id=${sessionId}`}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg>Descargar Excel</a>
-            {draft ? <button type="button" className="receivingCloseFinish" disabled={busy || !ready} onClick={() => { if (!busy && ready) onClose(); }}>{busy ? 'Guardando…' : '✓ Finalizar recepción'}</button> : status === 'CLOSED' && <button type="button" className="receivingCloseFinish" disabled={busy} onClick={() => { if (!busy) onPos(); }}>{busy ? 'Guardando…' : 'Confirmar registro en sistema'}</button>}
+            {draft ? <button type="button" className="receivingCloseFinish" disabled={busy || !ready} onClick={() => { if (!busy && ready) onClose(); }}>{busy ? 'Guardando…' : '✓ Finalizar recepción'}</button> : status === 'CLOSED' && canRegisterSystem && <button type="button" className="receivingCloseFinish" disabled={busy} onClick={() => { if (!busy) onPos(); }}>{busy ? 'Guardando…' : 'Confirmar registro en sistema'}</button>}
         </div>
         <small className="receivingCloseFootnote">Descargar el Excel no cierra ni modifica la recepción.</small>
     </section>;

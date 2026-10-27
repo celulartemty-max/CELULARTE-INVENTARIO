@@ -1,4 +1,5 @@
 "use client";
+import { useRegistrationAccess } from "../../registration-access";
 
 import {useState} from 'react';
 import type {AppRole} from '@/lib/auth/types';
@@ -35,7 +36,7 @@ export default function ReturnEditor({movement,lines,evidence,products,role}:{mo
   const hasDamaged=lines.some(l=>l.condition==='DAMAGED');
   const missingDamageEvidence=hasDamaged&&evidence.length===0;
   const posPending=movement.status==='POS_CORRECTION_PENDING'||(movement.status!=='DRAFT'&&!movement.pos_registered_at&&movement.status!=='CANCELLED');
-  const canRegisterPos=role==='MASTER'||role==='MANAGER';
+  const canRegisterPos=useRegistrationAccess();
 
   async function act(body:Record<string,unknown>,msg?:string){
     if(msg&&!confirm(msg))return false;
@@ -83,6 +84,6 @@ export default function ReturnEditor({movement,lines,evidence,products,role}:{mo
 
     {(hasDamaged||evidence.length>0)&&<section className="card pad" style={{width:'100%',maxWidth:'100%',minWidth:0,padding:22,borderRadius:18,overflow:'hidden',border:missingDamageEvidence?'1px solid #e6a23c':undefined}}><h2 style={{marginTop:0}}>Evidencia {hasDamaged&&<span style={{color:'#b54708'}}>*</span>}</h2><p style={{color:'#667085',marginTop:-6}}>{hasDamaged?'Obligatoria cuando hay producto dañado. Hasta 2 fotografías.':'Hasta 2 fotografías.'}</p>{[1,2].map(slot=>{const ev=evidence.find(x=>x.slot===slot),busy=uploadingSlot===slot;return <div className="line" key={slot} style={{minWidth:0,maxWidth:'100%',padding:14,marginBottom:10}}><div style={{minWidth:0,width:'100%'}}><b>Foto {slot}</b>{ev&&<img src={ev.fileUrl} alt={`Evidencia ${slot}`} style={{display:'block',marginTop:8,width:'100%',maxWidth:320,maxHeight:220,borderRadius:10,objectFit:'cover'}}/>}<div style={{marginTop:10,width:'100%'}}>{editable&&<><label style={{...pickerStyle,opacity:busy?.55:1,pointerEvents:busy?'none':'auto'}}>🖼️ {busy?'Guardando…':ev?'Cambiar imagen':'Elegir imagen'}<input type="file" accept="image/*" disabled={busy} onChange={e=>{const f=e.currentTarget.files?.[0];e.currentTarget.value='';attachEvidence(slot,f)}} style={{display:'none'}}/></label>{ev&&<button type="button" disabled={busy} onClick={()=>act({action:'deleteEvidence',slot})} style={{width:'100%',minHeight:42,marginTop:8,background:'#fff0f0',color:'#c62828'}}>Eliminar foto</button>}</>}</div></div></div>})}</section>}
 
-    {movement.status!=='DRAFT'&&<section className="card pad" style={{width:'100%',maxWidth:'100%',minWidth:0,padding:22,borderRadius:18,marginBottom:20,overflow:'hidden'}}><small style={{fontWeight:800,color:'#667085'}}>PASO FINAL</small><h2 style={{margin:'6px 0'}}>Registrar en sistema</h2>{movement.pos_registered_at&&!posPending?<p style={{marginBottom:0,color:'#08783f',fontWeight:700}}>✓ Esta devolución ya fue registrada en sistema.</p>:<><p style={{color:'#667085'}}>Este paso corresponde al encargado de la sucursal.</p><button className="primary" style={{width:'100%',padding:14,opacity:canRegisterPos?1:.45,cursor:canRegisterPos?'pointer':'not-allowed'}} disabled={!canRegisterPos} onClick={()=>act({action:'pos'},'¿Confirmas que esta devolución ya fue registrada en el sistema?')}>Registrado en sistema</button>{!canRegisterPos&&<small style={{display:'block',marginTop:9,color:'#667085',textAlign:'center'}}>Visible para consulta · Solo el encargado puede confirmarlo</small>}</>}</section>}
+    {movement.status!=='DRAFT'&&<section className="card pad" style={{width:'100%',maxWidth:'100%',minWidth:0,padding:22,borderRadius:18,marginBottom:20,overflow:'hidden'}}><small style={{fontWeight:800,color:'#667085'}}>PASO FINAL</small><h2 style={{margin:'6px 0'}}>Registrar en sistema</h2>{movement.pos_registered_at&&!posPending?<p style={{marginBottom:0,color:'#08783f',fontWeight:700}}>✓ Esta devolución ya fue registrada en sistema.</p>:<><p style={{color:'#667085'}}>Este paso corresponde al encargado de la sucursal.</p><button className="primary" style={{width:'100%',padding:14,opacity:canRegisterPos?1:.45,cursor:canRegisterPos?'pointer':'not-allowed'}} disabled={!canRegisterPos} onClick={()=>act({action:'pos'},'¿Confirmas que esta devolución ya fue registrada en el sistema?')}>Registrado en sistema</button>{!canRegisterPos&&<small style={{display:'block',marginTop:9,color:'#667085',textAlign:'center'}}>Visible para consulta · Requiere permiso de Registro en sistema</small>}</>}</section>}
   </div>;
 }
