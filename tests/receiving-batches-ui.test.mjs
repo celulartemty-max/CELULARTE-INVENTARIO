@@ -10,14 +10,14 @@ const requireModule=createRequire(import.meta.url),ts=requireModule('typescript'
 function load(path,react=React){
  const mod={exports:{}},source=readFileSync(new URL('../'+path,import.meta.url),'utf8');
  const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
- const req=name=>name==='react'?react:name==='next/navigation'?{useRouter:()=>({refresh(){}})}:name==='next/link'?{default:p=>React.createElement('a',p,p.children)}:name.startsWith('@/lib/inventory/')?load(name.replace('@/','')+'.ts',react):name.startsWith('./')?load(posix.join(posix.dirname(path),name+'.tsx'),react):requireModule(name);
+ const req=name=>name==='react'?react:name==='next/navigation'?{useRouter:()=>({refresh(){}})}:name==='next/link'?{default:p=>React.createElement('a',p,p.children)}:name.startsWith('@/lib/inventory/')?load(name.replace('@/','')+'.ts',react):name.startsWith('.')?load(posix.join(posix.dirname(path),name+'.tsx'),react):requireModule(name);
  class FixtureFormData {constructor(form){this.fields=form.fields}get(key){return this.fields[key]??null}}
  vm.runInNewContext('(function(require,module,exports){'+code+'})',{FormData:FixtureFormData,crypto:{randomUUID:()=> '01234567-1234-4000-8000-000000000001'},window:{scrollTo(){}},confirm:()=>true})(req,mod,mod.exports);
  return mod.exports;
 }
 function mount(path,name,props){
  const state=[];let cursor=0;
- const react={...React,useState:initial=>{const i=cursor++;if(!(i in state))state[i]=typeof initial==='function'?initial():initial;return [state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value}]},useRef:initial=>{const i=cursor++;if(!(i in state))state[i]={current:initial};return state[i]}};
+ const react={...React,useTransition:()=>[false,fn=>fn()],useState:initial=>{const i=cursor++;if(!(i in state))state[i]=typeof initial==='function'?initial():initial;return [state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value}]},useRef:initial=>{const i=cursor++;if(!(i in state))state[i]={current:initial};return state[i]}};
  const Component=load(path,react)[name];
  return ()=>{cursor=0;return Component(props)};
 }
@@ -71,6 +71,28 @@ test('order workspace filters boxes and files to the opened order; foreign has n
 });
 
 const gridModule=load(base+'packing-review.tsx');
+const destinationPath='app/(app)/entradas/pedidos/destino/[orderId]/destination-editor.tsx';
+function destinationFixture(review=true){return {review,canRecount:false,order:{id:'order',product:'Combo Case',reference:'JAPS-20',marking:'JAPS',shipping:'SEA',supplier:'LISA',destination:'Plaza del Audio',origin:'Treviño',total:4,physical:3,arrived:2,counted:0},boxes:[{id:'a',carton_number:'1',session_id:'s',received_at:'2026-10-27',counted_at:null,notes:''},{id:'b',carton_number:'2',session_id:'s',received_at:'2026-10-27',counted_at:null,notes:''},{id:'c',carton_number:'3',session_id:'s',received_at:null,counted_at:null,notes:''},{id:'d',carton_number:'4',session_id:null,received_at:null,counted_at:null,notes:''}],items:[],documents:[]}}
+test('destination shows only confirmed boxes for count and only physically registered boxes for arrival',()=>{
+ const render=mount(destinationPath,'default',{data:destinationFixture()});const tree=render();
+ assert.deepEqual(nodes(tree).filter(n=>n.props?.className==='receivingBoxButton').map(n=>n.props['aria-label']),['Caja 1','Caja 2']);
+ assert.equal(nodes(tree).filter(n=>n.props?.type==='checkbox').length,1);
+ assert.match(text(tree),/1 cajas todavía no llegan al origen/);assert.match(text(tree),/Plaza del Audio/);
+});
+test('mobile box switching retains previously visited forms instead of losing unsaved inputs',()=>{
+ const render=mount(destinationPath,'default',{data:destinationFixture()});let tree=render();
+ const forms=()=>nodes(tree).filter(n=>n.props?.box&&n.props?.onAdd);
+ assert.deepEqual(forms().map(n=>n.props.box.id),['a']);
+ nodes(tree).find(n=>n.props?.['aria-label']==='Caja 2').props.onClick();tree=render();
+ assert.deepEqual(forms().map(n=>n.props.box.id),['a','b']);
+ assert.equal(nodes(tree).find(n=>n.props?.hidden===true).props.children.props.box.id,'a');
+});
+test('operative destination workspace has no document preview, attachment or arrival confirmation controls',()=>{
+ const tree=mount(destinationPath,'default',{data:destinationFixture(false)})();
+ assert.ok(!nodes(tree).some(n=>n.props?.type==='file'||n.props?.type==='checkbox'));
+ assert.doesNotMatch(text(tree),/Leer packing list con IA|Confirmar cajas recibidas/);
+ assert.match(text(tree),/Un encargado debe confirmar/);
+});
 test('shipping marks are a closed list and only PER/JAPS map to internal destinations',()=>{
  const {SHIPPING_MARKS,shippingMarkSchema,destinationName}=load('lib/inventory/shipping-marks.ts');
  assert.equal(SHIPPING_MARKS.length,8);

@@ -1,5 +1,6 @@
 import { requireUser, assertBranchAccess } from '@/lib/auth/authorization';
-import { sql, withTransaction } from '@/lib/db';
+import { withTransaction } from '@/lib/db';
+import { destinationDocumentBranch } from '@/lib/inventory/receiving-destination';
 import { receivingAccess } from '@/lib/inventory/receiving';
 import { readReceivingFile } from '@/lib/inventory/receiving-files';
 import { z } from 'zod';
@@ -19,8 +20,9 @@ export async function POST(req: Request) {
             throw new Error('Selecciona pedido o recepción.');
         const { data, mime, filename } = await readReceivingFile(file);
         await withTransaction(async (c) => {
-            const owner = await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 AND NOT is_foreign FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId]);
-            const row = owner.rows[0];
+            const destination = f.get('destination') === 'true';
+            if (destination && !orderId) throw new Error('Selecciona el pedido de destino.');
+            const row = destination && orderId ? { branch_id: await destinationDocumentBranch(c, u, orderId), status: undefined } : (await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 AND NOT is_foreign FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId])).rows[0];
             if (!row)
                 throw new Error('No encontrado.');
             await assertBranchAccess(u, row.branch_id);
@@ -43,11 +45,19 @@ export async function GET(req: Request) {
         const u = await requireUser();
         await receivingAccess(u, true);
         const id = z.string().uuid().parse(new URL(req.url).searchParams.get('id'));
-        const r = await sql `SELECT COALESCE(o.branch_id,s.branch_id)::text branch_id FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=${id}::uuid AND (d.order_id IS NULL OR NOT o.is_foreign)`;
-        if (!r[0])
-            return new Response('No encontrado', { status: 404 });
-        await assertBranchAccess(u, String(r[0].branch_id));
-        return withTransaction(async (c) => { const q = await c.query('SELECT filename,mime,data FROM receiving_documents WHERE id=$1', [id]); const d = q.rows[0]; return new Response(new Uint8Array(d.data), { headers: { 'Content-Type': d.mime, 'Content-Disposition': `attachment; filename="${d.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } }); });
+        return withTransaction(async c => {
+            const row = (await c.query('SELECT d.order_id,COALESCE(o.branch_id,s.branch_id) branch_id,o.is_foreign FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=$1', [id])).rows[0];
+            if (!row) return new Response('No encontrado', { status: 404 });
+            if (new URL(req.url).searchParams.get('destination') === 'true') {
+                if (!row.order_id) throw new Error('Sin acceso.');
+                await destinationDocumentBranch(c, u, row.order_id);
+            } else {
+                if (row.is_foreign) throw new Error('Sin acceso.');
+                await assertBranchAccess(u, row.branch_id);
+            }
+            const d = (await c.query('SELECT filename,mime,data FROM receiving_documents WHERE id=$1', [id])).rows[0];
+            return new Response(new Uint8Array(d.data), { headers: { 'Content-Type': d.mime, 'Content-Disposition': `attachment; filename="${d.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
+        });
     }
     catch {
         return new Response('Sin acceso', { status: 403 });

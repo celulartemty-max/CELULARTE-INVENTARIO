@@ -1,6 +1,6 @@
 # Destination rollout status
 
-Database foundation tested on an isolated branch and applied to production with explicit user approval. Shipping Mark/provider editing is the first application release. Cross-branch workspace is not enabled yet.
+Database foundation tested on an isolated branch and applied to production with explicit user approval. Shipping Mark/provider editing was released first. This release adds the cross-branch arrival/count workspace.
 
 - Migration: migrations/20261027_receiving_destination.sql
 - Migration ID: 44f8dcbf-565d-4854-ad4b-0a53ebc9647a
@@ -18,6 +18,6 @@ DB tests: partial arrival of two JAPS cartons, duplicate confirmation rejected, 
 
 Implemented first release: order-wide Shipping Mark/provider editing and audit, closed Shipping Mark selectors, server-derived destination and is_foreign on new orders, protection against changing marks after captured counts. Existing is_foreign values remain intact until explicit order editing.
 
-Remaining before cross-branch feature release: per-user branch authorization on list/view/actions/documents/exports, destination arrival confirmation UI, count gating, branch-specific completion/POS handling, and end-to-end permission tests.
+Destination workspace: /entradas/pedidos/destino. List is scoped to authorized destination branches, including active temporary branch assignments. Mutations recheck module and destination permissions and lock the order to serialize origin mark edits. Manager/MASTER confirm selected physical arrivals; counts and manual lines require confirmation per carton. Original session IDs are never moved. Origin receipt closure does not block destination work. Packing import accepts only confirmed empty cartons, with no overwrite. Destination documents require reviewer access and at least one confirmed carton. Existing source document/export access remains origin-scoped; no new destination export is exposed.
 
-Do not claim the cross-branch feature is active. Migration approval was granted and completed. Preserve existing cartons, counts and documents.
+Completion is tracked by each carton's counted_at and displayed as counted/total in the destination list. This release does not register destination stock in POS and does not modify origin receipt status when destination count finishes. No automated tests insert confirmations or counts into production. Unit/regression tests cover branch/module gates, unconfirmed boxes, partial arrival, duplicate/unrelated IDs, real zero vs blank, completed-count protection, audited MASTER recount, documents, and mobile box switching without losing forms.
