@@ -8,7 +8,7 @@ async function ensureColorHexColumn(){
   if(await colorHexSupported())return;
   await sql`ALTER TABLE product_colors ADD COLUMN IF NOT EXISTS hex_color varchar(7)`;
 }
-export async function listProducts(){return sql`SELECT p.id::text,p.name,p.status::text,COALESCE(jsonb_agg(jsonb_build_object('id',c.id::text,'name',c.name,'status',c.status::text,'hex',to_jsonb(c)->>'hex_color') ORDER BY c.name) FILTER(WHERE c.id IS NOT NULL),'[]'::jsonb) colors FROM products p LEFT JOIN product_colors c ON c.product_id=p.id GROUP BY p.id ORDER BY p.name`;}
+export async function listProducts(){return sql`SELECT id::text,name,status::text FROM products ORDER BY name`;}
 export async function createProduct(u:SessionUser,name:string){master(u);const n=name.trim();if(!n)throw new Error("NAME_REQUIRED");return sql`INSERT INTO products(name) VALUES(${n}) RETURNING id::text`;}
 export async function renameProduct(u:SessionUser,id:string,name:string){master(u);const n=name.trim();if(!n)throw new Error("NAME_REQUIRED");await sql`UPDATE products SET name=${n},updated_at=now() WHERE id=${id}::uuid`;}
 export async function setProductStatus(u:SessionUser,id:string,status:"ACTIVE"|"INACTIVE"){master(u);await sql`UPDATE products SET status=${status}::record_status,updated_at=now() WHERE id=${id}::uuid`;}

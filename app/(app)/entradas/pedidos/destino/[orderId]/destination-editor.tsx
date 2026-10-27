@@ -1,5 +1,6 @@
 'use client';
 
+import PackingColorField from '../../packing-color-field';
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { z } from 'zod';
@@ -106,7 +107,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
         {addBox && <ReceivingModal title="Añadir modelo / color" busy={busy} onClose={() => setAddBox(null)}><form className="receivingCompactForm" onSubmit={async e => {
             e.preventDefault(); const f = new FormData(e.currentTarget);
             if (await save({ action: 'addItem', boxId: addBox, model: f.get('model'), color: f.get('color') })) setAddBox(null);
-        }}><label className="receivingField">Modelo<input name="model" maxLength={160} disabled={busy}/></label><label className="receivingField">Color (opcional)<input name="color" maxLength={160} disabled={busy}/></label><button className="receivingSave" disabled={busy}>Añadir al conteo</button></form>{error && <p role="alert" className="receivingError">{error}</p>}</ReceivingModal>}
+        }}><label className="receivingField">Modelo<input name="model" maxLength={160} disabled={busy}/></label><PackingColorField disabled={busy} colors={data.items.map(item=>item.color)}/><button className="receivingSave" disabled={busy}>Añadir al conteo</button></form>{error && <p role="alert" className="receivingError">{error}</p>}</ReceivingModal>}
     </>;
 }
 
