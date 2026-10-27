@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TransferReceiptList } from '../dashboard/transfer-receipt-notice';
 import { requireUser, getAuthorizedBranchIds } from "@/lib/auth/authorization";
 import { sql } from "@/lib/db";
 
@@ -17,7 +18,9 @@ function MovementIcon({kind}:{kind:IconKind}){const common={width:26,height:26,v
 const iconKind=(v:string):IconKind=>v==='EXIT'?'EXIT':v==='TRANSFER'?'TRANSFER':v.startsWith('RETURN_')?'RETURN':'RECEPTION';
 
 export default async function MovimientosPage({searchParams}:{searchParams:Promise<{view?:string}>}){
-  const user=await requireUser(); const branches=await getAuthorizedBranchIds(user); const sp=await searchParams;
+  const user=await requireUser(); const sp=await searchParams;
+  if(sp.view==='transfers-receive')return <TransferReceiptList user={user}/>;
+  const branches=await getAuthorizedBranchIds(user);
   const view:View=['receptions-closed','exits-registered','transfers-active'].includes(sp.view??'')?sp.view as View:'all';
   const allRows=branches===null?await sql`SELECT m.id,m.folio,m.created_at >= now() - interval '30 days' recent,m.movement_type::text type,CASE WHEN m.movement_type='TRANSFER' THEN t.status::text ELSE m.status::text END status,m.created_at,m.pos_registered_at,CASE WHEN m.movement_type='TRANSFER' THEN ob.name||' → '||db.name ELSE b.name END branch,u.name user_name,p.name product_name,r.expected_boxes FROM inventory_movements m JOIN branches b ON b.id=m.branch_id JOIN users u ON u.id=m.created_by LEFT JOIN receptions r ON r.movement_id=m.id LEFT JOIN products p ON p.id=r.product_id LEFT JOIN transfers t ON t.movement_id=m.id LEFT JOIN branches ob ON ob.id=t.origin_branch_id LEFT JOIN branches db ON db.id=t.destination_branch_id ORDER BY m.created_at DESC`:branches.length===0?[]:await sql`SELECT m.id,m.folio,m.created_at >= now() - interval '30 days' recent,m.movement_type::text type,CASE WHEN m.movement_type='TRANSFER' THEN t.status::text ELSE m.status::text END status,m.created_at,m.pos_registered_at,CASE WHEN m.movement_type='TRANSFER' THEN ob.name||' → '||db.name ELSE b.name END branch,u.name user_name,p.name product_name,r.expected_boxes FROM inventory_movements m JOIN branches b ON b.id=m.branch_id JOIN users u ON u.id=m.created_by LEFT JOIN receptions r ON r.movement_id=m.id LEFT JOIN products p ON p.id=r.product_id LEFT JOIN transfers t ON t.movement_id=m.id LEFT JOIN branches ob ON ob.id=t.origin_branch_id LEFT JOIN branches db ON db.id=t.destination_branch_id WHERE (m.movement_type<>'TRANSFER' AND m.branch_id=ANY(${branches}::uuid[])) OR (m.movement_type='TRANSFER' AND (t.origin_branch_id=ANY(${branches}::uuid[]) OR t.destination_branch_id=ANY(${branches}::uuid[]))) ORDER BY m.created_at DESC`;
   const rows=allRows.filter(r=>{const type=String(r.type),status=String(r.status??'');if(view==='receptions-closed')return type==='RECEPTION'&&status!=='DRAFT'&&Boolean(r.recent);if(view==='exits-registered')return type==='EXIT'&&r.pos_registered_at!=null&&Boolean(r.recent);if(view==='transfers-active')return type==='TRANSFER'&&!['COMPLETED','CANCELLED'].includes(status);return true});

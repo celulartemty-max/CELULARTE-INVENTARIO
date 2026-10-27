@@ -13,6 +13,7 @@ test('dashboard starts with greeting and indicators without the extra receiving 
     const queries = [], mod = { exports: {} };
     const mocks = {
         './registration-notice': { default: () => null },
+        './transfer-receipt-notice': { default: () => null },
         'next/link': { default: props => React.createElement('a', props, props.children) },
         '@/lib/auth/authorization': { requireUser: async () => ({ id: 'user', name: 'Alejandro', role: 'MASTER', primaryBranchId: null }), getAuthorizedBranchIds: async () => null },
         '@/lib/db': { sql: async parts => { queries.push(parts.join('?')); return []; } },

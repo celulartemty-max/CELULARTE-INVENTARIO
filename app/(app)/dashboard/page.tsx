@@ -1,4 +1,5 @@
 import RegistrationNotice from './registration-notice';
+import TransferReceiptNotice from './transfer-receipt-notice';
 import Link from "next/link";
 import { requireUser, getAuthorizedBranchIds } from "@/lib/auth/authorization";
 import { sql } from "@/lib/db";
@@ -30,6 +31,7 @@ export default async function Dashboard(){
   const firstName=user.name.split(/\s+/)[0]||user.name;
 
   return <div className="dashboardV2">
+    <TransferReceiptNotice/>
     <section className="dashTop">
       <div className="dashGreeting"><h1>Hola, {firstName}</h1><p>{branchName?`Sucursal ${String(branchName)}`:user.role==='MASTER'?'Acceso global':'Sucursal asignada'}</p></div>
       <div className="dateBadge">{badgeDateFmt.format(new Date())}</div>
