@@ -71,6 +71,31 @@ test('order workspace filters boxes and files to the opened order; foreign has n
 });
 
 const gridModule=load(base+'packing-review.tsx');
+const ReceiptCard=load('app/(app)/entradas/pedidos/receiving-receipt-card.tsx').default;
+const receiptFixture={id:'receipt-43',reference:'LUNES',arrival_date:'2026-10-25',total_boxes:43,status:'DRAFT',origin:'Treviño',arrived:43,counted:1,can_open:true,destinations:[{session_id:'receipt-43',order_id:'japs-order',product:'OTTER CLEAR',marking:'JAPS',shipping:'SEA',destination:'Plaza del Audio',boxes:5,arrived:2,counted:1,can_open:true}]};
+test('JAPS appears inside the original 43-box receipt in a native expandable section, never as another receipt',()=>{
+ const html=renderToStaticMarkup(React.createElement(ReceiptCard,{receipt:receiptFixture}));
+ assert.equal((html.match(/<article/g)||[]).length,1);assert.equal((html.match(/<details/g)||[]).length,1);
+ assert.match(html,/5 de estas 43 cajas/);assert.match(html,/Plaza del Audio · JAPS/);assert.match(html,/2 recibidas en destino · 1 contadas/);
+ assert.match(html,/<progress[^>]+max="43"[^>]+value="43"/);assert.doesNotMatch(html,/>48</);
+ assert.ok(html.indexOf('Plaza del Audio · JAPS')>html.indexOf('<details'));assert.ok(html.indexOf('japs-order')<html.indexOf('</article>'));
+ const beforeDetails=html.slice(0,html.indexOf('<details'));assert.ok(beforeDetails.lastIndexOf('<a ')<beforeDetails.lastIndexOf('</a>'));
+});
+test('destination-only user sees the shared receipt but cannot open its source or see origin count/status',()=>{
+ const html=renderToStaticMarkup(React.createElement(ReceiptCard,{receipt:{...receiptFixture,can_open:false,counted:null}}));
+ assert.doesNotMatch(html,/href="\/entradas\/pedidos\/receipt-43"|Cajas propias contadas|En captura/);
+ assert.match(html,/href="\/entradas\/pedidos\/destino\/japs-order"/);assert.match(html,/Cajas contadas en tu sucursal/);
+});
+test('origin-only user sees destination progress inline but no destination count link',()=>{
+ const html=renderToStaticMarkup(React.createElement(ReceiptCard,{receipt:{...receiptFixture,destinations:receiptFixture.destinations.map(d=>({...d,can_open:false}))}}));
+ assert.match(html,/href="\/entradas\/pedidos\/receipt-43"/);assert.doesNotMatch(html,/href="\/entradas\/pedidos\/destino\//);
+ assert.match(html,/Confirma su llegada en Plaza del Audio/);
+});
+test('same mark groups visually, while separate orders keep separate destinations and packing lists',()=>{
+ const html=renderToStaticMarkup(React.createElement(ReceiptCard,{receipt:{...receiptFixture,destinations:[...receiptFixture.destinations,{...receiptFixture.destinations[0],order_id:'second-order',product:'ANILLO',boxes:3}]}}));
+ assert.equal((html.match(/<h4>/g)||[]).length,1);assert.match(html,/8 de estas 43 cajas/);
+ assert.match(html,/destino\/japs-order/);assert.match(html,/destino\/second-order/);
+});
 const uploadProps={file:null,busy:false,attached:false,onChange(){},onInterpret(){},onAttach(){}};
 test('packing upload starts with one clear action, not a native file input or disabled action clutter',()=>{
  const tree=mount(base+'packing-upload.tsx','default',uploadProps)();

@@ -8,5 +8,5 @@ export const dynamic = 'force-dynamic';
 export default async function Page({ params }: { params: Promise<{ orderId: string }> }) {
     const { orderId } = await params;
     const data = await destinationView(await requireUser(), orderId);
-    return <main className="receivingOrders"><Link href="/entradas/pedidos/destino">← Pedidos por recibir</Link><DestinationEditor data={data}/></main>;
+    return <main className="receivingOrders"><Link href="/entradas/pedidos">← Recepciones</Link><DestinationEditor data={data}/></main>;
 }

@@ -99,3 +99,23 @@ test('incoming list scope filters destination IDs rather than original branch',a
     const f=fixture();await f.destinationOrders(manager);
     const q=f.queries[0];assert.ok(q.sql.includes('o.destination_branch_id=ANY($1::uuid[])'));assert.deepEqual(q.args[0],[DEST]);
 });
+test('receipt overview nests a destination into its original session without adding to the physical total',async()=>{
+    const queries=[];
+    const mod=moduleFrom('lib/inventory/receiving-overview.ts',{
+        'server-only':{},'@/lib/auth/authorization':{getAuthorizedBranchIds:async()=>[DEST]},'./receiving':{receivingAccess:async()=>{}},
+        '@/lib/db':{withTransaction:fn=>fn({query:async(sql,args)=>{
+            queries.push({sql,args});
+            return {rows:queries.length===1?[{id:SESSION,total_boxes:43,arrived:43,counted:null,can_open:false}]:[{session_id:SESSION,order_id:ORDER,boxes:5,can_open:true},{session_id:id(99),order_id:ORDER,boxes:2,can_open:true}]};
+        }})}
+    });
+    const rows=await mod.receivingOverview(manager);
+    assert.equal(rows.length,1);assert.equal(rows[0].total_boxes,43);assert.equal(rows[0].arrived,43);assert.equal(rows[0].destinations.length,1);assert.equal(rows[0].destinations[0].boxes,5);
+    assert.deepEqual(queries[0].args[0],[DEST]);assert.ok(queries[0].sql.includes('EXISTS('));
+    assert.match(queries[0].sql,/ELSE NULL END counted/);assert.match(queries[1].sql,/GROUP BY b.session_id,o.id/);
+    assert.ok(queries.every(q=>q.sql.includes('$1::uuid[] IS NULL')));assert.ok(queries.every(q=>!q.sql.includes('receiving_items')));
+});
+test('receipt overview refuses requests without receiving module permission before reading receipts',async()=>{
+    let queried=false;
+    const mod=moduleFrom('lib/inventory/receiving-overview.ts',{'server-only':{},'@/lib/auth/authorization':{getAuthorizedBranchIds:async()=>[]},'./receiving':{receivingAccess:async()=>{throw Error('Sin permiso')}},'@/lib/db':{withTransaction:()=>{queried=true}}});
+    await assert.rejects(mod.receivingOverview(manager),/Sin permiso/);assert.equal(queried,false);
+});
