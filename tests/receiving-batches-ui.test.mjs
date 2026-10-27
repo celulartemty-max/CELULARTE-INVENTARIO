@@ -71,6 +71,43 @@ test('order workspace filters boxes and files to the opened order; foreign has n
 });
 
 const gridModule=load(base+'packing-review.tsx');
+const CloseSummary=load(base+'receiving-close.tsx').default;
+const closeProps={sessionId:'receipt',status:'DRAFT',total:43,boxes:Array.from({length:35},(_,i)=>({id:'box-'+i,order_id:'own-order',counted_at:i===0?'2026-10-26':null})),foreignTotal:8,busy:false,onClose(){},onPos(){},onReview(){}};
+test('closure summary is visible without a dropdown and has an independent Excel download link',()=>{
+ const html=renderToStaticMarkup(React.createElement(CloseSummary,closeProps));
+ assert.match(html,/Resumen y cierre/);assert.doesNotMatch(html,/<details|Cerrar recepción \/ Descargar Excel/);
+ assert.match(html,/href="\/api\/receiving\/export\?id=receipt"/);assert.match(html,/Descargar el Excel no cierra ni modifica/);
+ assert.match(html,/>43<small> \/ 43<\/small>/);assert.match(html,/>1<small> \/ 35<\/small>/);
+ assert.match(html,/34 cajas de esta sucursal están pendientes/);assert.match(html,/8 cajas de otras sucursales/);
+});
+test('missing identification, unfinished counts and excess cartons block closure with exact explanations',()=>{
+ for(const props of [{...closeProps,total:45},{...closeProps,total:40},closeProps]){
+  let closed=false,reviewed;const tree=CloseSummary({...props,onClose:()=>closed=true,onReview:id=>reviewed=id});
+  const finish=nodes(tree).find(n=>n.props?.className==='receivingCloseFinish');assert.equal(finish.props.disabled,true);finish.props.onClick();assert.equal(closed,false);
+  nodes(tree).find(n=>n.type==='button'&&text(n)==='Revisar pendientes →').props.onClick();assert.equal(reviewed,'own-order');
+  if(props.total===45)assert.match(text(tree),/Falta identificar 2 cajas/);
+  if(props.total===40)assert.match(text(tree),/Hay 3 cajas de más/);
+ }
+});
+test('ready own cartons and foreign-only receipts can close without waiting for destination counts',()=>{
+ for(const props of [{...closeProps,boxes:closeProps.boxes.map(b=>({...b,counted_at:'2026-10-26'}))},{...closeProps,boxes:[],foreignTotal:43}]){
+  let closed=0;const tree=CloseSummary({...props,onClose:()=>closed++});const finish=nodes(tree).find(n=>n.props?.className==='receivingCloseFinish');
+  assert.equal(finish.props.disabled,false);assert.match(text(tree),/Listo para finalizar/);finish.props.onClick();assert.equal(closed,1);
+  assert.equal(nodes(tree).filter(n=>n.props?.className==='receivingClosePending').length,0);
+ }
+});
+test('busy closure cannot submit; closed state exposes only manual registration confirmation',()=>{
+ let pos=0,closed=0;
+ const busy=CloseSummary({...closeProps,boxes:[],foreignTotal:43,busy:true,onClose:()=>closed++});nodes(busy).find(n=>n.props?.className==='receivingCloseFinish').props.onClick();assert.equal(closed,0);
+ const tree=CloseSummary({...closeProps,status:'CLOSED',onPos:()=>pos++});assert.doesNotMatch(text(tree),/Finalizar recepción|Antes de finalizar/);
+ const button=nodes(tree).find(n=>n.props?.className==='receivingCloseFinish');assert.equal(text(button),'Confirmar registro en sistema');button.props.onClick();assert.equal(pos,1);
+});
+test('archived, registered and unknown states never expose repeat close or registration actions',()=>{
+ for(const status of ['ARCHIVED','POS_REGISTERED','UNKNOWN']){
+  const tree=CloseSummary({...closeProps,status});assert.equal(nodes(tree).filter(n=>n.props?.className==='receivingCloseFinish').length,0);
+  assert.equal(nodes(tree).filter(n=>n.props?.className==='receivingCloseExport').length,1);
+ }
+});
 const ReceiptCard=load('app/(app)/entradas/pedidos/receiving-receipt-card.tsx').default;
 const receiptFixture={id:'receipt-43',reference:'LUNES',arrival_date:'2026-10-25',total_boxes:43,status:'DRAFT',origin:'Treviño',arrived:43,counted:1,can_open:true,destinations:[{session_id:'receipt-43',order_id:'japs-order',product:'OTTER CLEAR',marking:'JAPS',shipping:'SEA',destination:'Plaza del Audio',boxes:5,arrived:2,counted:1,can_open:true}]};
 test('JAPS appears inside the original 43-box receipt in a native expandable section, never as another receipt',()=>{

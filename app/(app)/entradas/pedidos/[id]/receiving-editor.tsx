@@ -10,6 +10,7 @@ import PackingReview from './packing-review';
 import CountGrid from './count-grid';
 import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
 import ReceivingModal from './receiving-modal';
+import ReceivingClose from './receiving-close';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -165,9 +166,7 @@ export default function ReceivingEditor({ data, products }: {
  </div>
  </>}
  </>}
- {!packingOrder&&data.review && <details className="card pad"><summary>Cerrar recepción / Descargar Excel</summary><h2>Cierre de recepción</h2><p><a href={`/api/receiving/export?id=${s.id}`}>Descargar detalle por caja en Excel</a></p><p>El total físico incluye cajas propias y ajenas. Solo las propias requieren conteo y registro en sistema.</p>{draft ? <button disabled={busy} onClick={() => { if (confirm('¿Cerrar esta recepción? Debe estar registrado el total físico y terminado el conteo de las cajas de esta sucursal. Las ajenas quedan solo archivadas.'))
-        run(async () => { await act({ action: 'close' }); }); }}>Terminar recepción</button> : s.status === 'CLOSED' ? <button disabled={busy} onClick={() => { if (confirm('¿Confirmas que registraste esta recepción en el sistema?'))
-        run(async () => { await act({ action: 'pos' }); }); }}>Registrado en sistema</button> : <p>{s.status === 'ARCHIVED' ? '✓ Archivada. Solo cajas ajenas: no requiere registro de inventario.' : '✓ Registrada en sistema.'}</p>}</details>}
+ {!packingOrder&&data.review && <ReceivingClose sessionId={s.id} status={s.status} total={s.total_boxes} boxes={data.boxes} foreignTotal={foreignTotal} busy={busy} onReview={openOrder} onClose={() => { if (confirm('¿Finalizar esta recepción? El conteo quedará cerrado. Las cajas de otras sucursales seguirán su proceso por separado.')) run(async () => { await act({ action: 'close' }); }); }} onPos={() => { if (confirm('¿Confirmas que registraste esta recepción en el sistema?')) run(async () => { await act({ action: 'pos' }); }); }}/>} 
  {addingBox&&<ReceivingModal title={`Añadir modelo · Caja ${currentBoxes.find(b=>b.id===addingBox)?.carton_number||''}`} busy={busy} onClose={()=>setAddingBox(null)}><form className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{await act({action:'addItem',boxId:addingBox,model:f.get('model'),color:f.get('color')});setAddingBox(null)})}}><label className="receivingField">Modelo<input name="model" required maxLength={160} placeholder="Ej. SAM A36"/></label><label className="receivingField">Color (opcional)<select name="color"><option value="">Sin color</option>{Array.from(new Set(data.items.filter(item=>currentBoxes.some(box=>box.id===item.carton_id)).map(item=>item.color).filter(Boolean))).map(color=><option key={color} value={color}>{color}</option>)}</select></label><p className="receivingMuted">Se añadirá solo a esta caja, con la cantidad vacía.</p><button className="receivingSave" disabled={busy}>{busy?'Añadiendo…':'Añadir modelo'}</button><button type="button" className="receivingSecondary" disabled={busy} onClick={()=>setAddingBox(null)}>Cancelar</button></form></ReceivingModal>}
  </main>;
 }
