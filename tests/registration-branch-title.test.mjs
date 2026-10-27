@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import vm from 'node:vm';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+const require=createRequire(import.meta.url),ts=require('typescript');
+test('pending cards use the registration branch as the uppercase title and keep folios secondary',()=>{
+    const source=readFileSync(new URL('../app/(app)/registros/registration-queue.tsx',import.meta.url),'utf8');
+    const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+    const mod={exports:{}};
+    const mocks={react:{useRef:()=>({current:false}),useState:initial=>[initial,()=>{}],useTransition:()=>[false,()=>{}]},'next/navigation':{useRouter:()=>({refresh(){}})},'./registration-detail':{default:()=>null},'../entradas/pedidos/[id]/receiving-modal':{default:()=>null},'../pos-camera-guard':{},'../entradas/pedidos/receiving.css':{}};
+    vm.runInNewContext('(function(require,module,exports){'+code+'})',{Intl,Date})(name=>name in mocks?mocks[name]:require(name),mod,mod.exports);
+    const rows=[{id:'exit',kind:'EXIT',side:null,branch:'Plaza del Audio',reference:'SAL-1'},{id:'transfer',kind:'TRANSFER',side:'origin',branch:'Treviño',reference:'TRA-1'},{id:'transfer',kind:'TRANSFER',side:'destination',branch:'Plaza del Audio',reference:'TRA-1'}].map(row=>({...row,created_at:'2026-10-27T12:00:00Z',correction:false}));
+    const html=renderToStaticMarkup(React.createElement(mod.exports.default,{rows}));
+    assert.equal((html.match(/<h3>PLAZA DEL AUDIO<\/h3>/g)||[]).length,2);
+    assert.match(html,/<h3>TREVIÑO<\/h3>/);assert.doesNotMatch(html,/<h3>(SAL|TRA)-/);
+    assert.match(html,/Folio: SAL-1/);assert.match(html,/Origen/);assert.match(html,/Destino/);
+});
