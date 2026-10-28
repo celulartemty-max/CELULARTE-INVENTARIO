@@ -16,7 +16,7 @@ const transfer={id:'movement',folio:'TRA-1',origin:'Treviño',destination:'Plaza
 function editorFixture(overrides={},permission=true){
     const controls=[];
     const Editor=load('app/(app)/traspasos/[id]/transfer-editor.tsx',{
-        react:{useState:v=>[v,()=>{}]},'../../registration-access':{useRegistrationAccess:()=>permission},
+        react:{useState:v=>[v,()=>{}]},'../../registration-access':{useRegistrationAccess:()=>permission},'./transfer-receipt':{default:()=>null},
         '../../registros/registration-queue':{default:props=>{controls.push(props);return React.createElement('button',null,props.buttonLabel)}},
     }).default;
     const html=renderToStaticMarkup(React.createElement(Editor,{transfer:{...transfer,...overrides},lines:[],products:[],canOrigin:true,canDestination:true,role:'MASTER'}));
