@@ -23,7 +23,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
     if (b.action === 'create') {
         const x = z.object({ branchId: id, reference: z.string().trim().min(1).max(160), date: z.string().date(), total: z.number().int().min(1).max(1000), cost: z.number().min(0).max(999999999).nullable(), currency: z.enum(['MXN', 'USD', 'CNY']), notes: z.string().max(2000) }).parse(b);
         const carrier = z.string().trim().max(160).parse(b.carrier ?? ''), tracking = z.string().trim().max(160).parse(b.tracking ?? '');
-        await receivingAccess(u, true);
+        // ENTRADAS was checked above. Opening a receipt is intake, not approval.
+        // Keep the reviewer gate on packing, corrections, cancellation and close.
         await assertBranchAccess(u, x.branchId);
         return withTransaction(async (c) => {
             const branch = await c.query("SELECT 1 FROM branches WHERE id=$1 AND status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')", [x.branchId]);
