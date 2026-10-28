@@ -38,6 +38,12 @@ test('add action opens a separate dialog, and opening a row targets that order',
  const dialog=nodes(tree).find(n=>n.props?.title==='Agregar pedido');assert.ok(dialog);dialog.props.onClose();
  tree=render();assert.ok(!nodes(tree).some(n=>n.props?.title==='Agregar pedido'));nodes(tree).find(n=>n.type==='button'&&text(n)==='Abrir pedido').props.onClick();assert.equal(opened,'A');
 });
+test('mobile product name opens its order without horizontal scrolling, and stays disabled during a request',()=>{
+ let opened;const props={batches:[batch],pending:[],products,busy:false,draft:true,save:async()=>true,onOpen:id=>{opened=id}};
+ const render=mount(base+'batch-intake.tsx','default',props);const button=nodes(render()).find(n=>n.props?.className==='receivingOrderOpen');
+ assert.match(text(button),/Combo Case/);assert.match(text(button),/Ver pedido/);button.props.onClick();assert.equal(opened,'A');
+ const busy=mount(base+'batch-intake.tsx','default',{...props,busy:true});assert.equal(nodes(busy()).find(n=>n.props?.className==='receivingOrderOpen').props.disabled,true);
+});
 test('complete order auto-fills received cartons and submits a valid range without requiring a reference',async()=>{
  let payload,saved=false;const render=mount(base+'batch-intake.tsx','NewBatchForm',{products,busy:false,save:async value=>{payload=value;return true},onSaved:()=>{saved=true}});
  let tree=render();nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'20'}});tree=render();

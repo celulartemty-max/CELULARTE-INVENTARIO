@@ -13,6 +13,7 @@ import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
 import ReceivingModal from './receiving-modal';
 import ReceivingClose from './receiving-close';
 import PackingReset from './packing-reset';
+import OrderRemoval from './order-removal';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -35,6 +36,7 @@ type Item = {
     expected?: number | null;
 };
 type Data = {
+    removedOrders?: {id:string;created_at:string;product:string;marking:string;shipping:string;received:string;reason:string;actor:string|null}[];
     canRegisterSystem?: boolean;
     review: boolean;
     canRecount: boolean;
@@ -84,6 +86,7 @@ export default function ReceivingEditor({ data, products }: {
     const [attachmentOptions, setAttachmentOptions] = useState(false);
     const [addingBox, setAddingBox] = useState<string|null>(null);
     const [packingNotice,setPackingNotice] = useState('');
+    const [orderNotice,setOrderNotice] = useState('');
     const [countVersion,setCountVersion] = useState(0);
     const foreignTotal = data.foreignBoxes.length + data.foreign.reduce((n, r) => n + r.carton_count, 0);
 
@@ -116,12 +119,15 @@ export default function ReceivingEditor({ data, products }: {
     function editPacking(p: Packing) { setPacking(p); setRaw(JSON.stringify(p, null, 2)); }
     return <main className="receivingOrders"><header>{packingOrder?<><button className="receivingSecondary" disabled={busy} onClick={back}>← Todos los pedidos</button><h1>{currentBatch?.product||currentBoxes[0]?.product||currentForeign[0]?.product||'Pedido'}</h1><p>{currentBatch?.shipping||currentBoxes[0]?.shipping||currentForeign[0]?.shipping} · {currentBatch?.marking||currentBoxes[0]?.marking||currentForeign[0]?.marking} · {currentBatch?.received_here??currentBoxes.length+currentForeign.length} cajas en esta recepción{currentBatch&&' · '+currentBatch.remaining+' pendientes de llegar'}</p></>:<><Link href="/entradas/pedidos">← Recepciones</Link><h1>{s.reference}</h1><p>{s.total_boxes} cajas recibidas · <b>{data.boxes.length+foreignTotal} identificadas</b> · Faltan {Math.max(0,s.total_boxes-data.boxes.length-foreignTotal)}</p><progress aria-label="Cajas identificadas" value={data.boxes.length+foreignTotal} max={s.total_boxes}/></>}</header>
  {error && <div className="card pad" role="alert" style={{ color: '#b42318' }}>{error}</div>}
+ {orderNotice&&<p role="status">{orderNotice}</p>}
+ {packingOrder&&data.review&&draft&&<div className="actions"><OrderRemoval key={packingOrder} sessionId={s.id} orderId={packingOrder} busy={busy} onDone={received=>{setPackingOrder('');setActive(null);setAddingBox(null);setPacking(null);setRaw('');setFile(null);setPackingNotice('');setError('');setOrderNotice(`Pedido anulado. ${received} cajas quedaron pendientes de identificar de nuevo. El total recibido no cambió.`);router.refresh()}}/></div>}
  {!packingOrder&&<>
  {data.review && <section className="card pad receivingFreight"><div className="receivingFreightTop"><div><h2>Flete y comprobante</h2><p>{s.arrival_date} · {s.carrier||'Sin transportista'} · Guía: {s.tracking||'—'}</p></div><div className="receivingFreightAmount"><small>Monto del flete</small><strong>{data.cost?.cost != null ? new Intl.NumberFormat('es-MX',{style:'currency',currency:data.cost.currency}).format(Number(data.cost.cost)) : 'Sin monto'}</strong><span>{data.cost?.currency||'MXN'}</span></div></div>
  {draft&&<div className="receivingFreightUploads"><div className="receivingAttachmentPicker"><button type="button" className="receivingSecondary" aria-expanded={attachmentOptions} aria-controls="freight-attachment-options" disabled={busy} onClick={()=>setAttachmentOptions(v=>!v)}>📎 Adjuntar comprobante</button>{attachmentOptions&&<div id="freight-attachment-options" className="receivingAttachmentOptions" role="group" aria-label="Origen del comprobante">{([{title:'Cámara',icon:'📷',accept:'image/*',camera:true},{title:'Foto',icon:'🖼️',accept:'image/*',camera:false},{title:'Archivo',icon:'📄',accept:'.pdf,.png,.jpg,.jpeg',camera:false}]).map(option=><label className="receivingUploadChoice" key={option.title}><span>{option.icon} {option.title}</span><input aria-label={option.title} type="file" accept={option.accept} capture={option.camera?'environment':undefined} disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f){setAttachmentOptions(false);run(()=>upload(f,{sessionId:s.id}))}e.target.value=''}}/></label>)}<button type="button" className="receivingSecondary" onClick={()=>setAttachmentOptions(false)}>Cancelar</button></div>}</div><small>{busy?'Subiendo comprobante…':'Foto o PDF · hasta 2 MB'}</small></div>}
  {data.cost?.notes&&<p>{data.cost.notes}</p>}{data.documents.filter(d=>!d.order_id).map(d=><a className="receivingFreightFile" key={d.id} href={`/api/receiving/documents?id=${d.id}`}>📄 {d.filename} · Ver comprobante</a>)}</section>}
  {data.review?<BatchIntake batches={data.batches} pending={data.pending} products={products} busy={busy} draft={draft} save={saveBatch} onOpen={openOrder} error={error}/>:<section className="card pad"><h2>Pedidos</h2>{Array.from(new Map(data.boxes.map(b=>[b.order_id,b])).values()).map(b=><p key={b.order_id}><button onClick={()=>openOrder(b.order_id)}>{b.product} · {b.marking} · Abrir pedido</button></p>)}</section>}
  {data.foreign.length>0&&<details className="card pad"><summary>Registros ajenos anteriores</summary><ForeignCartons rows={data.foreign} editable={data.review&&draft} busy={busy} save={saveBatch} voidRecord={id=>run(async()=>{await act({action:'voidForeign',recordId:id})})}/></details>}
+ {data.review&&!!data.removedOrders?.length&&<details className="card pad"><summary>Pedidos anulados · historial ({data.removedOrders.length})</summary>{data.removedOrders.map(order=><article key={order.id}><p><b>{order.product}</b> · {order.marking} · {order.shipping} · {order.received} cajas</p><p>{order.reason}</p><small>{order.actor||'Usuario registrado'} · {new Date(order.created_at).toLocaleDateString('es-MX',{timeZone:'America/Monterrey'})}</small></article>)}</details>}
  </>}
  {packingOrder&&<>{data.review&&draft&&<details className="card pad"><summary>Editar datos del pedido</summary><form key={packingOrder+':'+currentBatch?.marking+':'+currentBatch?.supplier} className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{await act({action:'editOrder',orderId:packingOrder,marking:f.get('marking'),supplier:f.get('supplier')});setPacking(null);setActive(null)})}}><label className="receivingField">Shipping Mark<select name="marking" required defaultValue={currentBatch?.marking}>{SHIPPING_MARKS.map(mark=><option key={mark}>{mark}</option>)}</select></label><label className="receivingField">Proveedor (opcional)<input name="supplier" maxLength={160} defaultValue={currentBatch?.supplier||''}/></label><p className="receivingMuted">Se aplica a todas las cajas del pedido. No cambia ni borra cantidades contadas.</p><button className="receivingSave" disabled={busy}>Guardar datos del pedido</button></form></details>}{foreignOrder?<section className="card pad"><h2>Cajas ajenas · solo registro</h2><p>No requieren packing list ni conteo.</p><p>Números recibidos: {currentForeign.map(b=>b.carton_number).join(', ')||'—'}</p></section>:<>
  {data.review&&<div className="receivingTabs" aria-label="Trabajo del pedido"><button aria-pressed={detailTab==='packing'} onClick={()=>setDetailTab('packing')}>Packing list</button><button aria-pressed={detailTab==='count'} onClick={()=>setDetailTab('count')}>Contar piezas</button></div>}

@@ -99,7 +99,8 @@ test('source endpoint rejects operative, wrong branch, foreign order, unrelated 
             '@/lib/auth/authorization':{hasModulePermission:async()=>true,assertBranchAccess:async()=>{if(options.branchDenied)throw Error('Sin sucursal')}},
             './receiving-validation':load('lib/inventory/receiving-validation.ts'), './shipping-marks':{},
             './packing-reset':{resetPacking:async(...args)=>{resetArgs=args;return {ok:true}}},
-            './packing-column-order':load('lib/inventory/packing-column-order.ts')
+            './packing-column-order':load('lib/inventory/packing-column-order.ts'),
+            './receiving-order-removal':{}
         });
         const promise=f.receivingAction({...user,role:options.operative?'OPERATIVE':'MANAGER'},{action:'resetPacking',sessionId:SESSION,orderId:ORDER,destination:true});
         if(Object.keys(options).length){await assert.rejects(promise);assert.equal(resetArgs,undefined);}

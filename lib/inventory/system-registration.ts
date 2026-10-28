@@ -23,7 +23,7 @@ export const pendingSql = `WITH pending AS (
     SELECT o.id,'DESTINATION',NULL::text,o.reference,o.destination_branch_id,min(a.received_at),bool_or(r.carton_id IS NOT NULL)
     FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id JOIN receiving_destination_arrivals a ON a.carton_id=b.id AND a.branch_id=o.destination_branch_id
     LEFT JOIN receiving_destination_registrations r ON r.carton_id=b.id
-    WHERE r.carton_id IS NULL OR r.counted_at IS DISTINCT FROM b.counted_at
+    WHERE o.voided_at IS NULL AND (r.carton_id IS NULL OR r.counted_at IS DISTINCT FROM b.counted_at)
     GROUP BY o.id HAVING count(*) FILTER(WHERE b.counted_at IS NULL)=0
     UNION ALL
     SELECT m.id,m.movement_type::text,NULL::text,m.folio,m.branch_id,COALESCE(m.closed_at,m.created_at),m.status::text='POS_CORRECTION_PENDING'
@@ -87,7 +87,7 @@ export async function confirmRegistration(user: SessionUser, raw: unknown) {
     // Existing methods perform their own locked status, version and branch checks.
     if (key.kind === 'RECEIVING') return receivingAction(user, { action:'pos',sessionId:key.id });
     if (key.kind === 'DESTINATION') return withTransaction(async c => {
-        const order=(await c.query('SELECT id,destination_branch_id FROM receiving_orders WHERE id=$1 FOR UPDATE',[key.id])).rows[0];
+        const order=(await c.query('SELECT id,destination_branch_id FROM receiving_orders WHERE id=$1 AND voided_at IS NULL FOR UPDATE',[key.id])).rows[0];
         if(!order?.destination_branch_id)throw new Error('Pedido no disponible.');
         await requireSystemRegistration(user);
         await assertBranchAccess(user,order.destination_branch_id);

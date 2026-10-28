@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { shippingMarkSchema, destinationName } from './shipping-marks';
 import { resetPacking } from './packing-reset';
 import { savePackingColorOrder, appendPackingColor } from './packing-column-order';
+import { removeReceivingOrder } from './receiving-order-removal';
 export async function receivingAccess(u: SessionUser, review = false) {
     if (!await hasModulePermission(u, 'ENTRADAS') || (review && !isReviewer(u.role)))
         throw new Error('Sin permiso para esta acción.');
@@ -50,6 +51,10 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         }
         if (s.status !== 'DRAFT')
             throw new Error('La recepción ya está cerrada.');
+        if(b.action==='removeOrderPreview'||b.action==='removeOrder') {
+            await receivingAccess(u,true);
+            return removeReceivingOrder(c,u,sessionId,s.branch_id,b);
+        }
         if (b.action === 'batch') {
             await receivingAccess(u, true);
             const x = batchSchema.parse(b), numbers = parseCartonNumbers(x.numbers,x.total);
@@ -73,7 +78,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (b.action === 'packingResetPreview' || b.action === 'resetPacking') {
             await receivingAccess(u,true);
             const orderId=id.parse(b.orderId);
-            const order=(await c.query('SELECT branch_id,is_foreign FROM receiving_orders WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+            const order=(await c.query('SELECT branch_id,is_foreign FROM receiving_orders WHERE id=$1 AND voided_at IS NULL FOR UPDATE',[orderId])).rows[0];
             if (!order || order.branch_id !== s.branch_id || order.is_foreign || !(await c.query('SELECT 1 FROM receiving_cartons WHERE order_id=$1 AND session_id=$2 LIMIT 1',[orderId,sessionId])).rowCount)
                 throw new Error('Selecciona un pedido propio de esta recepción.');
             return resetPacking(c,u,orderId,s.branch_id,{...b,destination:false});
@@ -81,7 +86,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (b.action === 'packing') {
             await receivingAccess(u,true);
             const orderId = id.parse(b.orderId), p = packingSchema.parse(b.packing);
-            const order = (await c.query('SELECT branch_id,is_foreign,reference FROM receiving_orders WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+            const order = (await c.query('SELECT branch_id,is_foreign,reference FROM receiving_orders WHERE id=$1 AND voided_at IS NULL FOR UPDATE',[orderId])).rows[0];
             if (!order || order.branch_id !== s.branch_id || order.is_foreign) throw new Error('Selecciona un pedido propio de esta sucursal.');
             if (p.reference !== order.reference) throw new Error('Confirma que el packing list corresponde al pedido seleccionado.');
             const cartons = await c.query('SELECT id,carton_number,counted_at FROM receiving_cartons WHERE order_id=$1 ORDER BY id FOR UPDATE',[orderId]);
@@ -128,7 +133,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             await receivingAccess(u,true);
             const orderId=id.parse(b.orderId),marking=shippingMarkSchema.parse(b.marking),supplier=z.string().trim().max(160).parse(b.supplier??'');
             const before=(await c.query('SELECT * FROM receiving_orders WHERE id=$1 AND branch_id=$2 FOR UPDATE',[orderId,s.branch_id])).rows[0];
-            if(!before || !(await c.query('SELECT 1 FROM receiving_cartons WHERE order_id=$1 AND session_id=$2 LIMIT 1',[orderId,sessionId])).rowCount) throw new Error('Pedido no disponible en esta recepción.');
+            if(!before || before.voided_at || !(await c.query('SELECT 1 FROM receiving_cartons WHERE order_id=$1 AND session_id=$2 LIMIT 1',[orderId,sessionId])).rowCount) throw new Error('Pedido no disponible en esta recepción.');
             if(before.marking!==marking && (await c.query('SELECT 1 FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.order_id=$1 AND (l.counted IS NOT NULL OR b.counted_at IS NOT NULL) LIMIT 1',[orderId])).rowCount) throw new Error('El pedido ya tiene cantidades contadas. Requiere revisión antes de cambiar su Shipping Mark.');
             const destination=destinationName(marking),destinationId=destination?(await c.query("SELECT id FROM branches WHERE name=$1 AND status='ACTIVE'",[destination])).rows[0]?.id:null;
             if(destination&&!destinationId)throw new Error('Sucursal destino no disponible.');
@@ -144,7 +149,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const model = z.string().trim().max(160).parse(b.model).toUpperCase(), color = z.string().trim().max(160).parse(b.color).toUpperCase();
             if (!model && !color)
                 throw new Error('Indica modelo o color del artículo adicional.');
-            const order=(await c.query('SELECT o.id FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id WHERE b.id=$1 AND b.session_id=$2 AND NOT o.is_foreign FOR UPDATE OF o',[boxId,sessionId])).rows[0];
+            const order=(await c.query('SELECT o.id FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id WHERE b.id=$1 AND b.session_id=$2 AND NOT o.is_foreign AND o.voided_at IS NULL FOR UPDATE OF o',[boxId,sessionId])).rows[0];
             if(!order) throw new Error('Caja no disponible.');
             const box = await c.query('SELECT id FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND counted_at IS NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) FOR UPDATE', [boxId, sessionId]);
             if (!box.rowCount)
@@ -192,7 +197,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (b.action === 'arrive') {
             await receivingAccess(u, true);
             const ids = arrivalSchema.parse(b.boxIds);
-            const boxes = await c.query('SELECT b.id,b.session_id,o.branch_id FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.id=ANY($1::uuid[]) ORDER BY b.id FOR UPDATE OF b', [ids]);
+            await c.query('SELECT o.id FROM receiving_orders o WHERE o.id IN (SELECT order_id FROM receiving_cartons WHERE id=ANY($1::uuid[])) ORDER BY o.id FOR UPDATE',[ids]);
+            const boxes = await c.query('SELECT b.id,b.session_id,o.branch_id FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.id=ANY($1::uuid[]) AND o.voided_at IS NULL ORDER BY b.id FOR UPDATE OF b', [ids]);
             if (boxes.rowCount !== ids.length || boxes.rows.some(x => x.session_id || x.branch_id !== s.branch_id))
                 throw new Error('Caja ya recibida o de otra sucursal.');
             const n = await c.query('SELECT (SELECT count(*) FROM receiving_cartons WHERE session_id=$1)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n', [sessionId]);
@@ -247,10 +253,11 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const foreign = await sql `SELECT id::text,product,carton_count,shipping,marking,notes FROM receiving_foreign_cartons WHERE session_id=${sessionId}::uuid AND voided_at IS NULL ORDER BY created_at,id`;
     // Expected values never enter the operative response, including server component props.
     const items = review ? await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted,CASE WHEN b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) ORDER BY l.model,l.color` : await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) ORDER BY l.model,l.color`;
-    const pending = review ? await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,o.is_foreign,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
-    const batches = review ? await sql `SELECT o.id::text,o.reference,o.shipping,o.marking,o.supplier,o.is_foreign,COALESCE(p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid GROUP BY o.id,p.name HAVING count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid OR b.session_id IS NULL)>0 ORDER BY o.created_at DESC` : [];
+    const pending = review ? await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,o.is_foreign,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND o.voided_at IS NULL AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
+    const batches = review ? await sql `SELECT o.id::text,o.reference,o.shipping,o.marking,o.supplier,o.is_foreign,COALESCE(p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND o.voided_at IS NULL GROUP BY o.id,p.name HAVING count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid OR b.session_id IS NULL)>0 ORDER BY o.created_at DESC` : [];
     const cost = review ? await sql `SELECT cost,currency,notes FROM receiving_sessions WHERE id=${sessionId}::uuid` : [];
     const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text,EXISTS(SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_PACKING_RESET' AND a.new_value->>'orderId'=d.order_id::text AND (a.new_value->'documentIds') ? d.id::text) previous FROM receiving_documents d WHERE d.session_id=${sessionId}::uuid OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign)` : [];
-    const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign ORDER BY created_at DESC` : [];
-    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER', canRegisterSystem: await hasModulePermission(u,'REGISTRO_SISTEMA') };
+    const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign AND voided_at IS NULL ORDER BY created_at DESC` : [];
+    const removedOrders=review ? await sql `SELECT a.id::text,a.created_at::text,a.new_value->>'product' product,a.new_value->>'marking' marking,a.new_value->>'shipping' shipping,a.new_value->>'received' received,a.new_value->>'reason' reason,u.name actor FROM audit_events a LEFT JOIN users u ON u.id=a.user_id WHERE a.action='RECEIVING_ORDER_REMOVED' AND a.branch_id=${session.branch_id}::uuid AND a.new_value->>'sessionId'=${sessionId} ORDER BY a.created_at DESC,a.id DESC LIMIT 100` : [];
+    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canRecount: u.role === 'MASTER', canRegisterSystem: await hasModulePermission(u,'REGISTRO_SISTEMA') };
 }

@@ -18,6 +18,8 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .destinationArrivalSquare:has(input:checked){background:#e5efff;border-color:#2563eb;color:#1d4ed8}
 .destinationArrivalSquare input{width:18px;height:18px}
 .receivingOrders [hidden]{display:none!important}
+.receivingOrders button.receivingOrderOpen{display:grid;gap:5px;min-height:44px;padding:6px 0;border:0;background:transparent;box-shadow:none;color:inherit;text-align:left}
+.receivingOrders button.receivingOrderOpen span{font-size:12px;color:#2563ba;font-weight:600}
 .packingUploadCard{overflow:hidden}
 .packingUploadHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
 .packingUploadHeading h2{margin:0;font-size:21px;letter-spacing:-.4px;color:#162c4a}

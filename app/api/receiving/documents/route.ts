@@ -23,7 +23,7 @@ async function handlePOST(req: Request) {
         await withTransaction(async (c) => {
             const destination = f.get('destination') === 'true';
             if (destination && !orderId) throw new Error('Selecciona el pedido de destino.');
-            const row = destination && orderId ? { branch_id: await destinationDocumentBranch(c, u, orderId), status: undefined } : (await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 AND NOT is_foreign FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId])).rows[0];
+            const row = destination && orderId ? { branch_id: await destinationDocumentBranch(c, u, orderId), status: undefined } : (await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 AND NOT is_foreign AND voided_at IS NULL FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId])).rows[0];
             if (!row)
                 throw new Error('No encontrado.');
             await assertBranchAccess(u, row.branch_id);

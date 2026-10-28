@@ -18,7 +18,7 @@ export type DestinationView = { order: DestinationOrder; boxes: DestinationBox[]
 async function authorizedOrder(c: Client, u: SessionUser, orderId: string) {
     // Serialize all destination actions with origin edits to the same order.
     const order = (await c.query('SELECT * FROM receiving_orders WHERE id=$1 FOR UPDATE', [uuid.parse(orderId)])).rows[0];
-    if (!order || !order.destination_branch_id || order.destination_branch_id === order.branch_id)
+    if (!order || order.voided_at || !order.destination_branch_id || order.destination_branch_id === order.branch_id)
         throw new Error('Pedido no disponible para recepción en destino.');
     await assertBranchAccess(u, order.destination_branch_id);
     return order;
@@ -40,7 +40,7 @@ export async function destinationOrders(u: SessionUser): Promise<DestinationOrde
         dest.name destination,origin.name origin,count(b.id)::int total,count(b.session_id)::int physical,count(a.carton_id)::int arrived,count(b.counted_at)::int counted
         FROM receiving_orders o JOIN branches dest ON dest.id=o.destination_branch_id JOIN branches origin ON origin.id=o.branch_id
         JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id
-        WHERE o.destination_branch_id<>o.branch_id AND ($1::uuid[] IS NULL OR o.destination_branch_id=ANY($1::uuid[]))
+        WHERE o.voided_at IS NULL AND o.destination_branch_id<>o.branch_id AND ($1::uuid[] IS NULL OR o.destination_branch_id=ANY($1::uuid[]))
         GROUP BY o.id,p.name,dest.name,origin.name ORDER BY o.created_at DESC`, [ids])).rows);
 }
 export async function destinationView(u: SessionUser, orderId: string): Promise<DestinationView> {
