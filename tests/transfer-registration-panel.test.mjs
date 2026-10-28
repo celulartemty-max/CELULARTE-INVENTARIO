@@ -78,19 +78,19 @@ test('compact button opens fresh server detail with products, quantities, total 
     await walk(tree).find(n=>n.type==='button').props.onClick();
     assert.match(f.requests[0],/side=destination/);assert.match(f.requests[0],/kind=TRANSFER/);
     const html=renderToStaticMarkup(f.render());
-    for(const text of ['Entrada por traspaso','Plaza del Audio','AG GLASS','ANILLO','20 piezas','Agregar comprobante','Confirmar entrada registrada'])assert.ok(html.includes(text));
+    for(const text of ['Entrada por traspaso','Plaza del Audio','AG GLASS','ANILLO','20 piezas','se abrirá la cámara','Confirmar entrada registrada'])assert.ok(html.includes(text));
     assert.equal(f.requests.length,1);
 });
 test('stale or inaccessible transfer fails safely without opening a confirmation panel',async()=>{
     const f=queueFixture(false);await walk(f.render()).find(n=>n.type==='button').props.onClick();
     const html=renderToStaticMarkup(f.render());assert.match(html,/ya no está pendiente/);assert.doesNotMatch(html,/Ya lo registré/);
 });
-test('evidence uses one compact action, preserves a selected photo on picker cancellation and keeps acknowledgement',async()=>{
+test('registration has one confirmation action with rear camera capture, no separate evidence action or checkbox; cancellation does not register',async()=>{
     const f=queueFixture();await walk(f.render()).find(n=>n.type==='button').props.onClick();
     const input=walk(f.render()).find(n=>n.type==='input'&&n.props.type==='file');
-    assert.equal(input.props.accept,'image/*');assert.equal(input.props.capture,undefined);
-    input.props.onChange({target:{files:[{name:'evidence.jpg',type:'image/jpeg'}]}});
-    assert.match(renderToStaticMarkup(f.render()),/Comprobante listo/);
-    walk(f.render()).find(n=>n.type==='input'&&n.props.type==='file').props.onChange({target:{files:[]}});
-    const html=renderToStaticMarkup(f.render());assert.match(html,/Comprobante listo/);assert.match(html,/Ya lo registré en sistema/);
+    assert.equal(input.props.accept,'image/*');assert.equal(input.props.capture,'environment');
+    await input.props.onChange({currentTarget:{files:[],value:''}});
+    const html=renderToStaticMarkup(f.render());assert.doesNotMatch(html,/Agregar comprobante|Ya lo registré en sistema|type="checkbox"/);
+    assert.equal(f.requests.length,1);
+    assert.equal(walk(f.render()).find(n=>n.props?.className==='receivingSave').props.disabled,false);
 });
