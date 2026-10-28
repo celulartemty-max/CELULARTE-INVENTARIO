@@ -1,10 +1,11 @@
 'use client';
+import { orderedPackingColors } from '@/lib/inventory/packing-column-order';
 
 type CountItem = { id: string; model: string; color: string; counted: number | null; expected?: number | null };
 
-export default function CountGrid({ items, disabled, showReference, onAdd }: { items: CountItem[]; disabled: boolean; showReference: boolean; onAdd?: () => void }) {
+export default function CountGrid({ items, disabled, showReference, onAdd, colorOrder }: { items: CountItem[]; disabled: boolean; showReference: boolean; onAdd?: () => void; colorOrder?: string[] }) {
     const models = Array.from(new Set(items.map(item => item.model)));
-    const colors = Array.from(new Set(items.map(item => item.color)));
+    const colors = orderedPackingColors(items.map(item => item.color), colorOrder);
     return <div className="packingSheetScroll" role="region" aria-label="Tabla de conteo por modelo y color" tabIndex={0}>
         <table className="packingSheet"><caption>Conteo físico: modelos en filas y colores en columnas</caption>
             <thead><tr><th scope="col">Modelo / Color</th>{colors.map(color => <th scope="col" key={color}>{color || 'Sin color'}</th>)}</tr></thead>

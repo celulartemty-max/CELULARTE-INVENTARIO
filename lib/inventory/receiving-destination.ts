@@ -6,10 +6,11 @@ import type { SessionUser } from '@/lib/auth/types';
 import { receivingAccess } from './receiving';
 import { isReviewer, packingSchema } from './receiving-validation';
 import { resetPacking } from './packing-reset';
+import { savePackingColorOrder, appendPackingColor } from './packing-column-order';
 
 const uuid = z.string().uuid();
 type Client = Parameters<Parameters<typeof withTransaction>[0]>[0];
-export type DestinationOrder = { id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number };
+export type DestinationOrder = { id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number; color_order?: string[] };
 export type DestinationBox = { id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
 export type DestinationItem = { id: string; carton_id: string; model: string; color: string; counted: number | null; expected: number | null };
 export type DestinationView = { order: DestinationOrder; boxes: DestinationBox[]; items: DestinationItem[]; documents: { id: string; filename: string; previous?: boolean }[]; review: boolean; canRecount: boolean };
@@ -46,7 +47,7 @@ export async function destinationView(u: SessionUser, orderId: string): Promise<
     await receivingAccess(u);
     return withTransaction(async c => {
         const o = await authorizedOrder(c, u, orderId);
-        const order = (await c.query(`SELECT o.id::text,o.reference,COALESCE(p.name,o.product_label,'Sin producto') product,o.marking,o.supplier,o.shipping,
+        const order = (await c.query(`SELECT o.id::text,o.reference,o.color_order,COALESCE(p.name,o.product_label,'Sin producto') product,o.marking,o.supplier,o.shipping,
             dest.name destination,origin.name origin,count(b.id)::int total,count(b.session_id)::int physical,count(a.carton_id)::int arrived,count(b.counted_at)::int counted
             FROM receiving_orders o JOIN branches dest ON dest.id=o.destination_branch_id JOIN branches origin ON origin.id=o.branch_id
             JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id
@@ -106,6 +107,7 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
                     throw new Error(`La caja ${box.number} ya tiene contenido. No se mezclará ni sobrescribirá.`);
                 await c.query(`INSERT INTO receiving_items(carton_id,model,color,expected) SELECT $1,upper(item->>'model'),upper(item->>'color'),(item->>'expected')::int FROM jsonb_array_elements($2::jsonb) item`, [b.id, JSON.stringify(box.items)]);
             }
+            await savePackingColorOrder(c,o.id,p);
             await audit(c, u, branch, 'RECEIVING_DESTINATION_PACKING', { orderId: o.id, boxIds: [...used] });
             return { ok: true };
         }
@@ -128,6 +130,7 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
             const color = z.string().trim().max(160).parse(body.color).toUpperCase();
             if (!model && !color) throw new Error('Indica el modelo o color.');
             if ((await c.query('SELECT count(*)::int n FROM receiving_items WHERE carton_id=$1', [boxId])).rows[0].n >= 500) throw new Error('Máximo 500 combinaciones por caja.');
+            await appendPackingColor(c,o.id,color);
             await c.query('INSERT INTO receiving_items(carton_id,model,color) VALUES($1,$2,$3)', [boxId, model, color]);
             await audit(c, u, branch, 'RECEIVING_DESTINATION_UNLISTED', { orderId: o.id, boxId, model, color });
             return { ok: true };

@@ -33,6 +33,7 @@ export const foreignCartonSchema = z.object({
     notes: z.string().trim().max(2000).default('')
 });
 export const packingSchema = z.object({
+    colors: z.array(text).max(500).optional(),
     reference: text, warnings: z.array(z.string().max(500)).max(100),
     boxes: z.array(z.object({ number: text.min(1), items: z.array(z.object({
             model: text, color: text, expected: z.number().int().min(0).max(1000000).nullable()

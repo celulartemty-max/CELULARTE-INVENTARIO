@@ -7,6 +7,7 @@ import { arrivalSchema, countSchema, isReviewer, packingSchema, foreignCartonSch
 import { z } from 'zod';
 import { shippingMarkSchema, destinationName } from './shipping-marks';
 import { resetPacking } from './packing-reset';
+import { savePackingColorOrder, appendPackingColor } from './packing-column-order';
 export async function receivingAccess(u: SessionUser, review = false) {
     if (!await hasModulePermission(u, 'ENTRADAS') || (review && !isReviewer(u.role)))
         throw new Error('Sin permiso para esta acción.');
@@ -96,6 +97,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
                 if (carton.counted_at || lines.rowCount) throw new Error(`La caja ${box.number} ya tiene contenido o conteo. No se sobrescribirá ni mezclará.`);
                 await c.query("INSERT INTO receiving_items(carton_id,model,color,expected) SELECT $1,upper(item->>'model'),upper(item->>'color'),(item->>'expected')::int FROM jsonb_array_elements($2::jsonb) item",[carton.id,JSON.stringify(box.items)]);
             }
+            await savePackingColorOrder(c,orderId,p);
             await audit(c,u,s.branch_id,'RECEIVING_BATCH_PACKING_APPROVED',{sessionId,orderId,boxes:p.boxes.map(x=>x.number),documentReference:b.documentReference??null});
             return {orderId};
         }
@@ -142,9 +144,12 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const model = z.string().trim().max(160).parse(b.model).toUpperCase(), color = z.string().trim().max(160).parse(b.color).toUpperCase();
             if (!model && !color)
                 throw new Error('Indica modelo o color del artículo adicional.');
+            const order=(await c.query('SELECT o.id FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id WHERE b.id=$1 AND b.session_id=$2 AND NOT o.is_foreign FOR UPDATE OF o',[boxId,sessionId])).rows[0];
+            if(!order) throw new Error('Caja no disponible.');
             const box = await c.query('SELECT id FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND counted_at IS NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign) FOR UPDATE', [boxId, sessionId]);
             if (!box.rowCount)
                 throw new Error('Caja no disponible.');
+            await appendPackingColor(c,order.id,color);
             await c.query('INSERT INTO receiving_items(carton_id,model,color) VALUES($1,$2,$3)', [boxId, model, color]);
             await audit(c, u, s.branch_id, 'RECEIVING_UNLISTED_ITEM', { sessionId, boxId, model, color });
             return { ok: true };
@@ -180,6 +185,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
               SELECT boxes.id,upper(item->>'model'),upper(item->>'color'),(item->>'expected')::int
               FROM jsonb_array_elements($2::jsonb) box JOIN boxes ON boxes.carton_number=box->>'number'
               CROSS JOIN LATERAL jsonb_array_elements(box->'items') item`, [orderId, JSON.stringify(p.boxes)]);
+            await savePackingColorOrder(c,orderId,p);
             await audit(c, u, s.branch_id, 'RECEIVING_ORDER_APPROVED', { orderId, sessionId, boxes: p.boxes.length });
             return { orderId };
         }
@@ -236,7 +242,7 @@ export async function receivingView(u: SessionUser, sessionId: string) {
         throw new Error('No encontrada');
     await assertBranchAccess(u, String(session.branch_id));
     const review = isReviewer(u.role);
-    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,COALESCE(b.marking,o.marking) marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND NOT o.is_foreign ORDER BY o.reference,b.carton_number`;
+    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.color_order,COALESCE(b.marking,o.marking) marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND NOT o.is_foreign ORDER BY o.reference,b.carton_number`;
     const foreignBoxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND o.is_foreign ORDER BY o.reference,b.carton_number`;
     const foreign = await sql `SELECT id::text,product,carton_count,shipping,marking,notes FROM receiving_foreign_cartons WHERE session_id=${sessionId}::uuid AND voided_at IS NULL ORDER BY created_at,id`;
     // Expected values never enter the operative response, including server component props.

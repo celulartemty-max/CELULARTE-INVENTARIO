@@ -2,6 +2,7 @@ import { requireUser } from '@/lib/auth/authorization';
 import { receivingView, receivingAccess } from '@/lib/inventory/receiving';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
+import { addPackingCountSheet } from '@/lib/inventory/packing-sheet-export';
 export async function GET(req: Request) {
     try {
         const u = await requireUser();
@@ -41,6 +42,7 @@ export async function GET(req: Request) {
         s.getRow(1).font = { bold: true };
         s.views = [{ state: 'frozen', ySplit: 1 }];
         s.autoFilter = 'A1:J1';
+        addPackingCountSheet(w,data.boxes.map(box=>({id:String(box.id),reference:String(box.reference),product:String(box.product),carton_number:String(box.carton_number),color_order:Array.isArray(box.color_order)?box.color_order.map(String):[]})),data.items.map(item=>({carton_id:String(item.carton_id),model:String(item.model),color:String(item.color),counted:item.counted===null?null:Number(item.counted)})));
         return new Response(new Uint8Array(await w.xlsx.writeBuffer()), { headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="Recepcion-detalle-cajas.xlsx"', 'Cache-Control': 'private, no-store' } });
     }
     catch {

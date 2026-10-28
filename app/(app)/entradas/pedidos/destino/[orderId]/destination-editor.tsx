@@ -106,7 +106,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
         </section>}
         {arrived.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
             <div className="receivingCartonSquares">{arrived.map(b => <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-pressed={shown === b.id} aria-label={`Caja ${b.carton_number}${b.counted_at ? ', terminada' : ''}`} onClick={() => { setVisited(v => [...new Set([...v, shown ?? '', b.id])]); setActiveBox(b.id); }}>{b.carton_number}{b.counted_at ? ' ✓' : ''}</button>)}</div>
-            {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} busy={busy} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
+            {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} colorOrder={order.color_order} busy={busy} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
         </section>}
         {addBox && <ReceivingModal title="Añadir modelo / color" busy={busy} onClose={() => setAddBox(null)}><form className="receivingCompactForm" onSubmit={async e => {
             e.preventDefault(); const f = new FormData(e.currentTarget);
@@ -115,7 +115,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
     </>;
 }
 
-function DestinationCount({ box, items, busy, review, canRecount, save, onAdd }: { box: DestinationBox; items: DestinationItem[]; busy: boolean; review: boolean; canRecount: boolean; save: Save; onAdd: () => void }) {
+function DestinationCount({ box, items, busy, review, canRecount, save, onAdd, colorOrder }: { box: DestinationBox; items: DestinationItem[]; busy: boolean; review: boolean; canRecount: boolean; save: Save; onAdd: () => void; colorOrder?: string[] }) {
     const formRef = useRef<HTMLFormElement>(null);
     async function submit(finish: boolean) {
         const form = formRef.current;
@@ -125,7 +125,7 @@ function DestinationCount({ box, items, busy, review, canRecount, save, onAdd }:
         await save({ action: finish ? 'count' : 'saveCount', boxId: box.id, lines, notes: fields.get('notes') });
     }
     return <form ref={formRef} className="receivingCompactForm" onSubmit={e => { e.preventDefault(); void submit(true); }}><h3>Caja {box.carton_number}{box.counted_at ? ' · Conteo terminado ✓' : ''}</h3>
-        <CountGrid items={items} disabled={busy || Boolean(box.counted_at)} showReference={review && Boolean(box.counted_at)} onAdd={box.counted_at ? undefined : onAdd}/>
+        <CountGrid items={items} colorOrder={colorOrder} disabled={busy || Boolean(box.counted_at)} showReference={review && Boolean(box.counted_at)} onAdd={box.counted_at ? undefined : onAdd}/>
         {!items.length && <p>Agrega un packing list o utiliza “Añadir modelo” para empezar.</p>}
         <label className="receivingField">Observaciones<textarea name="notes" maxLength={2000} defaultValue={box.notes} disabled={busy || Boolean(box.counted_at)}/></label>
         {!box.counted_at ? <div className="actions"><button type="button" disabled={busy || !items.length} onClick={() => submit(false)}>Guardar avance</button><button className="receivingSave" disabled={busy || !items.length}>Terminar conteo de esta caja</button></div> : canRecount && <button type="button" disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se guardarán las cantidades anteriores en auditoría y se reiniciará esta caja.')) void save({ action: 'reopenBox', boxId: box.id }); }}>Autorizar reconteo</button>}

@@ -35,13 +35,13 @@ test('preview is read-only, includes whole-order impact, numeric box order and a
     const f=fixture(),p=await preview(f);
     assert.deepEqual(Array.from(p.boxes),['2','10']);assert.equal(p.lines,1);assert.equal(p.documents[0],'packing-equivocado.xlsx');assert.equal(p.blocked,'');
     assert.equal(f.queries.some(q=>/^(INSERT|UPDATE|DELETE)/.test(q.sql)),false);
-    assert.ok(f.queries[0].sql.includes('FOR UPDATE OF b'));assert.ok(f.queries[1].sql.includes('FOR UPDATE OF l'));
+    assert.ok(f.queries.some(q=>q.sql.includes('FOR UPDATE OF b')));assert.ok(f.queries.some(q=>q.sql.includes('FOR UPDATE OF l')));
 });
 test('reset snapshots old lines and archive IDs, deletes only selected order contents, never cartons or originals',async()=>{
     const f=fixture();await confirm(f,await preview(f));
     assert.equal(f.audits.length,1);assert.equal(f.audits[0].orderId,ORDER);assert.equal(f.audits[0].reason,'Packing equivocado');
     assert.equal(f.audits[0].previous[0].expected,50);assert.equal(f.audits[0].previous[0].counted,null);assert.equal(f.audits[0].documentIds[0],DOC);
-    const mutations=f.queries.filter(q=>/^(INSERT|UPDATE|DELETE)/.test(q.sql));assert.equal(mutations.length,2);
+    const mutations=f.queries.filter(q=>/^(INSERT|UPDATE|DELETE)/.test(q.sql));assert.equal(mutations.length,3);
     assert.match(mutations[1].sql,/DELETE FROM receiving_items.*WHERE order_id=\$1/);assert.equal(mutations[1].args[0],ORDER);
     assert.doesNotMatch(mutations.map(q=>q.sql).join(' '),/DELETE FROM receiving_(cartons|documents|sessions|orders)/);
 });
@@ -98,7 +98,8 @@ test('source endpoint rejects operative, wrong branch, foreign order, unrelated 
             'server-only':{},'@/lib/db':{withTransaction:fn=>fn(c)},'@/lib/auth/special-permissions':{},
             '@/lib/auth/authorization':{hasModulePermission:async()=>true,assertBranchAccess:async()=>{if(options.branchDenied)throw Error('Sin sucursal')}},
             './receiving-validation':load('lib/inventory/receiving-validation.ts'), './shipping-marks':{},
-            './packing-reset':{resetPacking:async(...args)=>{resetArgs=args;return {ok:true}}}
+            './packing-reset':{resetPacking:async(...args)=>{resetArgs=args;return {ok:true}}},
+            './packing-column-order':load('lib/inventory/packing-column-order.ts')
         });
         const promise=f.receivingAction({...user,role:options.operative?'OPERATIVE':'MANAGER'},{action:'resetPacking',sessionId:SESSION,orderId:ORDER,destination:true});
         if(Object.keys(options).length){await assert.rejects(promise);assert.equal(resetArgs,undefined);}

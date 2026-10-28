@@ -3,14 +3,15 @@
 import { useState } from 'react';
 import type { z } from 'zod';
 import type { packingSchema } from '@/lib/inventory/receiving-validation';
+import { orderedPackingColors } from '@/lib/inventory/packing-column-order';
 
 type Packing = z.infer<typeof packingSchema>;
 type PackingBox = Packing['boxes'][number];
 
 // Keep original line indexes: a grid must never sum or merge duplicate readings.
-export function boxGrid(box: PackingBox) {
+export function boxGrid(box: PackingBox, colorOrder: string[] = []) {
     const models = Array.from(new Set(box.items.map(item => item.model)));
-    const colors = Array.from(new Set(box.items.map(item => item.color)));
+    const colors = orderedPackingColors(box.items.map(item => item.color), colorOrder);
     const cells = new Map<string, number[]>();
     box.items.forEach((item, index) => {
         const key = JSON.stringify([item.model, item.color]);
@@ -31,8 +32,8 @@ export default function PackingReview({ packing, busy, onChange }: {
     const index = visible.includes(selected) ? selected : (visible[0] ?? -1);
     const box = packing.boxes[index];
     const position = visible.indexOf(index);
-    const grid = box ? boxGrid(box) : null;
-    const availableColors = Array.from(new Set(packing.boxes.flatMap(value => value.items.map(item => item.color)).filter(Boolean)));
+    const grid = box ? boxGrid(box, packing.colors) : null;
+    const availableColors = orderedPackingColors(packing.boxes.flatMap(value => value.items.map(item => item.color)).filter(Boolean), packing.colors);
     const missing = box?.items.filter(item => item.expected === null).length ?? 0;
     const total = box?.items.reduce((sum, item) => sum + (item.expected ?? 0), 0) ?? 0;
 

@@ -9,6 +9,7 @@ type Client = Parameters<Parameters<typeof withTransaction>[0]>[0];
 // The caller must lock and authorize the order before entering this function.
 // Carton locks also serialize this operation with source count/add-item actions.
 export async function resetPacking(c: Client, u: SessionUser, orderId: string, branchId: string, body: Record<string, unknown>) {
+    const previousColorOrder=(await c.query('SELECT color_order FROM receiving_orders WHERE id=$1',[orderId])).rows[0]?.color_order ?? [];
     const boxes = (await c.query(`SELECT b.id,b.carton_number,b.counted_at,b.session_id,s.status session_status
         FROM receiving_cartons b LEFT JOIN receiving_sessions s ON s.id=b.session_id
         WHERE b.order_id=$1 ORDER BY b.id FOR UPDATE OF b`, [orderId])).rows;
@@ -23,7 +24,7 @@ export async function resetPacking(c: Client, u: SessionUser, orderId: string, b
     const blocked = registered || sourceClosed ? 'Este pedido ya tiene una recepción cerrada o un registro en sistema. Requiere una corrección supervisada; no se puede reiniciar.'
         : boxes.some(b => b.counted_at) || items.some(l => l.counted !== null)
             ? 'Este pedido ya tiene cantidades contadas, incluso avances guardados. No se borrarán. Solicita una corrección supervisada.' : '';
-    const revision = createHash('sha256').update(JSON.stringify({ boxes, items, documents, registered, sourceClosed })).digest('hex');
+    const revision = createHash('sha256').update(JSON.stringify({ boxes, items, documents, registered, sourceClosed, previousColorOrder })).digest('hex');
     const preview = { revision, boxes: boxes.map(b => b.carton_number).sort((a,b) => a.localeCompare(b,'es',{numeric:true})), lines: items.length, documents: documents.map(d => d.filename), blocked };
     if (body.action === 'packingResetPreview') return preview;
     if (blocked) throw new Error(blocked);
@@ -33,7 +34,8 @@ export async function resetPacking(c: Client, u: SessionUser, orderId: string, b
     // Keep originals downloadable. This event marks their IDs as historical;
     // the complete previous item snapshot is retained before removing live rows.
     await c.query(`INSERT INTO audit_events(user_id,branch_id,action,new_value) VALUES($1,$2,'RECEIVING_PACKING_RESET',$3::jsonb)`,
-        [u.id,branchId,JSON.stringify({ orderId, reason, destination: body.destination === true, documentIds: documents.map(d => d.id), documents, previous: items, boxes: preview.boxes })]);
+        [u.id,branchId,JSON.stringify({ orderId, reason, destination: body.destination === true, documentIds: documents.map(d => d.id), documents, previous: items, boxes: preview.boxes, previousColorOrder })]);
     await c.query('DELETE FROM receiving_items WHERE carton_id IN (SELECT id FROM receiving_cartons WHERE order_id=$1)',[orderId]);
+    await c.query("UPDATE receiving_orders SET color_order='{}'::text[] WHERE id=$1",[orderId]);
     return { ok: true };
 }
