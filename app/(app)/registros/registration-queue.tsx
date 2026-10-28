@@ -2,7 +2,7 @@
 import { useRef,useState,useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { RegistrationPending } from '@/lib/inventory/system-registration';
-import RegistrationDetail,{registrationQuantities,type RegistrationDetailData} from './registration-detail';
+import RegistrationDetail,{registrationQuantities,registrationConfirmLabel,type RegistrationDetailData} from './registration-detail';
 import ReceivingModal from '../entradas/pedidos/[id]/receiving-modal';
 import { preparePhoto } from '../pos-camera-guard';
 import '../entradas/pedidos/receiving.css';
@@ -40,11 +40,11 @@ export default function RegistrationQueue({rows,compact=false,buttonLabel='Ver d
         {!compact&&<div className="registrationList">{visible.map(r=><article className="registrationCard" key={`${r.kind}:${r.id}:${r.side}`}><div><span className="registrationType">{labels[r.kind]}{r.side?` · ${r.side==='origin'?'Origen':'Destino'}`:''}{r.correction?' · Corrección':''}</span><h3>{r.branch.toLocaleUpperCase('es-MX')}</h3><p>Folio: {r.reference}</p><small>{new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'medium'}).format(new Date(r.created_at))}</small></div><button className="registrationPrimary" disabled={disabled} onClick={()=>open(r)}>Ver detalle y registrar →</button></article>)}</div>}
         {!compact&&!visible.length&&<p className="registrationEmpty">✓ No hay registros pendientes{filter?' de este tipo':''}.</p>}
         {compact&&visible.map(r=><button type="button" className="registrationPrimary" style={{width:'100%'}} key={`${r.kind}:${r.id}:${r.side}`} disabled={disabled} onClick={()=>open(r)}>{busy?'Abriendo…':buttonLabel}</button>)}
-        {detail&&<ReceivingModal title="Confirmar registro en sistema" busy={disabled} onClose={()=>{setDetail(null);setError('')}}><RegistrationDetail detail={detail}/>
-            {detail.row.kind!=='RECEIVING'&&detail.row.kind!=='DESTINATION'&&<label className="receivingField">Foto del registro en sistema<input type="file" accept="image/*" capture="environment" disabled={disabled} onChange={e=>setPhoto(e.target.files?.[0]??null)}/>{photo&&<small>{photo.name}</small>}</label>}
-            <label className="registrationConfirm"><input type="checkbox" checked={confirmed} disabled={disabled} onChange={e=>setConfirmed(e.target.checked)}/>Ya registré estas cantidades en el sistema de esta sucursal.</label>
+        {detail&&<ReceivingModal className="registrationModal" title={detail.row.branch.toLocaleUpperCase('es-MX')} busy={disabled} onClose={()=>{setDetail(null);setError('')}}><RegistrationDetail detail={detail}/>
+            {detail.row.kind!=='RECEIVING'&&detail.row.kind!=='DESTINATION'&&<label className="registrationEvidence"><span>{photo?'✓ Comprobante listo · Cambiar':'＋ Agregar comprobante'}</span><input aria-label="Foto del registro en sistema" type="file" accept="image/*" disabled={disabled} onChange={e=>{const selected=e.target.files?.[0];if(selected)setPhoto(selected)}}/></label>}
+            <label className="registrationConfirm"><input type="checkbox" checked={confirmed} disabled={disabled} onChange={e=>setConfirmed(e.target.checked)}/>Ya lo registré en sistema.</label>
             {error&&<p role="alert" className="receivingError">{error}</p>}
-            <button className="receivingSave" disabled={disabled||!confirmed||!registrationQuantities(detail.lines).complete||(detail.row.kind!=='RECEIVING'&&detail.row.kind!=='DESTINATION'&&!photo)} onClick={save}>{disabled?'Guardando…':'Confirmar registro'}</button><p className="receivingMuted">Esto guarda tu confirmación; no envía movimientos automáticamente.</p>
+            <button className="receivingSave" disabled={disabled||!confirmed||!registrationQuantities(detail.lines).complete||(detail.row.kind!=='RECEIVING'&&detail.row.kind!=='DESTINATION'&&!photo)} onClick={save}>{disabled?'Guardando…':registrationConfirmLabel(detail.row)}</button>
         </ReceivingModal>}
     </>;
 }

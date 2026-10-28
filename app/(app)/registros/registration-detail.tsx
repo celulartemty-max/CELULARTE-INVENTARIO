@@ -14,16 +14,27 @@ export function registrationQuantities(lines:RegistrationLine[]){
     return {complete,total:complete?lines.reduce((sum,line)=>sum+line.quantity!,0):null};
 }
 
+export function registrationSubtitle(row:Pick<RegistrationPending,'kind'|'side'|'correction'>){
+    const text=registrationInstruction(row).replace('Registrar una ','').toLocaleLowerCase('es-MX');
+    return text.charAt(0).toLocaleUpperCase('es-MX')+text.slice(1);
+}
+export function registrationConfirmLabel(row:Pick<RegistrationPending,'kind'|'side'|'correction'>){
+    if(row.correction)return 'Confirmar corrección registrada';
+    if(row.kind==='EXIT'||(row.kind==='TRANSFER'&&row.side==='origin'))return 'Confirmar salida registrada';
+    if(row.kind.startsWith('RETURN_'))return 'Confirmar devolución registrada';
+    return 'Confirmar entrada registrada';
+}
+
 export default function RegistrationDetail({detail}:{detail:RegistrationDetailData}){
     const {row,lines}=detail,{complete,total}=registrationQuantities(lines);
     const fmt=(n:number)=>n.toLocaleString('es-MX');
     return <section className="registrationInstructions" aria-label="Qué registrar en sistema">
-        <div className="registrationMovement"><span>QUÉ VAS A REGISTRAR</span><h3>{registrationInstruction(row)}</h3><p>En <b>{row.branch}</b></p><small>Folio: {row.reference}</small>
-            {row.correction&&<p className="registrationCorrection">Corrección de un registro anterior. Estas son las cantidades finales: no dupliques el movimiento.</p>}
-        </div>
-        <div className="registrationQuantitySummary"><span>Total a registrar</span><strong>{total===null?'Por completar':`${fmt(total)} piezas`}</strong></div>
-        <p className="registrationInstructionsNote">Registra estos productos y cantidades en el sistema de la sucursal. Después adjunta la evidencia cuando se solicite y confirma abajo.</p>
-        <ul className="registrationItems" aria-label="Productos y cantidades a registrar">{lines.map((line,index)=><li key={index} className="registrationItem"><div className="registrationItemIdentity"><b>{line.product||'Producto sin nombre'}</b>{line.model&&<small>Modelo: {line.model}</small>}{line.color&&<small>Color: {line.color}</small>}{line.box&&<small>Caja {line.box}</small>}{line.condition==='DAMAGED'&&<small className="registrationDamaged">Dañado · registrar por separado</small>}</div><div className="registrationItemQuantity"><strong>{typeof line.quantity==='number'&&Number.isFinite(line.quantity)?fmt(line.quantity):'Sin cantidad'}</strong><span>piezas</span></div></li>)}</ul>
-        {!complete&&<p role="alert" className="receivingError">Faltan cantidades para mostrar un resumen completo. Revisa el movimiento antes de confirmar.</p>}
+        <p className="registrationSubtitle">{registrationSubtitle(row)}</p>
+        {row.correction&&<p className="registrationCorrection">Corrección: cantidades finales; no dupliques el movimiento.</p>}
+        <div className="registrationItemsHeading"><span>Producto</span><span>Piezas</span></div>
+        <ul className="registrationItems" aria-label="Productos y cantidades a registrar">{lines.map((line,index)=><li key={index} className="registrationItem"><div className="registrationItemIdentity"><b>{line.product||'Producto sin nombre'}</b>{[line.model,line.color,line.box?`Caja ${line.box}`:''].filter(Boolean).length>0&&<small>{[line.model,line.color,line.box?`Caja ${line.box}`:''].filter(Boolean).join(' · ')}</small>}{line.condition==='DAMAGED'&&<small className="registrationDamaged">Dañado · registrar por separado</small>}</div><strong className="registrationItemQuantity">{typeof line.quantity==='number'&&Number.isFinite(line.quantity)?fmt(line.quantity):'Sin cantidad'}</strong></li>)}</ul>
+        <div className="registrationQuantitySummary"><span>Total</span><strong>{total===null?'Por completar':`${fmt(total)} piezas`}</strong></div>
+        <details className="registrationMore"><summary>Ver detalles</summary><p>{row.branch}</p><p>Folio: {row.reference}</p><p>La confirmación no envía movimientos automáticamente al sistema.</p></details>
+        {!complete&&<p role="alert" className="receivingError">Faltan cantidades. Revisa el movimiento antes de confirmar.</p>}
     </section>;
 }

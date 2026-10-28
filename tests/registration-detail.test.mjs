@@ -10,7 +10,7 @@ const source=readFileSync(new URL('../app/(app)/registros/registration-detail.ts
 const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const mod={exports:{}};
 vm.runInNewContext('(function(require,module,exports){'+code+'})',{})(require,mod,mod.exports);
-const {default:Detail,registrationInstruction:instruction,registrationQuantities:quantities}=mod.exports;
+const {default:Detail,registrationInstruction:instruction,registrationQuantities:quantities,registrationConfirmLabel:confirmLabel}=mod.exports;
 const row={kind:'EXIT',side:null,correction:false,branch:'Plaza del Audio',reference:'SAL-FIXTURE'};
 test('instructions distinguish receipt, exit, return and both transfer sides',()=>{
     for(const kind of ['RECEIVING','DESTINATION','RECEPTION'])assert.equal(instruction({...row,kind}),'Registrar una ENTRADA');
@@ -21,8 +21,18 @@ test('instructions distinguish receipt, exit, return and both transfer sides',()
 });
 test('confirmation displays operation, branch, real per-product amounts and total without a wide table',()=>{
     const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row,lines:[{product:'AG GLASS',quantity:15},{product:'ANILLO USO RUDO',quantity:20}]}}));
-    for(const text of ['Registrar una SALIDA','Plaza del Audio','AG GLASS','ANILLO USO RUDO','35 piezas'])assert.ok(html.includes(text));
+    for(const text of ['Salida','Plaza del Audio','AG GLASS','ANILLO USO RUDO','35 piezas'])assert.ok(html.includes(text));
     assert.match(html,/>15<\/strong>/);assert.match(html,/>20<\/strong>/);assert.doesNotMatch(html,/<table/);
+    assert.doesNotMatch(html,/QUÉ VAS A REGISTRAR|Total a registrar|registrationMovement/);
+    assert.match(html,/<summary>Ver detalles<\/summary>/);
+});
+test('confirmation labels explain entry, exit, return and correction without repeating long instructions',()=>{
+    assert.equal(confirmLabel(row),'Confirmar salida registrada');
+    assert.equal(confirmLabel({...row,kind:'TRANSFER',side:'origin'}),'Confirmar salida registrada');
+    assert.equal(confirmLabel({...row,kind:'TRANSFER',side:'destination'}),'Confirmar entrada registrada');
+    assert.equal(confirmLabel({...row,kind:'RECEIVING'}),'Confirmar entrada registrada');
+    assert.equal(confirmLabel({...row,kind:'RETURN_ML'}),'Confirmar devolución registrada');
+    assert.equal(confirmLabel({...row,correction:true}),'Confirmar corrección registrada');
 });
 test('model, colour, carton and damage status stay visible when captured',()=>{
     const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row,lines:[{product:'FUNDA',model:'SAM A06',color:'AZUL',box:'2',condition:'DAMAGED',quantity:0}]}}));
