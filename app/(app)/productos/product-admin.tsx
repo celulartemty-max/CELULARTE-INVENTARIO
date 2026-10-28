@@ -5,6 +5,10 @@ export type ProductAdminRow={id:string;name:string;status:string};
 
 export default function ProductAdmin({initial,canEdit=false}:{initial:ProductAdminRow[];canEdit?:boolean}){
   const [editingProduct,setEditingProduct]=useState<string|null>(null);
+  const [search,setSearch]=useState('');
+  const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').trim();
+  const activeProducts=initial.filter(p=>p.status==='ACTIVE');
+  const visibleProducts=activeProducts.filter(p=>normalize(p.name).includes(normalize(search)));
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   async function act(body:Record<string,unknown>){
     if(busy)return;
@@ -21,16 +25,20 @@ export default function ProductAdmin({initial,canEdit=false}:{initial:ProductAdm
       <button disabled={busy}>Agregar producto</button>
     </form>
     {error&&<p role="alert">{error}</p>}
-    {initial.filter(p=>p.status==='ACTIVE').map(p=><article className="productRow productEditorRow" key={p.id}>
+    <div className="productSearch"><label htmlFor="product-search">Buscar producto</label><input id="product-search" type="search" placeholder="Escribe el nombre…" value={search} onChange={e=>setSearch(e.target.value)}/><small role="status">{visibleProducts.length} de {activeProducts.length} productos</small></div>
+    <div role="list" aria-label="Productos activos">
+    {visibleProducts.map(p=><article role="listitem" className="productRow productEditorRow" key={p.id}>
       <div className="productTitleRow">
         {canEdit&&editingProduct===p.id?
           <form className="renameForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'renameProduct',id:p.id,name:f.get('name')})}}>
             <input name="name" aria-label="Nombre del producto" defaultValue={p.name} required autoFocus disabled={busy}/>
             <button className="saveButton" disabled={busy}><span aria-hidden="true">✓</span> {busy?'Guardando…':'Guardar'}</button><button type="button" className="ghostButton" disabled={busy} onClick={()=>setEditingProduct(null)}>Cancelar</button>
           </form>:
-          <><div className="productName"><b>{p.name}</b><small>ACTIVO</small></div>{canEdit&&<div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" className="editButton" disabled={busy} onClick={()=>setEditingProduct(p.id)}>Editar producto</button><button type="button" className="ghostButton" style={{color:'#b42318'}} disabled={busy} aria-label={`Eliminar ${p.name} del catálogo activo`} onClick={()=>{if(confirm(`¿Eliminar “${p.name}” del catálogo activo? Se conservará en el historial de recepciones y movimientos. Podrás restaurarlo después.`))return act({action:'productStatus',id:p.id,status:'INACTIVE'})}}>Eliminar</button></div>}</>}
+          <><div className="productName"><b>{p.name}</b></div>{canEdit&&<div className="productListActions"><button type="button" className="editButton" aria-label={`Editar ${p.name}`} disabled={busy} onClick={()=>setEditingProduct(p.id)}>Editar</button><button type="button" className="ghostButton" style={{color:'#b42318'}} disabled={busy} aria-label={`Eliminar ${p.name} del catálogo activo`} onClick={()=>{if(confirm(`¿Eliminar “${p.name}” del catálogo activo? Se conservará en el historial de recepciones y movimientos. Podrás restaurarlo después.`))return act({action:'productStatus',id:p.id,status:'INACTIVE'})}}>Eliminar</button></div>}</>}
       </div>
     </article>)}
+    </div>
+    {activeProducts.length>0&&visibleProducts.length===0&&<p>No se encontraron productos con ese nombre.</p>}
     {!initial.some(p=>p.status==='ACTIVE')&&<p>No hay productos activos.</p>}
     {initial.some(p=>p.status==='INACTIVE')&&<details style={{marginTop:20}}><summary>Productos eliminados del catálogo ({initial.filter(p=>p.status==='INACTIVE').length})</summary><p>Se conservan para mantener el historial. No están disponibles para capturas nuevas.</p>{initial.filter(p=>p.status==='INACTIVE').map(p=><article className="productRow productEditorRow" key={p.id}><div className="productTitleRow"><div className="productName"><b>{p.name}</b><small>DADO DE BAJA</small></div>{canEdit&&<button type="button" className="ghostButton" disabled={busy} onClick={()=>{if(confirm(`¿Restaurar “${p.name}” al catálogo activo?`))return act({action:'productStatus',id:p.id,status:'ACTIVE'})}}>Restaurar producto</button>}</div></article>)}</details>}
   </section>

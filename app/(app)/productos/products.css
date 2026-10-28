@@ -1,0 +1,15 @@
+.productAdmin{min-width:0}
+.productAdmin .productCreate{margin-bottom:24px}
+.productSearch{display:grid;gap:8px;margin-bottom:12px}
+.productSearch label{font-size:14px;font-weight:600;color:#344563}
+.productSearch input{width:100%;min-width:0;box-sizing:border-box}
+.productSearch small{color:#65728a;font-size:12px}
+.productAdmin .productEditorRow{padding:12px 0;margin:0;border-bottom:1px solid #e8ecf2}
+.productAdmin .productTitleRow{display:flex!important;align-items:center;justify-content:space-between;gap:12px;flex-wrap:nowrap}
+.productAdmin .productName{min-width:0;flex:1;overflow-wrap:anywhere}
+.productAdmin .productName b{font-size:14px;line-height:1.4}
+.productListActions{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.productAdmin .productListActions button{min-height:44px;padding:8px;font-size:12px;border-radius:10px;margin:0}
+.productAdmin .renameForm{display:flex;flex-wrap:wrap;gap:8px;width:100%;min-width:0}
+.productAdmin .renameForm input{flex:1 1 100%;min-width:0;width:100%;box-sizing:border-box}
+@media(min-width:640px){.productAdmin .productName b{font-size:16px}.productAdmin .productListActions button{padding:8px 12px;font-size:14px}}

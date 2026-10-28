@@ -38,6 +38,16 @@ test('collaborators cannot delete or restore, and failed updates show errors ins
 test('an empty active catalogue remains usable for new entries and restoring archived products',()=>{
     const f=mount({products:[initial[1]]});assert.match(words(f.render()),/No hay productos activos/);assert.match(words(f.render()),/Agregar producto/);assert.match(words(f.render()),/Restaurar producto/);
 });
+test('compact product list searches immediately without case or accent sensitivity',()=>{
+    const f=mount({products:[{id:'1',name:'MICÁ PREMIUM',status:'ACTIVE'},{id:'2',name:'ANILLO',status:'ACTIVE'},initial[1]]});
+    let tree=f.render();assert.equal(nodes(tree).filter(n=>n.props?.role==='listitem').length,2);
+    nodes(tree).find(n=>n.props?.id==='product-search').props.onChange({target:{value:' mica '}});
+    tree=f.render();const rows=nodes(tree).filter(n=>n.props?.role==='listitem');assert.equal(rows.length,1);assert.match(words(rows[0]),/MICÁ PREMIUM/);assert.doesNotMatch(words(rows[0]),/ACTIVO/);assert.match(words(tree),/1 de 2 productos/);assert.equal(f.requests.length,0);
+    nodes(tree).find(n=>n.props?.id==='product-search').props.onChange({target:{value:'no existe'}});
+    assert.match(words(f.render()),/No se encontraron productos/);
+    nodes(f.render()).find(n=>n.props?.id==='product-search').props.onChange({target:{value:''}});
+    assert.equal(nodes(f.render()).filter(n=>n.props?.role==='listitem').length,2);
+});
 test('server uses a status update, never physical deletion, and denies non-master callers before SQL',async()=>{
     const queries=[];const f=load('lib/inventory/products.ts',{'server-only':{},'@/lib/auth/authorization':{},'@/lib/db':{sql:async(parts,...values)=>{queries.push({sql:parts.join('?'),values});return[]}}});
     for(const role of ['OPERATIVE','MANAGER'])await assert.rejects(f.setProductStatus({role},'product','INACTIVE'),/MASTER_REQUIRED/);

@@ -39,7 +39,7 @@ test('page respects module permission instead of master role and exposes edit co
         let listed=false;const Admin=()=>null;
         const p=load('app/(app)/productos/page.tsx',{
             '@/lib/auth/authorization':{requireUser:async()=>({id:'user',role}),hasModulePermission:async()=>permission},
-            '@/lib/inventory/products':{listProducts:async()=>{listed=true;return[{id:'p',name:'COMBO',status:'ACTIVE'}]}},'./product-admin':{default:Admin}
+            '@/lib/inventory/products':{listProducts:async()=>{listed=true;return[{id:'p',name:'COMBO',status:'ACTIVE'}]}},'./product-admin':{default:Admin},'./products.css':{}
         });
         const tree=await p.default();const admin=nodes(tree).find(n=>n.type===Admin);assert.equal(listed,permission);
         if(permission){assert.ok(admin);assert.equal(admin.props.canEdit,role==='MASTER')}else{assert.equal(admin,undefined);assert.match(words(tree),/No tienes permiso/)}
@@ -53,7 +53,7 @@ function mount(canEdit=false){
 }
 test('collaborator UI shows catalogue and create form without edit actions; master retains editing',()=>{
     const render=mount();const tree=render();assert.match(words(tree),/Agregar producto/);assert.match(words(tree),/COMBO/);assert.doesNotMatch(words(tree),/Editar producto/);assert.equal(nodes(tree).filter(n=>n.type==='form').length,1);
-    const master=mount(true);nodes(master()).find(n=>n.type==='button'&&words(n)==='Editar producto').props.onClick();assert.ok(nodes(master()).some(n=>n.props?.className==='renameForm'));
+    const master=mount(true);nodes(master()).find(n=>n.type==='button'&&words(n)==='Editar').props.onClick();assert.ok(nodes(master()).some(n=>n.props?.className==='renameForm'));
 });
 test('product API still authenticates each request and wraps mutations in the audit route',()=>{
     const source=readFileSync(new URL('../app/api/products/route.ts',import.meta.url),'utf8');assert.match(source,/await requireUser\(\)/);assert.match(source,/await createProduct\(u,/);assert.match(source,/POST = auditRoute\(handlePOST\)/);

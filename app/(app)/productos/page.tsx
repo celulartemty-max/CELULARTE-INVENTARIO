@@ -1,6 +1,7 @@
 import { requireUser, hasModulePermission } from "@/lib/auth/authorization";
 import { listProducts } from "@/lib/inventory/products";
 import ProductAdmin,{type ProductAdminRow} from "./product-admin";
+import './products.css';
 
 export default async function Products(){
   const user=await requireUser();
