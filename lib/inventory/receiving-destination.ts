@@ -5,13 +5,14 @@ import { assertBranchAccess, getAuthorizedBranchIds } from '@/lib/auth/authoriza
 import type { SessionUser } from '@/lib/auth/types';
 import { receivingAccess } from './receiving';
 import { isReviewer, packingSchema } from './receiving-validation';
+import { resetPacking } from './packing-reset';
 
 const uuid = z.string().uuid();
 type Client = Parameters<Parameters<typeof withTransaction>[0]>[0];
 export type DestinationOrder = { id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number };
 export type DestinationBox = { id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
 export type DestinationItem = { id: string; carton_id: string; model: string; color: string; counted: number | null; expected: number | null };
-export type DestinationView = { order: DestinationOrder; boxes: DestinationBox[]; items: DestinationItem[]; documents: { id: string; filename: string }[]; review: boolean; canRecount: boolean };
+export type DestinationView = { order: DestinationOrder; boxes: DestinationBox[]; items: DestinationItem[]; documents: { id: string; filename: string; previous?: boolean }[]; review: boolean; canRecount: boolean };
 
 async function authorizedOrder(c: Client, u: SessionUser, orderId: string) {
     // Serialize all destination actions with origin edits to the same order.
@@ -59,7 +60,7 @@ export async function destinationView(u: SessionUser, orderId: string): Promise<
             CASE WHEN $3::boolean AND b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected
             FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE b.order_id=$1 AND a.branch_id=$2 ORDER BY l.model,l.color,l.id`, [o.id, o.destination_branch_id, review])).rows;
-        const documents = review && boxes.some(b => b.received_at) ? (await c.query('SELECT id::text,filename FROM receiving_documents WHERE order_id=$1 ORDER BY created_at,id', [o.id])).rows : [];
+        const documents = review && boxes.some(b => b.received_at) ? (await c.query(`SELECT d.id::text,d.filename,EXISTS(SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_PACKING_RESET' AND a.new_value->>'orderId'=d.order_id::text AND (a.new_value->'documentIds') ? d.id::text) previous FROM receiving_documents d WHERE d.order_id=$1 ORDER BY d.created_at,d.id`, [o.id])).rows : [];
         return { order, boxes, items, documents, review, canRecount: u.role === 'MASTER' };
     });
 }
@@ -68,6 +69,12 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
     return withTransaction(async c => {
         const o = await authorizedOrder(c, u, uuid.parse(body.orderId));
         const branch = o.destination_branch_id;
+        if (body.action === 'packingResetPreview' || body.action === 'resetPacking') {
+            await receivingAccess(u,true);
+            if (!(await c.query('SELECT 1 FROM receiving_destination_arrivals WHERE order_id=$1 AND branch_id=$2 LIMIT 1',[o.id,branch])).rowCount)
+                throw new Error('Confirma primero la llegada de cajas de este pedido.');
+            return resetPacking(c,u,o.id,branch,{...body,destination:true});
+        }
         if (body.action === 'confirmArrival') {
             await receivingAccess(u, true);
             const ids = z.array(uuid).min(1).max(1000).refine(v => new Set(v).size === v.length).parse(body.boxIds);

@@ -12,6 +12,7 @@ import CountGrid from './count-grid';
 import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
 import ReceivingModal from './receiving-modal';
 import ReceivingClose from './receiving-close';
+import PackingReset from './packing-reset';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -59,6 +60,7 @@ type Data = {
         id: string;
         filename: string;
         order_id: string | null;
+        previous?: boolean;
     }[];
     cost: {
         cost: string | null;
@@ -80,6 +82,8 @@ export default function ReceivingEditor({ data, products }: {
     const [reviewVersion, setReviewVersion] = useState(0);
     const [attachmentOptions, setAttachmentOptions] = useState(false);
     const [addingBox, setAddingBox] = useState<string|null>(null);
+    const [packingNotice,setPackingNotice] = useState('');
+    const [countVersion,setCountVersion] = useState(0);
     const foreignTotal = data.foreignBoxes.length + data.foreign.reduce((n, r) => n + r.carton_count, 0);
 
     const targetOrder = data.orders.find(o=>o.id===packingOrder);
@@ -122,7 +126,9 @@ export default function ReceivingEditor({ data, products }: {
  {data.review&&<div className="receivingTabs" aria-label="Trabajo del pedido"><button aria-pressed={detailTab==='packing'} onClick={()=>setDetailTab('packing')}>Packing list</button><button aria-pressed={detailTab==='count'} onClick={()=>setDetailTab('count')}>Contar piezas</button></div>}
  <div hidden={data.review&&detailTab!=='packing'}>
  {data.review && draft && <>
- <section className="card pad"><h2>Packing list</h2><p>Sube el archivo de este pedido o captura su contenido.</p>
+ <section key={`${packingOrder}:${countVersion}`} className="card pad"><h2>Packing list</h2><p>Sube el archivo de este pedido o captura su contenido.</p>
+ <PackingReset key={packingOrder} orderId={packingOrder} sessionId={s.id} busy={busy} onDone={()=>{setPacking(null);setRaw('');setFile(null);setActive(null);setAddingBox(null);setCountVersion(v=>v+1);setPackingNotice('Contenido retirado. Ya puedes cargar el packing list correcto en este mismo pedido.');router.refresh()}}/>
+ {packingNotice&&<p role="status">{packingNotice}</p>}
  <label>Excel o imagen (hasta 2 MB)<input type="file" accept=".xlsx,.png,.jpg,.jpeg" disabled={busy} onChange={e => { setFile(e.target.files?.[0] ?? null); setPacking(null); }}/></label>
  <div className="actions"><button disabled={busy || !file || !targetOrder} onClick={() => run(async () => { const f = new FormData(); f.set('file', file!); const r = await fetch('/api/receiving/interpret', { method: 'POST', body: f }); const j = await r.json(); if (!r.ok)
             throw new Error(j.error); setReviewVersion(v => v + 1); setPacking(j); setRaw(JSON.stringify(j, null, 2)); })}>{busy ? 'Procesando…' : 'Leer packing list con IA'}</button><button disabled={busy || !targetOrder} onClick={manual}>Capturar sin archivo</button></div>
@@ -149,9 +155,9 @@ export default function ReceivingEditor({ data, products }: {
  </form>}
  </section>
  </>}
- {data.review&&<section className="card pad"><h2>Archivos del pedido</h2>{data.documents.filter(d=>d.order_id===packingOrder).map(d=><p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>{d.filename}</a></p>)}{draft&&<form className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget).get('document');if(f instanceof File)run(()=>upload(f,{orderId:packingOrder}))}}><label className="receivingField">Adjuntar original (Excel, PDF o imagen)<input name="document" type="file" required accept=".xlsx,.pdf,.png,.jpg,.jpeg" disabled={busy}/></label><button disabled={busy}>Adjuntar archivo</button></form>}</section>}
+ {data.review&&<section className="card pad"><h2>Archivos del pedido</h2>{data.documents.filter(d=>d.order_id===packingOrder&&!d.previous).map(d=><p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>{d.filename}</a></p>)}{data.documents.some(d=>d.order_id===packingOrder&&d.previous)&&<details><summary>Archivos anteriores · no vigentes</summary>{data.documents.filter(d=>d.order_id===packingOrder&&d.previous).map(d=><p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>{d.filename}</a></p>)}</details>}{draft&&<form className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget).get('document');if(f instanceof File)run(()=>upload(f,{orderId:packingOrder}))}}><label className="receivingField">Adjuntar original (Excel, PDF o imagen)<input name="document" type="file" required accept=".xlsx,.pdf,.png,.jpg,.jpeg" disabled={busy}/></label><button disabled={busy}>Adjuntar archivo</button></form>}</section>}
  </div>
- <div hidden={data.review&&detailTab!=='count'}>
+ <div key={countVersion} hidden={data.review&&detailTab!=='count'}>
  <section className="card pad"><h2>Conteo</h2><p>Cuenta físicamente. Vacío significa sin contar; 0 significa que no llegó ninguna pieza.</p><div className="receivingCartonSquares" aria-label="Seleccionar caja">{currentBoxes.map(b=><button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-label={`Caja ${b.carton_number}, ${b.counted_at?'contada':'pendiente de conteo'}`} aria-pressed={active===b.id} data-counted={!!b.counted_at} onClick={()=>setActive(b.id)}><b>{b.carton_number}</b><span>{b.counted_at?'✓':'·'}</span></button>)}</div><p className="receivingMuted">Selecciona un número para contar esa caja. ✓ = conteo terminado.</p>{currentBoxes.map(b => <article key={`${b.id}:${b.counted_at||'draft'}`} hidden={active!==b.id} className="card pad"><h3>Caja {b.carton_number}</h3><p>{b.product} · {b.shipping} · {b.marking} · {b.counted_at?'Contada':'Pendiente de conteo'}</p>{<form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); const items = data.items.filter(l => l.carton_id === b.id); const saving = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'draft'; if (!saving && items.some(l => f.get(l.id) === '')) {
                 setError('Captura todas las cantidades; usa 0 donde no haya piezas.');
                 return;

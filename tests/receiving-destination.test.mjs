@@ -38,7 +38,8 @@ function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,co
         'server-only':{},'@/lib/db':{withTransaction:fn=>fn({query})},
         '@/lib/auth/authorization':{assertBranchAccess:async(u,branch)=>{if(allowed!==null&&!allowed.includes(branch))throw Error('FORBIDDEN_BRANCH')},getAuthorizedBranchIds:async()=>allowed},
         './receiving':{receivingAccess:async(u,review)=>{if(!permission||(review&&!['MASTER','MANAGER'].includes(u.role)))throw Error('Sin permiso')}},
-        './receiving-validation':moduleFrom('lib/inventory/receiving-validation.ts')
+        './receiving-validation':moduleFrom('lib/inventory/receiving-validation.ts'),
+        './packing-reset':moduleFrom('lib/inventory/packing-reset.ts',{'server-only':{}})
     });
     return {...mod,queries,audit,quantities:()=>quantities};
 }

@@ -10,6 +10,7 @@ import CountGrid from '../../[id]/count-grid';
 import PackingReview from '../../[id]/packing-review';
 import ReceivingModal from '../../[id]/receiving-modal';
 import PackingUpload from '../../[id]/packing-upload';
+import PackingReset from '../../[id]/packing-reset';
 
 type Packing = z.infer<typeof packingSchema>;
 type Save = (body: Record<string, unknown>) => Promise<boolean>;
@@ -29,6 +30,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
     const [packing, setPacking] = useState<Packing | null>(null);
     const [excluded, setExcluded] = useState(0);
     const [addBox, setAddBox] = useState<string | null>(null);
+    const [countVersion,setCountVersion] = useState(0);
     const busy = working || refreshing;
     const { order, boxes, items } = data;
     const pending = boxes.filter(b => b.session_id && !b.received_at);
@@ -90,7 +92,9 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
                     const r = await fetch('/api/receiving/documents', { method: 'POST', body: form }); const result = await r.json();
                     if (!r.ok) throw new Error(result.error); setAttachedFile(file); setNotice('Archivo adjuntado al pedido.'); startTransition(() => router.refresh());
                 })}/>
-            {data.documents.length > 0 && <details className="packingUploadSaved"><summary>Ver archivos guardados ({data.documents.length})</summary>{data.documents.map(d => <a className="packingUploadDocument" key={d.id} href={`/api/receiving/documents?id=${d.id}&destination=true`}><span aria-hidden="true">📄</span><span>{d.filename}</span><b aria-hidden="true">↓</b></a>)}</details>}
+            <PackingReset orderId={order.id} destination busy={busy} onDone={()=>{setPacking(null);setFile(null);setAttachedFile(null);setAddBox(null);setVisited([]);setActiveBox('');setCountVersion(v=>v+1);setNotice('Contenido retirado. Carga el packing list correcto en este mismo pedido.');startTransition(()=>router.refresh())}}/>
+            {data.documents.some(d=>!d.previous) && <details className="packingUploadSaved"><summary>Ver archivos vigentes</summary>{data.documents.filter(d=>!d.previous).map(d => <a className="packingUploadDocument" key={d.id} href={`/api/receiving/documents?id=${d.id}&destination=true`}><span aria-hidden="true">📄</span><span>{d.filename}</span><b aria-hidden="true">↓</b></a>)}</details>}
+            {data.documents.some(d=>d.previous) && <details className="packingUploadSaved"><summary>Archivos anteriores · no vigentes</summary>{data.documents.filter(d=>d.previous).map(d=><a className="packingUploadDocument" key={d.id} href={`/api/receiving/documents?id=${d.id}&destination=true`}>{d.filename}</a>)}</details>}
             {packing && <><p>Referencia leída: <b>{packing.reference || 'No identificada'}</b>. Verifica que corresponda a <b>{order.reference}</b>.</p>
                 {excluded > 0 && <p role="status">Se excluyeron {excluded} cajas: aún no recibidas aquí o con contenido ya cargado. No se modificarán.</p>}
                 {packing.warnings.map((w, i) => <p key={i} className="receivingMuted">{w}</p>)}
@@ -100,7 +104,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
                     if (await save({ action: 'packing', packing: { ...packing, reference: order.reference } })) setPacking(null);
                 }}>Confirmar packing list de este pedido</button></>}
         </section>}
-        {arrived.length > 0 && <section className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
+        {arrived.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
             <div className="receivingCartonSquares">{arrived.map(b => <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-pressed={shown === b.id} aria-label={`Caja ${b.carton_number}${b.counted_at ? ', terminada' : ''}`} onClick={() => { setVisited(v => [...new Set([...v, shown ?? '', b.id])]); setActiveBox(b.id); }}>{b.carton_number}{b.counted_at ? ' ✓' : ''}</button>)}</div>
             {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} busy={busy} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
         </section>}

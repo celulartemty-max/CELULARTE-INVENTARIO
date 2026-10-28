@@ -29,7 +29,7 @@ async function handlePOST(req: Request) {
             await assertBranchAccess(u, row.branch_id);
             if (sessionId && row.status !== 'DRAFT')
                 throw new Error('La recepción está cerrada.');
-            const existing = await c.query('SELECT count(*)::int n FROM receiving_documents WHERE order_id=$1 OR session_id=$2', [orderId, sessionId]);
+            const existing = await c.query(`SELECT count(*)::int n FROM receiving_documents d WHERE (d.order_id=$1 OR d.session_id=$2) AND NOT EXISTS (SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_PACKING_RESET' AND a.new_value->>'orderId'=d.order_id::text AND (a.new_value->'documentIds') ? d.id::text)`, [orderId, sessionId]);
             if (existing.rows[0].n >= 5)
                 throw new Error('Máximo 5 archivos por pedido o recepción.');
             await c.query('INSERT INTO receiving_documents(order_id,session_id,filename,mime,data,created_by) VALUES($1,$2,$3,$4,$5,$6)', [orderId, sessionId, filename, mime, data, u.id]);

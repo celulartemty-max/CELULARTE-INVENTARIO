@@ -6,6 +6,7 @@ import type { SessionUser } from '@/lib/auth/types';
 import { arrivalSchema, countSchema, isReviewer, packingSchema, foreignCartonSchema, batchSchema, parseCartonNumbers } from './receiving-validation';
 import { z } from 'zod';
 import { shippingMarkSchema, destinationName } from './shipping-marks';
+import { resetPacking } from './packing-reset';
 export async function receivingAccess(u: SessionUser, review = false) {
     if (!await hasModulePermission(u, 'ENTRADAS') || (review && !isReviewer(u.role)))
         throw new Error('Sin permiso para esta acción.');
@@ -67,6 +68,14 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             await c.query('INSERT INTO receiving_cartons(order_id,carton_number,session_id) SELECT $1,n::text,CASE WHEN n::text=ANY($4::text[]) THEN $3::uuid ELSE NULL END FROM generate_series(1,$2::int) n',[orderId,x.total,sessionId,numbers]);
             await audit(c,u,s.branch_id,'RECEIVING_BATCH_CREATED',{sessionId,orderId,...x});
             return {orderId};
+        }
+        if (b.action === 'packingResetPreview' || b.action === 'resetPacking') {
+            await receivingAccess(u,true);
+            const orderId=id.parse(b.orderId);
+            const order=(await c.query('SELECT branch_id,is_foreign FROM receiving_orders WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+            if (!order || order.branch_id !== s.branch_id || order.is_foreign || !(await c.query('SELECT 1 FROM receiving_cartons WHERE order_id=$1 AND session_id=$2 LIMIT 1',[orderId,sessionId])).rowCount)
+                throw new Error('Selecciona un pedido propio de esta recepción.');
+            return resetPacking(c,u,orderId,s.branch_id,{...b,destination:false});
         }
         if (b.action === 'packing') {
             await receivingAccess(u,true);
@@ -235,7 +244,7 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const pending = review ? await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,o.is_foreign,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
     const batches = review ? await sql `SELECT o.id::text,o.reference,o.shipping,o.marking,o.supplier,o.is_foreign,COALESCE(p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid GROUP BY o.id,p.name HAVING count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid OR b.session_id IS NULL)>0 ORDER BY o.created_at DESC` : [];
     const cost = review ? await sql `SELECT cost,currency,notes FROM receiving_sessions WHERE id=${sessionId}::uuid` : [];
-    const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text FROM receiving_documents d WHERE d.session_id=${sessionId}::uuid OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign)` : [];
+    const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text,EXISTS(SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_PACKING_RESET' AND a.new_value->>'orderId'=d.order_id::text AND (a.new_value->'documentIds') ? d.id::text) previous FROM receiving_documents d WHERE d.session_id=${sessionId}::uuid OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign)` : [];
     const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND NOT is_foreign ORDER BY created_at DESC` : [];
     return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, review, canRecount: u.role === 'MASTER', canRegisterSystem: await hasModulePermission(u,'REGISTRO_SISTEMA') };
 }
