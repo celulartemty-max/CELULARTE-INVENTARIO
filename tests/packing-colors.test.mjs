@@ -14,7 +14,7 @@ function load(path,mocks){
 function nodes(node){if(!node||typeof node!=='object')return [];return [node,...[node.props?.children].flat(Infinity).flatMap(nodes)]}
 test('product creation and catalogue listing do not require, create or fetch colours',async()=>{
     const queries=[];
-    const f=load('lib/inventory/products.ts',{'server-only':{},'@/lib/db':{sql:async(parts,...values)=>{queries.push({sql:parts.join('?'),values});return []}}});
+    const f=load('lib/inventory/products.ts',{'server-only':{},'@/lib/auth/authorization':{hasModulePermission:async()=>true},'@/lib/db':{sql:async(parts,...values)=>{queries.push({sql:parts.join('?'),values});return []}}});
     await f.createProduct({role:'MASTER'},'COMBO CASE');await f.listProducts();
     assert.equal(queries.length,2);assert.doesNotMatch(JSON.stringify(queries),/product_colors/);assert.match(queries[0].sql,/INSERT INTO products\(name\)/);
 });

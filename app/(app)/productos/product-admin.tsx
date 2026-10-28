@@ -3,7 +3,7 @@ import {useState} from "react";
 
 export type ProductAdminRow={id:string;name:string;status:string};
 
-export default function ProductAdmin({initial}:{initial:ProductAdminRow[]}){
+export default function ProductAdmin({initial,canEdit=false}:{initial:ProductAdminRow[];canEdit?:boolean}){
   const [editingProduct,setEditingProduct]=useState<string|null>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   async function act(body:Record<string,unknown>){
@@ -23,12 +23,12 @@ export default function ProductAdmin({initial}:{initial:ProductAdminRow[]}){
     {error&&<p role="alert">{error}</p>}
     {initial.map(p=><article className="productRow productEditorRow" key={p.id}>
       <div className="productTitleRow">
-        {editingProduct===p.id?
+        {canEdit&&editingProduct===p.id?
           <form className="renameForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'renameProduct',id:p.id,name:f.get('name')})}}>
             <input name="name" aria-label="Nombre del producto" defaultValue={p.name} required autoFocus disabled={busy}/>
             <button className="saveButton" disabled={busy}><span aria-hidden="true">✓</span> {busy?'Guardando…':'Guardar'}</button><button type="button" className="ghostButton" disabled={busy} onClick={()=>setEditingProduct(null)}>Cancelar</button>
           </form>:
-          <><div className="productName"><b>{p.name}</b><small>{p.status==='ACTIVE'?'ACTIVO':'INACTIVO'}</small></div><button type="button" className="editButton" disabled={busy} onClick={()=>setEditingProduct(p.id)}>Editar producto</button></>}
+          <><div className="productName"><b>{p.name}</b><small>{p.status==='ACTIVE'?'ACTIVO':'INACTIVO'}</small></div>{canEdit&&<button type="button" className="editButton" disabled={busy} onClick={()=>setEditingProduct(p.id)}>Editar producto</button>}</>}
       </div>
     </article>)}
   </section>

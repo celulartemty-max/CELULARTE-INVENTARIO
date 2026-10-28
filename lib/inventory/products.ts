@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "@/lib/db";
 import type { SessionUser } from "@/lib/auth/types";
+import { hasModulePermission } from "@/lib/auth/authorization";
 const master=(u:SessionUser)=>{if(u.role!=="MASTER") throw new Error("MASTER_REQUIRED")};
 const cleanHex=(value?:string|null)=>{const v=(value||'').trim().toUpperCase();if(!v)return null;if(!/^#[0-9A-F]{6}$/.test(v))throw new Error("HEX_INVALID");return v};
 async function colorHexSupported(){const r=await sql`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='product_colors' AND column_name='hex_color') AS ok`;return Boolean(r[0]?.ok)}
@@ -9,7 +10,7 @@ async function ensureColorHexColumn(){
   await sql`ALTER TABLE product_colors ADD COLUMN IF NOT EXISTS hex_color varchar(7)`;
 }
 export async function listProducts(){return sql`SELECT id::text,name,status::text FROM products ORDER BY name`;}
-export async function createProduct(u:SessionUser,name:string){master(u);const n=name.trim();if(!n)throw new Error("NAME_REQUIRED");return sql`INSERT INTO products(name) VALUES(${n}) RETURNING id::text`;}
+export async function createProduct(u:SessionUser,name:string){if(!await hasModulePermission(u,'PRODUCTOS'))throw new Error('PRODUCTOS_PERMISSION_REQUIRED');const n=name.trim();if(!n)throw new Error("NAME_REQUIRED");return sql`INSERT INTO products(name) VALUES(${n}) RETURNING id::text`;}
 export async function renameProduct(u:SessionUser,id:string,name:string){master(u);const n=name.trim();if(!n)throw new Error("NAME_REQUIRED");await sql`UPDATE products SET name=${n},updated_at=now() WHERE id=${id}::uuid`;}
 export async function setProductStatus(u:SessionUser,id:string,status:"ACTIVE"|"INACTIVE"){master(u);await sql`UPDATE products SET status=${status}::record_status,updated_at=now() WHERE id=${id}::uuid`;}
 export async function createColor(u:SessionUser,productId:string,name:string,hex?:string|null){master(u);const n=name.trim();if(!n)throw new Error("NAME_REQUIRED");const h=cleanHex(hex);if(h)await ensureColorHexColumn();const rows=await sql`INSERT INTO product_colors(product_id,name) VALUES(${productId}::uuid,${n}) RETURNING id::text`;const newId=String(rows[0]?.id||'');if(h&&newId)await sql`UPDATE product_colors SET hex_color=${h},updated_at=now() WHERE id=${newId}::uuid`;return rows;}
