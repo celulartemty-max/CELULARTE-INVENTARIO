@@ -1,4 +1,5 @@
 "use client";
+import ExitSummary from "./exit-summary";
 import { useRegistrationAccess } from "../../registration-access";
 
 import type {AppRole} from '@/lib/auth/types';
@@ -9,12 +10,10 @@ export type Product={id:string;name:string};
 
 const ch:Record<string,string>={MERCADO_LIBRE:'Mercado Libre',TIKTOK:'TikTok'};
 const ty:Record<string,string>={FULL:'Full',INDEPENDENT_SALE:'Venta independiente'};
-const statusLabels:Record<string,string>={DRAFT:'En captura',CLOSED:'Salida cerrada',PENDING_POS:'Pendiente de registrar',POS_REGISTERED:'Registrado en sistema',POS_CORRECTION_PENDING:'Corrección pendiente',POS_RECONCILED:'Registrado en sistema',CANCELLED:'Cancelada'};
 
 export default function ExitEditor({movement,lines,products}:{movement:ExitMovement;lines:ExitLine[];products:Product[];role:AppRole}){
   const total=lines.reduce((s,l)=>s+l.quantity,0);
   const isDraft=movement.status==='DRAFT';
-  const posPending=movement.status==='POS_CORRECTION_PENDING'||(!isDraft&&!movement.pos_registered_at&&movement.status!=='CANCELLED');
   const canRegisterPos=useRegistrationAccess();
 
   async function act(body:Record<string,unknown>,msg?:string){
@@ -29,37 +28,7 @@ export default function ExitEditor({movement,lines,products}:{movement:ExitMovem
     location.reload();
   }
 
-  if(!isDraft){
-    return <div style={{maxWidth:680,margin:'0 auto'}}>
-      <header style={{marginBottom:20}}>
-        <div>
-          <small style={{color:'#667085',fontWeight:800}}>SALIDA DE INVENTARIO · {ch[movement.channel]}</small>
-          <h1 style={{fontSize:'clamp(28px,7vw,40px)',overflowWrap:'anywhere',margin:'6px 0 4px'}}>{movement.folio}</h1>
-          <p style={{margin:0}}>{movement.branch} · {ty[movement.exit_type]} · {statusLabels[movement.status]||movement.status}</p>
-        </div>
-      </header>
-
-      <section className="card pad" style={{padding:24,borderRadius:18,marginBottom:20}}>
-        <small style={{fontWeight:800,color:'#667085'}}>RESUMEN DE SALIDA</small>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:14}}>
-          <div style={{padding:16,borderRadius:14,background:'#f6f7f9'}}><b style={{display:'block',fontSize:24}}>{lines.length}</b><small style={{color:'#667085'}}>Producto{lines.length===1?'':'s'}</small></div>
-          <div style={{padding:16,borderRadius:14,background:'#f6f7f9'}}><b style={{display:'block',fontSize:24}}>{total}</b><small style={{color:'#667085'}}>Pieza{total===1?'':'s'}</small></div>
-        </div>
-      </section>
-
-      <section className="card pad" style={{padding:24,borderRadius:18}}>
-        <small style={{fontWeight:800,color:'#667085'}}>PASO FINAL</small>
-        <h2 style={{margin:'6px 0 8px'}}>Registrar en sistema</h2>
-        {movement.pos_registered_at&&!posPending?
-          <div style={{padding:'16px 18px',borderRadius:14,background:'#eefaf3',color:'#08783f',fontWeight:800}}>✓ Esta salida ya fue registrada en sistema.</div>
-          :<>
-            <p style={{color:'#667085',lineHeight:1.45}}>La captura ya está cerrada. Este paso corresponde únicamente al encargado de la sucursal.</p>
-            <button className="primary" style={{width:'100%',padding:15,opacity:canRegisterPos?1:.45,cursor:canRegisterPos?'pointer':'not-allowed'}} disabled={!canRegisterPos} onClick={()=>act({action:'pos'},'¿Confirmas que esta salida ya fue registrada en el sistema?')}>Registrado en sistema</button>
-            {!canRegisterPos&&<small style={{display:'block',marginTop:10,color:'#667085',textAlign:'center'}}>Visible para consulta · Requiere permiso de Registro en sistema</small>}
-          </>}
-      </section>
-    </div>;
-  }
+  if(!isDraft)return <ExitSummary movement={movement} lines={lines} canRegister={canRegisterPos}/>;
 
   return <div style={{maxWidth:760,margin:'0 auto'}}>
     <header style={{marginBottom:18}}>
