@@ -16,6 +16,7 @@ function registrationFixture({permitted=true,pending=true,kind='RECEIVING',side=
     const row={id,kind,side,branch_id:branch,reference:'LUNES'};
     const permissions={requireSystemRegistration:async()=>{if(!permitted)throw Error('Sin permiso')}};
     const mod=load('lib/inventory/system-registration.ts',{
+        './customer-sale':{registerCustomerSale:async()=>calls.push(['CLIENT_SALE'])},
         'server-only':{},'@/lib/auth/special-permissions':permissions,
         '@/lib/auth/authorization':{getAuthorizedBranchIds:async()=>[branch],assertBranchAccess:async()=>{if(!branchAllowed)throw Error('FORBIDDEN_BRANCH')}},
         '@/lib/db':{withTransaction:fn=>fn({query:async(sql,args)=>{queries.push({sql,args});if(sql.startsWith('WITH pending'))return {rows:pending?[row]:[]};if(sql.includes("action='POS_EVIDENCE_CAPTURED'"))return {rowCount:evidence?1:0,rows:[]};return {rows:[]};}})},

@@ -20,6 +20,7 @@ function editorFixture(overrides={},permission=true,access={canOrigin:true,canDe
         '../../registros/registration-queue':{default:props=>{controls.push(props);return React.createElement('button',null,props.buttonLabel)}},
     }).default;
     const Editor=load('app/(app)/traspasos/[id]/transfer-editor.tsx',{
+        './customer-sale':{default:()=>null},
         react:{useState:v=>[v,()=>{}]},'../../registration-access':{useRegistrationAccess:()=>permission},'./transfer-receipt':{default:()=>null},
         './transfer-final':{default:Final},
     }).default;

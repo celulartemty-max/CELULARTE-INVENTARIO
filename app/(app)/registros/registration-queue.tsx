@@ -8,7 +8,7 @@ import { preparePhoto } from '../pos-camera-guard';
 import '../entradas/pedidos/receiving.css';
 import './registration.css';
 
-const labels:Record<string,string>={RECEIVING:'Recepción por pedidos',DESTINATION:'Cajas recibidas de otra sucursal',RECEPTION:'Recepción',EXIT:'Salida',RETURN_ML:'Devolución ML',RETURN_TIKTOK:'Devolución TikTok',RETURN_CUSTOMER:'Devolución de cliente',TRANSFER:'Traspaso'};
+const labels:Record<string,string>={RECEIVING:'Recepción por pedidos',DESTINATION:'Cajas recibidas de otra sucursal',RECEPTION:'Recepción',EXIT:'Salida',RETURN_ML:'Devolución ML',RETURN_TIKTOK:'Devolución TikTok',RETURN_CUSTOMER:'Devolución de cliente',CLIENT_SALE:'Venta con entrega',TRANSFER:'Traspaso'};
 type Detail=RegistrationDetailData;
 export default function RegistrationQueue({rows,compact=false,buttonLabel='Ver detalle y registrar →'}:{rows:RegistrationPending[];compact?:boolean;buttonLabel?:string}){
     const router=useRouter(),lock=useRef(false),camera=useRef<HTMLInputElement>(null);
@@ -29,7 +29,7 @@ export default function RegistrationQueue({rows,compact=false,buttonLabel='Ver d
             if(row.kind!=='RECEIVING'&&row.kind!=='DESTINATION'){
                 if(!photo)throw Error('Toma una foto del registro en sistema para confirmar.');
                 const evidence=await preparePhoto(photo);
-                const root=row.kind==='RECEPTION'?'entradas':row.kind==='EXIT'?'salidas':row.kind==='TRANSFER'?'traspasos':'devoluciones';
+                const root=row.kind==='RECEPTION'?'entradas':row.kind==='EXIT'?'salidas':row.kind==='TRANSFER'||row.kind==='CLIENT_SALE'?'traspasos':'devoluciones';
                 const r=await fetch('/api/pos-evidence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({movementId:row.id,evidence,context:row.side==='destination'?'Registro de destino':'Registro de origen',pathname:`/${root}/${row.id}`})});const data=await r.json();if(!r.ok)throw Error(data.error);
             }
             const r=await fetch('/api/system-registration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:row.id,kind:row.kind,side:row.side})});const data=await r.json();if(!r.ok)throw Error(data.error);

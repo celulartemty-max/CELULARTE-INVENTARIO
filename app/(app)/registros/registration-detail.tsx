@@ -4,6 +4,7 @@ export type RegistrationLine={product?:string;box?:string;model?:string;color?:s
 export type RegistrationDetailData={row:RegistrationPending;lines:RegistrationLine[]};
 
 export function registrationInstruction(row:Pick<RegistrationPending,'kind'|'side'|'correction'>){
+    if(row.kind==='CLIENT_SALE')return 'Registrar una VENTA en la sucursal de origen';
     if(row.kind==='TRANSFER')return row.side==='origin'?'Registrar una SALIDA por traspaso':'Registrar una ENTRADA por traspaso';
     if(row.kind==='EXIT')return 'Registrar una SALIDA';
     if(row.kind.startsWith('RETURN_'))return 'Registrar una DEVOLUCIÓN';
@@ -19,6 +20,7 @@ export function registrationSubtitle(row:Pick<RegistrationPending,'kind'|'side'|
     return text.charAt(0).toLocaleUpperCase('es-MX')+text.slice(1);
 }
 export function registrationConfirmLabel(row:Pick<RegistrationPending,'kind'|'side'|'correction'>){
+    if(row.kind==='CLIENT_SALE')return 'Confirmar venta registrada';
     if(row.correction)return 'Confirmar corrección registrada';
     if(row.kind==='EXIT'||(row.kind==='TRANSFER'&&row.side==='origin'))return 'Confirmar salida registrada';
     if(row.kind.startsWith('RETURN_'))return 'Confirmar devolución registrada';

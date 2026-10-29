@@ -1,4 +1,5 @@
 "use client";
+import CustomerSale from './customer-sale';
 import {useState} from "react";
 import TransferFinal from './transfer-final';
 import { useRegistrationAccess } from "../../registration-access";
@@ -6,7 +7,7 @@ import { useRegistrationAccess } from "../../registration-access";
 import TransferReceipt from './transfer-receipt';
 import type {AppRole} from '@/lib/auth/types';
 
-export type Transfer={id:string;folio:string;transfer_id:string;origin_branch_id:string;destination_branch_id:string;origin:string;destination:string;destinationInternal:boolean;status:string;transferKind:'TRANSFER'|'SALE';current_version:number;sent_at:string|null;received_at:string|null;origin_pos_registered_at:string|null;destination_pos_registered_at:string|null};
+export type Transfer={customerSale?:boolean;paidAt?:string|null;paidBranchId?:string|null;paidBy?:string;receivedBy?:string;registeredBy?:string;id:string;folio:string;transfer_id:string;origin_branch_id:string;destination_branch_id:string;origin:string;destination:string;destinationInternal:boolean;status:string;transferKind:'TRANSFER'|'SALE';current_version:number;sent_at:string|null;received_at:string|null;origin_pos_registered_at:string|null;destination_pos_registered_at:string|null};
 export type TransferLine={id:string;productId:string;product:string;sentQuantity:number;receivedQuantity:number|null;difference:number|null;differenceReason:string|null;saleAmount:number|null};
 export type Product={id:string;name:string};
 
@@ -29,6 +30,8 @@ export default function TransferEditor({transfer:t,lines,products,canOrigin,canD
   }
 
   if(capture&&canOrigin&&t.status==='DRAFT')return <div style={{width:'100%',maxWidth:680,minWidth:0,margin:'0 auto'}}><header style={{display:'block',marginBottom:16}}><h1 style={{fontSize:26,margin:'0 0 6px'}}>Agregar producto</h1><p>{`${t.origin} → ${t.destination}`}</p></header><section className="card pad" style={{padding:18,borderRadius:18}}><form className="formGrid" autoComplete="off" style={{marginTop:18}} onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'saveLine',productId:f.get('product'),quantity:Number(f.get('quantity')),saleAmount:isSale?Number(f.get('saleAmount')):undefined})}}><label>Producto<select name="product" defaultValue="" required><option value="" disabled>Selecciona un producto…</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Cantidad<input name="quantity" type="number" min="1" step="1" inputMode="numeric" placeholder="Cantidad" required/></label>{isSale&&<label>Monto de venta<input name="saleAmount" type="number" min="0.01" step="0.01" inputMode="decimal" placeholder="$0.00" required/><small style={{display:'block',marginTop:5,color:'#667085'}}>Monto total correspondiente a este producto.</small></label>}<button type="submit" style={{width:'100%',padding:14}}>Agregar producto</button><button type="button" onClick={()=>setCapture(false)}>Cancelar y volver</button></form></section></div>;
+
+  if(t.customerSale)return <CustomerSale transfer={t} lines={lines} canOrigin={canOrigin} canDestination={canDestination} canRegister={canRegisterPos} onAdd={()=>setCapture(true)} act={act}/>;
 
   const typeLabel=isSale?'ENVÍO POR VENTA':'ENVÍO POR TRASPASO';
   const header=<header style={{marginBottom:20}}><div><small style={{color:'#667085',fontWeight:800}}>{typeLabel}{external?' · SUCURSAL EXTERNA':''}</small><h1 style={{fontSize:'clamp(28px,7vw,40px)',overflowWrap:'anywhere',margin:'6px 0 4px'}}>{t.folio}</h1><p style={{margin:0,color:'#667085'}}>{t.origin} → {t.destination} · {statusLabels[t.status]||t.status}</p>{isSale&&<p style={{margin:'7px 0 0',fontWeight:800}}>Valor del envío: {money(saleTotal)}</p>}</div></header>;
