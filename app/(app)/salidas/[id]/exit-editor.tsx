@@ -1,4 +1,5 @@
 "use client";
+import {useState} from "react";
 import ExitSummary from "./exit-summary";
 import { useRegistrationAccess } from "../../registration-access";
 
@@ -12,6 +13,7 @@ const ch:Record<string,string>={MERCADO_LIBRE:'Mercado Libre',TIKTOK:'TikTok'};
 const ty:Record<string,string>={FULL:'Full',INDEPENDENT_SALE:'Venta independiente'};
 
 export default function ExitEditor({movement,lines,products}:{movement:ExitMovement;lines:ExitLine[];products:Product[];role:AppRole}){
+  const [capture,setCapture]=useState(lines.length===0);
   const total=lines.reduce((s,l)=>s+l.quantity,0);
   const isDraft=movement.status==='DRAFT';
   const canRegisterPos=useRegistrationAccess();
@@ -28,6 +30,12 @@ export default function ExitEditor({movement,lines,products}:{movement:ExitMovem
     location.reload();
   }
 
+  if(capture&&isDraft)return <div style={{width:'100%',maxWidth:680,minWidth:0,margin:'0 auto'}}><header style={{display:'block',marginBottom:16}}><h1 style={{fontSize:26,margin:'0 0 6px'}}>Agregar producto</h1><p>{movement.branch}</p></header><section className="card pad" style={{padding:18,borderRadius:18}}><form className="formGrid" autoComplete="off" style={{marginTop:18}} onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'saveLine',productId:f.get('product'),quantity:Number(f.get('quantity'))})}}>
+        <label>Producto<select name="product" defaultValue="" required><option value="" disabled>Selecciona un producto…</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
+        <label>Cantidad<input name="quantity" type="number" min="1" step="1" inputMode="numeric" placeholder="Cantidad" autoComplete="off" required/></label>
+        <button type="submit" style={{width:'100%',padding:14}}>Agregar producto</button>
+      <button type="button" onClick={()=>setCapture(false)}>Cancelar y volver</button></form></section></div>;
+
   if(!isDraft)return <ExitSummary movement={movement} lines={lines} canRegister={canRegisterPos}/>;
 
   return <div style={{maxWidth:760,margin:'0 auto'}}>
@@ -40,14 +48,10 @@ export default function ExitEditor({movement,lines,products}:{movement:ExitMovem
     </header>
 
     <section className="card pad" style={{padding:22,borderRadius:18}}>
-      <div style={{marginBottom:16}}><h2 style={{margin:'0 0 4px'}}>Productos</h2><small style={{color:'#667085'}}>{lines.length} producto{lines.length===1?'':'s'} · {total} pieza{total===1?'':'s'}</small></div>
+      <div style={{marginBottom:16}}><button type="button" style={{float:'right',minHeight:44,background:'#eaf3ff',color:'#0868d9'}} onClick={()=>setCapture(true)}>+ Agregar producto</button><h2 style={{margin:'0 0 4px'}}>Productos</h2><small style={{color:'#667085'}}>{lines.length} producto{lines.length===1?'':'s'} · {total} pieza{total===1?'':'s'}</small></div>
       <div className="lines">{lines.map(l=><div className="line" key={l.id} style={{padding:14}}><div><b>{l.product}</b><small>{l.quantity} pieza{l.quantity===1?'':'s'}</small></div><button onClick={()=>act({action:'deleteLine',lineId:l.id},'¿Eliminar este producto de la salida?')}>Eliminar</button></div>)}</div>
 
-      <form className="formGrid" autoComplete="off" style={{marginTop:18}} onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'saveLine',productId:f.get('product'),quantity:Number(f.get('quantity'))})}}>
-        <label>Producto<select name="product" defaultValue="" required><option value="" disabled>Selecciona un producto…</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
-        <label>Cantidad<input name="quantity" type="number" min="1" step="1" inputMode="numeric" placeholder="Cantidad" autoComplete="off" required/></label>
-        <button type="submit" style={{width:'100%',padding:14}}>Agregar producto</button>
-      </form>
+
 
       <div style={{borderTop:'1px solid #e4e7ec',marginTop:22,paddingTop:20}}>
         <button className="primary" style={{width:'100%',padding:15,opacity:lines.length?1:.45,cursor:lines.length?'pointer':'not-allowed'}} disabled={lines.length===0} onClick={()=>act({action:'close'},`Cerrar salida con ${lines.length} producto${lines.length===1?'':'s'} y ${total} pieza${total===1?'':'s'}? Después pasarás a la pantalla de registro en sistema.`)}>Cerrar salida</button>
