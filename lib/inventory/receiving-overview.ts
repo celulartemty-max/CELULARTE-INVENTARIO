@@ -9,7 +9,7 @@ export type ReceiptDestination = {
     destination: string; boxes: number; arrived: number; counted: number; can_open: boolean;
 };
 export type ReceiptOverview = {
-    id: string; reference: string; arrival_date: string; total_boxes: number; status: string;
+    id: string; reference: string; arrival_date: string; created_at?: string; total_boxes: number; status: string;
     origin: string; arrived: number; counted: number | null; can_open: boolean;
     destinations: ReceiptDestination[];
 };
@@ -20,7 +20,7 @@ export async function receivingOverview(u: SessionUser): Promise<ReceiptOverview
     return withTransaction(async c => {
         // A destination sees only the shared receipt envelope, not its other orders,
         // costs, documents or origin counts. EXISTS cannot multiply physical cartons.
-        const receipts = (await c.query(`SELECT s.id::text,s.reference,s.arrival_date::text,s.total_boxes,s.status,origin.name origin,
+        const receipts = (await c.query(`SELECT s.id::text,s.reference,s.arrival_date::text,s.created_at::text,s.total_boxes,s.status,origin.name origin,
             ($1::uuid[] IS NULL OR s.branch_id=ANY($1::uuid[])) can_open,
             count(b.id)::int + COALESCE((SELECT sum(f.carton_count) FROM receiving_foreign_cartons f WHERE f.session_id=s.id AND f.voided_at IS NULL),0)::int arrived,
             CASE WHEN $1::uuid[] IS NULL OR s.branch_id=ANY($1::uuid[]) THEN count(b.counted_at) FILTER(WHERE NOT o.is_foreign)::int ELSE NULL END counted

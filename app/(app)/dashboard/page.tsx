@@ -1,3 +1,4 @@
+import {receivingStats} from '@/lib/inventory/receiving-stats';
 import RegistrationNotice from './registration-notice';
 import TransferReceiptNotice from './transfer-receipt-notice';
 import Link from "next/link";
@@ -20,6 +21,7 @@ export default async function Dashboard(){
   const user=await requireUser(),branches=await getAuthorizedBranchIds(user);
   const statsRows=branches===null?await sql`SELECT count(*) FILTER(WHERE m.movement_type='RECEPTION' AND m.status::text='DRAFT')::int reception_in_progress,count(*) FILTER(WHERE m.movement_type='RECEPTION' AND m.status::text<>'DRAFT' AND m.created_at>=now()-interval '30 days')::int receptions_closed_30,count(*) FILTER(WHERE m.movement_type='EXIT' AND m.pos_registered_at IS NOT NULL AND m.created_at>=now()-interval '30 days')::int exits_registered_30,count(*) FILTER(WHERE m.movement_type='TRANSFER' AND COALESCE(t.status::text,'') NOT IN ('COMPLETED','CANCELLED'))::int active_transfers FROM inventory_movements m LEFT JOIN transfers t ON t.movement_id=m.id`:branches.length===0?[{reception_in_progress:0,receptions_closed_30:0,exits_registered_30:0,active_transfers:0}]:await sql`WITH a AS (SELECT m.*,t.status::text transfer_status FROM inventory_movements m LEFT JOIN transfers t ON t.movement_id=m.id WHERE (m.movement_type<>'TRANSFER' AND m.branch_id=ANY(${branches}::uuid[])) OR (m.movement_type='TRANSFER' AND (t.origin_branch_id=ANY(${branches}::uuid[]) OR t.destination_branch_id=ANY(${branches}::uuid[])))) SELECT count(*) FILTER(WHERE movement_type='RECEPTION' AND status::text='DRAFT')::int reception_in_progress,count(*) FILTER(WHERE movement_type='RECEPTION' AND status::text<>'DRAFT' AND created_at>=now()-interval '30 days')::int receptions_closed_30,count(*) FILTER(WHERE movement_type='EXIT' AND pos_registered_at IS NOT NULL AND created_at>=now()-interval '30 days')::int exits_registered_30,count(*) FILTER(WHERE movement_type='TRANSFER' AND COALESCE(transfer_status,'') NOT IN ('COMPLETED','CANCELLED'))::int active_transfers FROM a`;
   const stats=statsRows[0]??{};
+  const receipts=await receivingStats(branches);
   const branchName=user.primaryBranchId?(await sql`SELECT name FROM branches WHERE id=${user.primaryBranchId}::uuid`)[0]?.name:null;
   const firstName=user.name.split(/\s+/)[0]||user.name;
 
@@ -30,8 +32,8 @@ export default async function Dashboard(){
       <div className="dateBadge">{badgeDateFmt.format(new Date())}</div>
     </section>
     <section className="dashStatsV2" aria-label="Resumen operativo">
-      <Link href="/entradas" className="statV2"><span className="statV2Icon toneBlue"><MovementIcon kind="RECEPTION"/></span><strong>{Number(stats.reception_in_progress??0).toLocaleString('es-MX')}</strong><small>Recepciones<br/>en proceso</small><span className="statV2Arrow">›</span></Link>
-      <Link href="/movimientos?view=receptions-closed" className="statV2"><span className="statV2Icon toneGreen"><MovementIcon kind="CHECK"/></span><strong>{Number(stats.receptions_closed_30??0).toLocaleString('es-MX')}</strong><small>Recepciones cerradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></Link>
+      <Link href="/entradas/pedidos?status=open" className="statV2"><span className="statV2Icon toneBlue"><MovementIcon kind="RECEPTION"/></span><strong>{Number(receipts.open).toLocaleString('es-MX')}</strong><small>Recepciones<br/>en proceso</small><span className="statV2Arrow">›</span></Link>
+      <Link href="/entradas/pedidos?status=closed" className="statV2"><span className="statV2Icon toneGreen"><MovementIcon kind="CHECK"/></span><strong>{Number(receipts.closed).toLocaleString('es-MX')}</strong><small>Recepciones cerradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></Link>
       <Link href="/movimientos?view=exits-registered" className="statV2"><span className="statV2Icon toneRed"><MovementIcon kind="EXIT"/></span><strong>{Number(stats.exits_registered_30??0).toLocaleString('es-MX')}</strong><small>Salidas registradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></Link>
       <Link href="/movimientos?view=transfers-active" className="statV2"><span className="statV2Icon tonePurple"><MovementIcon kind="TRANSFER"/></span><strong>{Number(stats.active_transfers??0).toLocaleString('es-MX')}</strong><small>Traspasos<br/>activos</small><span className="statV2Arrow">›</span></Link>
     </section>

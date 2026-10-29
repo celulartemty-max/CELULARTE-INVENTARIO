@@ -12,6 +12,7 @@ test('dashboard starts with greeting and indicators without the extra receiving 
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
     const queries = [], mod = { exports: {} };
     const mocks = {
+        '@/lib/inventory/receiving-stats': { receivingStats: async () => ({open:3,closed:2}) },
         './registration-notice': { default: () => null },
         './transfer-receipt-notice': { default: () => null },
         'next/link': { default: props => React.createElement('a', props, props.children) },
@@ -24,6 +25,8 @@ test('dashboard starts with greeting and indicators without the extra receiving 
     assert.equal(firstSection.props.className, 'dashTop');
     const html = renderToStaticMarkup(tree);
     assert.match(html, /Hola, Alejandro/);
+    assert.match(html, /\/entradas\/pedidos\?status=open/);
+    assert.match(html, /\/entradas\/pedidos\?status=closed/);
     assert.ok(html.indexOf('dashGreeting') < html.indexOf('dashStatsV2'));
     assert.doesNotMatch(html, /Recepciones por pedido|Abrir panel y crear recepción/);
     assert.ok(queries.every(query => !query.includes('receiving_sessions')));
