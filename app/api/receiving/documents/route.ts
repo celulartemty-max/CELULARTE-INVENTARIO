@@ -19,6 +19,7 @@ async function handlePOST(req: Request) {
         const sessionId = f.get('sessionId') ? z.string().uuid().parse(f.get('sessionId')) : null;
         if (Boolean(orderId) === Boolean(sessionId))
             throw new Error('Selecciona pedido o recepción.');
+        if (sessionId && u.role !== 'MASTER') throw new Error('Sin acceso al comprobante de flete.');
         const { data, mime, filename } = await readReceivingFile(file);
         await withTransaction(async (c) => {
             const destination = f.get('destination') === 'true';
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
         const id = z.string().uuid().parse(new URL(req.url).searchParams.get('id'));
         return withTransaction(async c => {
             const row = (await c.query('SELECT d.order_id,COALESCE(o.branch_id,s.branch_id) branch_id,o.is_foreign FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=$1', [id])).rows[0];
+            if (row && !row.order_id && u.role !== 'MASTER') throw new Error('Sin acceso.');
             if (!row) return new Response('No encontrado', { status: 404 });
             if (new URL(req.url).searchParams.get('destination') === 'true') {
                 if (!row.order_id) throw new Error('Sin acceso.');

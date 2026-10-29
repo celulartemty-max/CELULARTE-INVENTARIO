@@ -17,7 +17,7 @@ export default async function Page() {
         name: string;
     }[];
     const rows = await receivingOverview(u);
-    return <main className="receivingOrders receivingHome"><header className="receivingHomeHero"><span className="receivingEyebrow">ENTRADA DE MERCANCÍA</span><h1>Recepciones</h1><p>Registra la llegada y lleva el avance de tus cajas.</p></header>{branches.length>0 ? <ReceivingNew branches={branches}/> : <p role="status">Tu usuario no tiene una sucursal habilitada para crear recepciones. Solicita al administrador que revise tu asignación.</p>}
+    return <main className="receivingOrders receivingHome"><header className="receivingHomeHero"><span className="receivingEyebrow">ENTRADA DE MERCANCÍA</span><h1>Recepciones</h1><p>Registra la llegada y lleva el avance de tus cajas.</p></header>{branches.length>0 ? <ReceivingNew branches={branches} canFreight={u.role==='MASTER'}/> : <p role="status">Tu usuario no tiene una sucursal habilitada para crear recepciones. Solicita al administrador que revise tu asignación.</p>}
     <div className="receivingListHeader"><h2>Tus recepciones</h2><span className="receivingMuted">{rows.length} {rows.length === 1 ? 'registro' : 'registros'}</span></div>
     <section className="receivingSessionList" aria-label="Recepciones">{rows.map(r => <ReceivingReceiptCard key={r.id} receipt={r}/>)}{!rows.length&&<div className="receivingEmpty card pad">📦 Aún no hay recepciones para tu sucursal.</div>}</section><Link className="receivingHistory" href="/entradas">Ver recepciones anteriores →</Link></main>;
 }

@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-export default function ReceivingNew({ branches }: {
+export default function ReceivingNew({ branches,canFreight=false }: {
+    canFreight?:boolean;
     branches: {
         id: string;
         name: string;
@@ -16,7 +17,7 @@ export default function ReceivingNew({ branches }: {
             const f = new FormData(e.currentTarget);
             try {
                 const reference = `Recepción ${f.get('date')} · ${crypto.randomUUID().slice(0,8)}`;
-                const r = await fetch('/api/receiving', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', branchId: f.get('branch'), reference, date: f.get('date'), total: Number(f.get('total')), cost: f.get('cost') === '' ? null : Number(f.get('cost')), currency: 'MXN', notes: '', carrier: f.get('carrier'), tracking: '' }) });
+                const r = await fetch('/api/receiving', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', branchId: f.get('branch'), reference, date: f.get('date'), total: Number(f.get('total')), cost: !canFreight || !f.get('cost') ? null : Number(f.get('cost')), currency: 'MXN', notes: '', carrier: f.get('carrier'), tracking: '' }) });
                 const j = await r.json();
                 if (!r.ok)
                     throw new Error(j.error);
@@ -33,7 +34,7 @@ export default function ReceivingNew({ branches }: {
  <label>Fecha<input name="date" type="date" required defaultValue={new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Monterrey' }).format(new Date())}/></label>
  <label>Transportista (opcional)<input name="carrier" maxLength={160} placeholder="Ej. Castores"/></label>
  <label>Número de cajas<input name="total" type="number" min={1} max={1000} step={1} required placeholder="80"/></label>
- <label>Costo en MXN (opcional)<input name="cost" type="number" min={0} max={999999999} step="0.01" placeholder="0.00"/></label>
+ {canFreight&&<label>Costo en MXN (opcional)<input name="cost" type="number" min={0} max={999999999} step="0.01" placeholder="0.00"/></label>}
  {error && <p role="alert">{error}</p>}<button className="receivingSave" disabled={busy || !branches.length}>{busy ? 'Creando…' : 'Guardar recepción'}</button>
  </form></details>;
 }
