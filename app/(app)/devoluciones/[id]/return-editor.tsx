@@ -5,9 +5,9 @@ import {useState} from 'react';
 import type {AppRole} from '@/lib/auth/types';
 
 export type ReturnMovement={id:string;folio:string;branch_id:string;branch:string;origin:string;status:string;pos_registered_at:string|null;current_version:number};
-export type ReturnLine={id:string;productId:string;colorId:string;model:string;quantity:number;condition:string;reason:string;product:string;color:string};
+export type ReturnLine={id:string;productId:string;colorId:string|null;model:string;quantity:number;condition:string;reason:string;product:string;color:string|null};
 export type Evidence={slot:number;fileUrl:string};
-export type ReturnProduct={id:string;name:string;colors:{id:string;name:string}[]};
+export type ReturnProduct={id:string;name:string};
 
 const origins:Record<string,string>={RETURN_ML:'Mercado Libre',RETURN_TIKTOK:'TikTok',RETURN_CUSTOMER:'Cliente'};
 const statusLabels:Record<string,string>={DRAFT:'En captura',CLOSED:'Captura terminada',PENDING_POS:'Pendiente de registrar',POS_REGISTERED:'Registrado en sistema',POS_CORRECTION_PENDING:'Corrección pendiente',POS_RECONCILED:'Registrado en sistema',CANCELLED:'Cancelada'};
@@ -63,7 +63,7 @@ export default function ReturnEditor({movement,lines,evidence,products,role}:{mo
     return <div style={{width:'100%',maxWidth:680,minWidth:0,margin:'0 auto',overflowX:'clip'}}>
       <header style={{marginBottom:20,minWidth:0}}><div style={{minWidth:0}}><small style={{color:'#667085',fontWeight:700}}>DEVOLUCIÓN · {origins[movement.origin]}</small><h1 style={{marginTop:6,overflowWrap:'anywhere'}}>Agregar producto</h1><p>{movement.branch} · Captura únicamente lo necesario.</p></div></header>
       <section className="card pad" style={{width:'100%',maxWidth:'100%',minWidth:0,padding:22,borderRadius:18,overflow:'hidden'}}>
-        <form className="formGrid" autoComplete="off" style={{width:'100%',maxWidth:'100%',minWidth:0}} onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),selected=products.find(p=>p.id===String(f.get('product'))),colorId=selected?.colors[0]?.id;if(!colorId){alert('Este producto necesita al menos un color activo en el catálogo para poder registrarse.');return}act({action:'saveLine',productId:f.get('product'),colorId,modelReference:'N/A',quantity:Number(f.get('quantity')),condition:'GOOD',reason:''})}}>
+        <form className="formGrid" autoComplete="off" style={{width:'100%',maxWidth:'100%',minWidth:0}} onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act({action:'saveLine',productId:f.get('product'),modelReference:'N/A',quantity:Number(f.get('quantity')),condition:'GOOD',reason:''})}}>
           <label>Producto<select name="product" value={product} onChange={e=>setProduct(e.target.value)} required><option value="" disabled>Selecciona un producto…</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>
           <label>Cantidad<input name="quantity" type="number" min="1" inputMode="numeric" placeholder="Cantidad" autoComplete="off" required/></label>
           <button className="primary" style={{width:'100%',marginTop:4,padding:14}}>Agregar producto</button>

@@ -71,7 +71,7 @@ export async function registrationDetail(user: SessionUser, raw: unknown) {
         if (key.kind === 'RECEPTION') return (await c.query(`SELECT p.name product,b.box_number::text box,l.model_reference model,c.name color,l.quantity FROM reception_box_lines l JOIN reception_boxes b ON b.id=l.box_id JOIN receptions r ON r.id=b.reception_id JOIN products p ON p.id=l.product_id LEFT JOIN product_colors c ON c.id=l.color_id WHERE r.movement_id=$1 ORDER BY b.box_number,l.model_reference,c.name`, [key.id])).rows;
         if (key.kind === 'EXIT') return (await c.query('SELECT p.name product,l.quantity FROM exit_lines l JOIN products p ON p.id=l.product_id WHERE l.movement_id=$1 ORDER BY p.name,l.id', [key.id])).rows;
         if (key.kind === 'TRANSFER') return (await c.query(`SELECT p.name product,CASE WHEN $2='destination' THEN l.received_quantity ELSE l.sent_quantity END quantity FROM transfer_lines l JOIN transfers t ON t.id=l.transfer_id JOIN products p ON p.id=l.product_id WHERE t.movement_id=$1 ORDER BY p.name,l.id`, [key.id,key.side])).rows;
-        return (await c.query('SELECT p.name product,l.model_reference model,c.name color,l.quantity,l.condition::text condition FROM return_lines l JOIN products p ON p.id=l.product_id JOIN product_colors c ON c.id=l.color_id WHERE l.movement_id=$1 ORDER BY p.name,l.model_reference,c.name', [key.id])).rows;
+        return (await c.query('SELECT p.name product,l.model_reference model,c.name color,l.quantity,l.condition::text condition FROM return_lines l JOIN products p ON p.id=l.product_id LEFT JOIN product_colors c ON c.id=l.color_id WHERE l.movement_id=$1 ORDER BY p.name,l.model_reference,c.name', [key.id])).rows;
     });
     return { row, lines };
 }
