@@ -1,2 +1,2 @@
 import {redirect} from 'next/navigation';
-export default function Page(){redirect('/entradas/pedidos');}
+export default function Page(){redirect('/entradas/pedidos?new=1');}

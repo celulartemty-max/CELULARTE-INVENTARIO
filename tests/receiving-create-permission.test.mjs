@@ -60,7 +60,7 @@ test('receiving page exposes creation for operative users and scopes the branch 
             '@/lib/inventory/receiving':{receivingAccess:async()=>{}},'./receiving-new':{default:New},
             '@/lib/inventory/receiving-overview':{receivingOverview:async()=>[]},'./receiving-receipt-card':{default:()=>null}
         });
-        const tree=await p.default({});const form=nodes(tree).find(n=>n.type===New);
+        const tree=await p.default({searchParams:Promise.resolve({new:'1'})});const form=nodes(tree).find(n=>n.type===New);
         if(allowed.length){assert.ok(form);assert.deepEqual(Array.from(form.props.branches.map(b=>b.id)),allowed)}
         else{assert.equal(form,undefined);assert.ok(nodes(tree).some(n=>n.props?.role==='status'))}
     }

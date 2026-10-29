@@ -7,7 +7,7 @@ import './receiving.css';
 import { receivingOverview } from '@/lib/inventory/receiving-overview';
 import ReceivingReceiptCard from './receiving-receipt-card';
 export const dynamic = 'force-dynamic';
-export default async function Page({searchParams=Promise.resolve({})}:{searchParams?:Promise<{status?:string}>}) {
+export default async function Page({searchParams=Promise.resolve({})}:{searchParams?:Promise<{status?:string;new?:string}>}) {
     const u = await requireUser();
     await receivingAccess(u);
     const ids = await getAuthorizedBranchIds(u);
@@ -16,11 +16,12 @@ export default async function Page({searchParams=Promise.resolve({})}:{searchPar
         id: string;
         name: string;
     }[];
-    const filter=(await searchParams).status;
-    const allRows=await receivingOverview(u);
+    const params=await searchParams;
+    const filter=params.status,newReceipt=params.new==='1';
+    const allRows=newReceipt?[]:await receivingOverview(u);
     const cutoff=new Date().getTime()-30*86400000;
-    const rows=allRows.filter(r=>filter==='open'?r.can_open&&r.status==='DRAFT':filter==='closed'?r.can_open&&['CLOSED','POS_REGISTERED','ARCHIVED'].includes(r.status)&&new Date(r.created_at||r.arrival_date).getTime()>=cutoff:true);
-    return <main className="receivingOrders receivingHome"><header className="receivingHomeHero"><span className="receivingEyebrow">ENTRADA DE MERCANCÍA</span><h1>Recepciones</h1><p>Registra la llegada y lleva el avance de tus cajas.</p></header>{branches.length>0 ? <ReceivingNew branches={branches} canFreight={u.role==='MASTER'}/> : <p role="status">Tu usuario no tiene una sucursal habilitada para crear recepciones. Solicita al administrador que revise tu asignación.</p>}
-    <div className="receivingListHeader"><h2>Tus recepciones</h2><span className="receivingMuted">{rows.length} {rows.length === 1 ? 'registro' : 'registros'}</span></div>
-    <section className="receivingSessionList" aria-label="Recepciones">{rows.map(r => <ReceivingReceiptCard key={r.id} receipt={r}/>)}{!rows.length&&<div className="receivingEmpty card pad">📦 Aún no hay recepciones para tu sucursal.</div>}</section><Link className="receivingHistory" href="/entradas">Ver recepciones anteriores →</Link></main>;
+    const rows=allRows.filter(r=>filter==='open'?r.can_open&&r.pending_count===true:filter==='closed'?r.can_open&&['CLOSED','POS_REGISTERED','ARCHIVED'].includes(r.status)&&new Date(r.created_at||r.arrival_date).getTime()>=cutoff:true);
+    return <main className="receivingOrders receivingHome"><header className="receivingHomeHero"><span className="receivingEyebrow">ENTRADA DE MERCANCÍA</span><h1>{newReceipt?'Nueva recepción':filter==='open'?'Recepciones en proceso':'Recepciones'}</h1><p>Registra la llegada y lleva el avance de tus cajas.</p></header>{newReceipt ? (branches.length>0 ? <ReceivingNew branches={branches} canFreight={u.role==='MASTER'} expanded/> : <p role="status">Tu usuario no tiene una sucursal habilitada para crear recepciones. Solicita al administrador que revise tu asignación.</p>) : <Link className="receivingHistory" href="/entradas/nueva">+ Nueva recepción</Link>}
+    {!newReceipt&&<><div className="receivingListHeader"><h2>Tus recepciones</h2><span className="receivingMuted">{rows.length} {rows.length === 1 ? 'registro' : 'registros'}</span></div>
+    <section className="receivingSessionList" aria-label="Recepciones">{rows.map(r => <ReceivingReceiptCard key={r.id} receipt={r}/>)}{!rows.length&&<div className="receivingEmpty card pad">📦 Aún no hay recepciones para tu sucursal.</div>}</section><Link className="receivingHistory" href="/entradas">Ver recepciones anteriores →</Link></>}</main>;
 }

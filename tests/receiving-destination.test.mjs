@@ -10,7 +10,7 @@ const manager={id:id(8),role:'MANAGER',primaryBranchId:DEST};
 function moduleFrom(path,mocks={}) {
     const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
     const mod={exports:{}};
-    vm.runInNewContext('(function(require,module,exports){'+code+'})',{Date,Set})(name=>name in mocks?mocks[name]:require(name),mod,mod.exports);
+    vm.runInNewContext('(function(require,module,exports){'+code+'})',{Date,Set})(name=>name in mocks?mocks[name]:name==='./receipt-pending'?{receiptPendingSql:readFileSync(new URL('../lib/inventory/receipt-pending.ts',import.meta.url),'utf8').split('`')[1]}:require(name),mod,mod.exports);
     return mod.exports;
 }
 function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,counted=false}={}) {

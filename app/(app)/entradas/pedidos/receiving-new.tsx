@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-export default function ReceivingNew({ branches,canFreight=false }: {
+export default function ReceivingNew({ branches,canFreight=false,expanded=false }: {
     canFreight?:boolean;
+    expanded?:boolean;
     branches: {
         id: string;
         name: string;
@@ -10,7 +11,7 @@ export default function ReceivingNew({ branches,canFreight=false }: {
 }) {
     const [busy, setBusy] = useState(false), [error, setError] = useState('');
     const router = useRouter();
-    return <details className="receivingCreate"><summary>+ Nueva recepción</summary><form className="formGrid card pad receivingCompactForm" style={{ marginTop: 16 }} onSubmit={async (e) => {
+    return <details className="receivingCreate" open={expanded}><summary>+ Nueva recepción</summary><form className="formGrid card pad receivingCompactForm" style={{ marginTop: 16 }} onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
             setError('');
