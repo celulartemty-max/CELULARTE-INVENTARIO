@@ -1,6 +1,7 @@
 'use client';
 import PackingColorField from '../packing-color-field';
 import Link from 'next/link';
+import {receiptTitle} from '@/lib/inventory/receipt-title';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { z } from 'zod';
@@ -117,7 +118,7 @@ export default function ReceivingEditor({ data, products }: {
         throw new Error(j.error); }
     function manual() { const p: Packing = { reference: targetOrder?.reference ?? '', warnings: [], boxes: [{ number: '1', items: [{ model: '', color: '', expected: null }] }] }; setReviewVersion(v => v + 1); setPacking(p); setRaw(JSON.stringify(p, null, 2)); setFile(null); }
     function editPacking(p: Packing) { setPacking(p); setRaw(JSON.stringify(p, null, 2)); }
-    return <main className="receivingOrders"><header>{packingOrder?<><button className="receivingSecondary" disabled={busy} onClick={back}>← Todos los pedidos</button><h1>{currentBatch?.product||currentBoxes[0]?.product||currentForeign[0]?.product||'Pedido'}</h1><p>{currentBatch?.shipping||currentBoxes[0]?.shipping||currentForeign[0]?.shipping} · {currentBatch?.marking||currentBoxes[0]?.marking||currentForeign[0]?.marking} · {currentBatch?.received_here??currentBoxes.length+currentForeign.length} cajas en esta recepción{currentBatch&&' · '+currentBatch.remaining+' pendientes de llegar'}</p></>:<><Link href="/entradas/pedidos">← Recepciones</Link><h1>{s.reference}</h1><p>{s.total_boxes} cajas recibidas · <b>{data.boxes.length+foreignTotal} identificadas</b> · Faltan {Math.max(0,s.total_boxes-data.boxes.length-foreignTotal)}</p><progress aria-label="Cajas identificadas" value={data.boxes.length+foreignTotal} max={s.total_boxes}/></>}</header>
+    return <main className="receivingOrders"><header>{packingOrder?<><button className="receivingSecondary" disabled={busy} onClick={back}>← Todos los pedidos</button><h1>{currentBatch?.product||currentBoxes[0]?.product||currentForeign[0]?.product||'Pedido'}</h1><p>{currentBatch?.shipping||currentBoxes[0]?.shipping||currentForeign[0]?.shipping} · {currentBatch?.marking||currentBoxes[0]?.marking||currentForeign[0]?.marking} · {currentBatch?.received_here??currentBoxes.length+currentForeign.length} cajas en esta recepción{currentBatch&&' · '+currentBatch.remaining+' pendientes de llegar'}</p></>:<><Link href="/entradas/pedidos">← Recepciones</Link><h1>{receiptTitle(s.arrival_date,s.total_boxes)}</h1><p>{s.total_boxes} cajas recibidas · <b>{data.boxes.length+foreignTotal} identificadas</b> · Faltan {Math.max(0,s.total_boxes-data.boxes.length-foreignTotal)}</p><progress aria-label="Cajas identificadas" value={data.boxes.length+foreignTotal} max={s.total_boxes}/></>}</header>
  {error && <div className="card pad" role="alert" style={{ color: '#b42318' }}>{error}</div>}
  {orderNotice&&<p role="status">{orderNotice}</p>}
  {packingOrder&&data.review&&draft&&<div className="actions"><OrderRemoval key={packingOrder} sessionId={s.id} orderId={packingOrder} busy={busy} onDone={received=>{setPackingOrder('');setActive(null);setAddingBox(null);setPacking(null);setRaw('');setFile(null);setPackingNotice('');setError('');setOrderNotice(`Pedido anulado. ${received} cajas quedaron pendientes de identificar de nuevo. El total recibido no cambió.`);router.refresh()}}/></div>}

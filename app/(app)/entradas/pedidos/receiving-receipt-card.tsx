@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {receiptTitle} from '@/lib/inventory/receipt-title';
 import type { ReceiptOverview } from '@/lib/inventory/receiving-overview';
 
 export default function ReceivingReceiptCard({ receipt: r }: { receipt: ReceiptOverview }) {
@@ -12,7 +13,7 @@ export default function ReceivingReceiptCard({ receipt: r }: { receipt: ReceiptO
         grouped.set(key, [...(grouped.get(key) ?? []), d]);
     }
     return <article className="receivingSessionCard receivingReceiptCard">
-        <div className="receivingSessionHeading"><span className="receivingSessionIcon" aria-hidden="true">📦</span><div><h3>{r.reference}</h3><span>{date} · {r.origin}</span></div>{r.can_open && <span className="receivingSessionStatus" data-status={r.status}>{status}</span>}</div>
+        <div className="receivingSessionHeading"><span className="receivingSessionIcon" aria-hidden="true">📦</span><div><h3>{receiptTitle(r.arrival_date,r.total_boxes)}</h3><span>{date} · {r.origin}</span></div>{r.can_open && <span className="receivingSessionStatus" data-status={r.status}>{status}</span>}</div>
         <div className="receivingSessionNumbers"><div><strong>{r.arrived} <small>/ {r.total_boxes}</small></strong><span>Cajas identificadas{!r.can_open && ' en origen'}</span></div><div><strong>{r.can_open ? r.counted ?? 0 : destinationCounted}</strong><span>{r.can_open ? 'Cajas propias contadas' : 'Cajas contadas en tu sucursal'}</span></div></div>
         <progress aria-label={`Avance de cajas de ${r.reference}`} max={r.total_boxes} value={r.arrived}/>
         <div className="receivingSessionFooter"><span>{Math.max(0, r.total_boxes - r.arrived)} por identificar</span>{r.can_open && <Link className="receivingReceiptOpen" href={`/entradas/pedidos/${r.id}`}>Abrir recepción →</Link>}</div>
