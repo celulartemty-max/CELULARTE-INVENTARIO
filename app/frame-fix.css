@@ -83,6 +83,8 @@
   select,
   textarea {
     max-width: 100% !important;
+    /* Safari zooms focused controls below 16px, moving the app's frame. */
+    font-size: 16px !important;
   }
 
   /* Product/color editor: every visual frame stays inside its parent. */

@@ -13,3 +13,17 @@
 .productAdmin .renameForm{display:flex;flex-wrap:wrap;gap:8px;width:100%;min-width:0}
 .productAdmin .renameForm input{flex:1 1 100%;min-width:0;width:100%;box-sizing:border-box}
 @media(min-width:640px){.productAdmin .productName b{font-size:16px}.productAdmin .productListActions button{padding:8px 12px;font-size:14px}}
+@media(max-width:800px){
+  .content>header.productPageHeader h1{font-size:26px!important;line-height:1.2!important;margin:0 0 6px}
+  .productPageHeader p{font-size:14px;line-height:1.45}
+  .card.pad.productAdmin{padding:14px!important;margin-top:16px}
+  .productAdmin .productCreate{margin-bottom:18px;gap:8px!important}
+  .productAdmin input{min-height:44px;padding:10px 12px}
+  .productAdmin .productCreate button{min-height:44px;font-size:14px;padding:10px 12px}
+  .productSearch{gap:6px;margin-bottom:6px}
+  .productAdmin .productEditorRow{padding:6px 0}
+  .productAdmin .productTitleRow{gap:8px!important}
+  .productAdmin .productName b{font-size:14px}
+  .productAdmin .productListActions button{min-height:44px;font-size:12px;padding:8px 6px}
+  .productAdmin details summary{font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+}
