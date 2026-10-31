@@ -13,7 +13,7 @@ import { registerTransferPos } from './transfers';
 
 export const registrationSchema = z.object({ id: z.string().uuid(), kind: z.enum(['RECEIVING','DESTINATION','RECEPTION','EXIT','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER','TRANSFER','CLIENT_SALE']), side: z.enum(['origin','destination']).nullable().default(null) });
 export type RegistrationKey = z.infer<typeof registrationSchema>;
-export type RegistrationPending = RegistrationKey & { reference: string; branch_id: string; branch: string; created_at: string; correction: boolean };
+export type RegistrationPending = RegistrationKey & { reference: string; branch_id: string; branch: string; created_at: string; correction: boolean; created_by_name?: string | null };
 
 // One row per registration responsibility. A transfer can legitimately have two
 // pending sides, never two confirmations for the same side.
@@ -41,8 +41,12 @@ export const pendingSql = `WITH pending AS (
     SELECT m.id,'CLIENT_SALE','origin',m.folio,t.origin_branch_id,t.paid_at,false
     FROM transfers t JOIN inventory_movements m ON m.id=t.movement_id
     WHERE t.customer_sale AND t.paid_at IS NOT NULL AND t.sent_at IS NOT NULL AND t.origin_pos_registered_at IS NULL AND t.status::text IN ('WAITING_RECEIPT','PENDING_POS')
-) SELECT p.id::text,p.kind,p.side,p.reference,p.branch_id::text,b.name branch,p.created_at::text,p.correction
+) SELECT p.id::text,p.kind,p.side,p.reference,p.branch_id::text,b.name branch,p.created_at::text,p.correction,creator.name created_by_name
   FROM pending p JOIN branches b ON b.id=p.branch_id
+  LEFT JOIN inventory_movements source_m ON source_m.id=p.id AND p.kind NOT IN ('RECEIVING','DESTINATION')
+  LEFT JOIN receiving_sessions source_s ON source_s.id=p.id AND p.kind='RECEIVING'
+  LEFT JOIN receiving_orders source_o ON source_o.id=p.id AND p.kind='DESTINATION'
+  LEFT JOIN users creator ON creator.id=COALESCE(source_m.created_by,source_s.created_by,source_o.created_by)
   WHERE ($1::uuid[] IS NULL OR p.branch_id=ANY($1::uuid[])) ORDER BY p.created_at,p.id,p.side LIMIT 500`;
 
 export async function registrationPending(user: SessionUser): Promise<RegistrationPending[]> {
