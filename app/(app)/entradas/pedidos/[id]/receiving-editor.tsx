@@ -15,6 +15,7 @@ import ReceivingModal from './receiving-modal';
 import ReceivingClose from './receiving-close';
 import PackingReset from './packing-reset';
 import OrderRemoval from './order-removal';
+import ReceiptEdit from './receipt-edit';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -123,6 +124,7 @@ export default function ReceivingEditor({ data, products }: {
  {orderNotice&&<p role="status">{orderNotice}</p>}
  {packingOrder&&data.review&&draft&&<div className="actions"><OrderRemoval key={packingOrder} sessionId={s.id} orderId={packingOrder} busy={busy} onDone={received=>{setPackingOrder('');setActive(null);setAddingBox(null);setPacking(null);setRaw('');setFile(null);setPackingNotice('');setError('');setOrderNotice(`Pedido anulado. ${received} cajas quedaron pendientes de identificar de nuevo. El total recibido no cambió.`);router.refresh()}}/></div>}
  {!packingOrder&&<>
+ {data.canRecount&&draft&&<ReceiptEdit sessionId={s.id} total={s.total_boxes} boxes={[...data.boxes,...data.foreignBoxes]} orders={data.batches.filter(b=>b.received_here>0)}/>}
  {data.canRecount && <section className="card pad receivingFreight"><div className="receivingFreightTop"><div><h2>Flete y comprobante</h2><p>{s.arrival_date} · {s.carrier||'Sin transportista'} · Guía: {s.tracking||'—'}</p></div><div className="receivingFreightAmount"><small>Monto del flete</small><strong>{data.cost?.cost != null ? new Intl.NumberFormat('es-MX',{style:'currency',currency:data.cost.currency}).format(Number(data.cost.cost)) : 'Sin monto'}</strong><span>{data.cost?.currency||'MXN'}</span></div></div>
  {draft&&<div className="receivingFreightUploads"><div className="receivingAttachmentPicker"><button type="button" className="receivingSecondary" aria-expanded={attachmentOptions} aria-controls="freight-attachment-options" disabled={busy} onClick={()=>setAttachmentOptions(v=>!v)}>📎 Adjuntar comprobante</button>{attachmentOptions&&<div id="freight-attachment-options" className="receivingAttachmentOptions" role="group" aria-label="Origen del comprobante">{([{title:'Cámara',icon:'📷',accept:'image/*',camera:true},{title:'Foto',icon:'🖼️',accept:'image/*',camera:false},{title:'Archivo',icon:'📄',accept:'.pdf,.png,.jpg,.jpeg',camera:false}]).map(option=><label className="receivingUploadChoice" key={option.title}><span>{option.icon} {option.title}</span><input aria-label={option.title} type="file" accept={option.accept} capture={option.camera?'environment':undefined} disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f){setAttachmentOptions(false);run(()=>upload(f,{sessionId:s.id}))}e.target.value=''}}/></label>)}<button type="button" className="receivingSecondary" onClick={()=>setAttachmentOptions(false)}>Cancelar</button></div>}</div><small>{busy?'Subiendo comprobante…':'Foto o PDF · hasta 2 MB'}</small></div>}
  {data.cost?.notes&&<p>{data.cost.notes}</p>}{data.documents.filter(d=>!d.order_id).map(d=><a className="receivingFreightFile" key={d.id} href={`/api/receiving/documents?id=${d.id}`}>📄 {d.filename} · Ver comprobante</a>)}</section>}
