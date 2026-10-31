@@ -19,7 +19,7 @@ export async function completeCustomerSale(c:PoolClient,id:string,u:SessionUser)
 export async function payCustomerSale(u:SessionUser,id:string,branch:string){
  return withTransaction(async c=>{
   const t=await lock(c,u,id);
-  if(branch!==t.origin_branch_id&&branch!==t.destination_branch_id)throw Error('Sucursal de cobro incorrecta.');
+  if(branch!==t.destination_branch_id)throw Error('El pago corresponde únicamente a la sucursal receptora.');
   await assertBranchAccess(u,branch);
   if(t.paid_at)throw Error('El pago ya fue confirmado.');
   const n=await c.query('SELECT count(*)::int n FROM transfer_lines WHERE transfer_id=$1',[t.id]);
