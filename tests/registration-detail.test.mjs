@@ -12,6 +12,14 @@ const mod={exports:{}};
 vm.runInNewContext('(function(require,module,exports){'+code+'})',{})(require,mod,mod.exports);
 const {default:Detail,registrationInstruction:instruction,registrationQuantities:quantities,registrationConfirmLabel:confirmLabel}=mod.exports;
 const row={kind:'EXIT',side:null,correction:false,branch:'Plaza del Audio',reference:'SAL-FIXTURE'};
+test('receipt groups quantities by product and counts distinct carton IDs, retaining the breakdown',()=>{
+ const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row:{...row,kind:'RECEIVING'},lines:[{product_id:'p',product:'LENS',carton_id:'a',box:'1',color:'BLACK',quantity:300},{product_id:'p',product:'LENS',carton_id:'a',box:'1',color:'RED',quantity:300},{product_id:'p',product:'LENS',carton_id:'b',box:'1',quantity:150},{product_id:'q',product:'WALLET',carton_id:'c',box:'2',quantity:330}]}}));
+ assert.match(html,/# Cajas/);assert.match(html,/# Piezas/);assert.match(html,/>750<\/strong>/);assert.match(html,/>330<\/strong>/);assert.match(html,/Total · 3 cajas/);assert.match(html,/1,080 piezas/);
+ const summary=html.split('<details')[0];assert.equal((summary.match(/>LENS<\/b>/g)||[]).length,1);assert.doesNotMatch(summary,/BLACK/);assert.match(html.split('<details')[1],/BLACK/);
+});
+test('receipt with an incomplete quantity does not show a false product total',()=>{
+ const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row:{...row,kind:'DESTINATION'},lines:[{product:'LENS',box:'1',quantity:null}]}}));assert.match(html,/Por completar/);assert.match(html,/role="alert"/);
+});
 test('instructions distinguish receipt, exit, return and both transfer sides',()=>{
     for(const kind of ['RECEIVING','DESTINATION','RECEPTION'])assert.equal(instruction({...row,kind}),'Registrar una ENTRADA');
     assert.equal(instruction(row),'Registrar una SALIDA');
