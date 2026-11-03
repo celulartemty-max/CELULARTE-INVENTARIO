@@ -42,6 +42,10 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (!s)
             throw new Error('Recepción no encontrada.');
         await assertBranchAccess(u, s.branch_id);
+        if(b.action==='changeBoxProduct'){
+            const {changeBoxProduct}=await import('./box-product-change');
+            return changeBoxProduct(c,u,s,b);
+        }
         if(b.action==='editReceipt'){
             const {editReceipt}=await import('./receipt-edit');
             return editReceipt(c,u,s,b);
