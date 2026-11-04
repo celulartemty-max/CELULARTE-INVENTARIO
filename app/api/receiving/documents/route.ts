@@ -24,7 +24,7 @@ async function handlePOST(req: Request) {
         await withTransaction(async (c) => {
             const destination = f.get('destination') === 'true';
             if (destination && !orderId) throw new Error('Selecciona el pedido de destino.');
-            const row = destination && orderId ? { branch_id: await destinationDocumentBranch(c, u, orderId), status: undefined } : (await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 AND NOT is_foreign AND voided_at IS NULL FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId])).rows[0];
+            const row = destination && orderId ? { branch_id: await destinationDocumentBranch(c, u, orderId), status: undefined } : (await c.query(orderId ? 'SELECT branch_id FROM receiving_orders WHERE id=$1 AND (NOT is_foreign OR (marking IN (\'PER\',\'JAPS\') AND destination_branch_id IN (SELECT id FROM branches WHERE status=\'ACTIVE\' AND name=CASE marking WHEN \'PER\' THEN \'Treviño\' WHEN \'JAPS\' THEN \'Plaza del Audio\' END))) AND voided_at IS NULL FOR UPDATE' : 'SELECT branch_id,status FROM receiving_sessions WHERE id=$1 FOR UPDATE', [orderId || sessionId])).rows[0];
             if (!row)
                 throw new Error('No encontrado.');
             await assertBranchAccess(u, row.branch_id);
@@ -48,14 +48,14 @@ export async function GET(req: Request) {
         await receivingAccess(u, true);
         const id = z.string().uuid().parse(new URL(req.url).searchParams.get('id'));
         return withTransaction(async c => {
-            const row = (await c.query('SELECT d.order_id,COALESCE(o.branch_id,s.branch_id) branch_id,o.is_foreign FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=$1', [id])).rows[0];
+            const row = (await c.query(`SELECT d.order_id,COALESCE(o.branch_id,s.branch_id) branch_id,o.is_foreign,((o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name=CASE o.marking WHEN 'PER' THEN 'Treviño' WHEN 'JAPS' THEN 'Plaza del Audio' END))) packing_allowed FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=$1`, [id])).rows[0];
             if (row && !row.order_id && u.role !== 'MASTER') throw new Error('Sin acceso.');
             if (!row) return new Response('No encontrado', { status: 404 });
             if (new URL(req.url).searchParams.get('destination') === 'true') {
                 if (!row.order_id) throw new Error('Sin acceso.');
                 await destinationDocumentBranch(c, u, row.order_id);
             } else {
-                if (row.is_foreign) throw new Error('Sin acceso.');
+                if (row.is_foreign && !row.packing_allowed) throw new Error('Sin acceso.');
                 await assertBranchAccess(u, row.branch_id);
             }
             const d = (await c.query('SELECT filename,mime,data FROM receiving_documents WHERE id=$1', [id])).rows[0];

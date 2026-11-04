@@ -65,6 +65,14 @@ test('foreign order without catalog product still supports manual label',async()
  nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'5'}});tree=render();await tree.props.onSubmit({preventDefault(){},currentTarget:{fields:{productLabel:'ANILLO CDMX',shipping:'AIR',marking:'CDMX'}}});
  assert.ok(payload.isForeign);assert.equal(payload.productId,null);assert.equal(payload.received,5);
 });
+test('JAPS destination packing can be prepared at source without enabling source counting',()=>{
+ const japs={...batch,id:'J',marking:'JAPS',destination_name:'Plaza del Audio',is_foreign:true,received_here:1};
+ const data={review:true,canRecount:true,session:{id:'session',reference:'Llegada',arrival_date:'2026-11-03',total_boxes:1,status:'DRAFT',carrier:'',tracking:''},batches:[japs],orders:[{id:'J',reference:japs.reference}],boxes:[],items:[],foreign:[],foreignBoxes:[{id:'jbox',order_id:'J',carton_number:'1',product:'Mica'}],documents:[{id:'jdoc',order_id:'J',filename:'japs-original.xlsx'}],cost:null,pending:[]};
+ const render=mount(base+'receiving-editor.tsx','default',{data,products});let tree=render();nodes(tree).find(n=>n.props?.onOpen).props.onOpen('J');tree=render();
+ assert.match(text(tree),/Packing list para Plaza del Audio/);assert.match(text(tree),/Leer packing list con IA/);assert.match(text(tree),/japs-original.xlsx/);assert.doesNotMatch(text(tree),/Cajas ajenas · solo registro/);
+ assert.equal(nodes(tree).find(n=>n.type==='button'&&text(n)==='Contar piezas').props.disabled,true);assert.ok(!nodes(tree).some(n=>n.props?.className==='receivingBoxButton'));
+ const core=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');assert.match(core,/order.is_foreign && !order.packing_allowed/);assert.match(core,/marking IN \('PER','JAPS'\)/);assert.match(core,/AND NOT o.is_foreign ORDER BY o.reference/);
+});
 test('order workspace filters boxes and files to the opened order; foreign has no packing or count',()=>{
  const other={...batch,id:'B',reference:'OTHER',product:'Anillo',received_here:1},foreign={...batch,id:'C',is_foreign:true,product:'Mica CDMX',received_here:1};
  const data={review:true,canRecount:true,session:{id:'session',reference:'Llegada',arrival_date:'2026-10-25',total_boxes:200,status:'DRAFT',carrier:'',tracking:''},batches:[batch,other,foreign],orders:[{id:'A',reference:'PED-20'},{id:'B',reference:'OTHER'}],boxes:[{id:'boxA',order_id:'A',carton_number:'1',product:'Combo Case',shipping:'SEA',marking:'PER NICO',counted_at:null,notes:''},{id:'boxB',order_id:'B',carton_number:'9',product:'Anillo',shipping:'SEA',marking:'PER',counted_at:null,notes:''}],items:[],foreign:[],foreignBoxes:[{id:'boxC',order_id:'C',carton_number:'1',product:'Mica CDMX'}],documents:[{id:'docA',order_id:'A',filename:'solo-A.xlsx'},{id:'docB',order_id:'B',filename:'solo-B.xlsx'}],cost:null,pending:[]};

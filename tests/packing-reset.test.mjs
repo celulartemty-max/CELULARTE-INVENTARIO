@@ -86,12 +86,12 @@ test('historical files stay downloadable and do not consume the active-file uplo
 });
 
 test('source endpoint rejects operative, wrong branch, foreign order, unrelated receipt and closed sessions',async()=>{
-    for(const options of [{operative:true},{branchDenied:true},{foreign:true},{unrelated:true},{closed:true},{}]) {
+    for(const options of [{operative:true},{branchDenied:true},{foreign:true},{unrelated:true},{closed:true},{internal:true},{}]) {
         let resetArgs;
-        const order={branch_id:BRANCH,is_foreign:!!options.foreign};
+        const order={branch_id:BRANCH,is_foreign:!!options.foreign||!!options.internal,packing_allowed:!!options.internal};
         const session={id:SESSION,branch_id:BRANCH,status:options.closed?'CLOSED':'DRAFT'};
         const c={query:async sql=>{
-            const rows=sql.startsWith('SELECT * FROM receiving_sessions')?[session]:sql.startsWith('SELECT branch_id,is_foreign FROM receiving_orders')?[order]:sql.startsWith('SELECT 1 FROM receiving_cartons')&&!options.unrelated?[{ok:1}]:[];
+            const rows=sql.startsWith('SELECT * FROM receiving_sessions')?[session]:sql.startsWith('SELECT branch_id,is_foreign,')?[order]:sql.startsWith('SELECT 1 FROM receiving_cartons')&&!options.unrelated?[{ok:1}]:[];
             return {rows,rowCount:rows.length};
         }};
         const f=load('lib/inventory/receiving.ts',{
@@ -103,7 +103,7 @@ test('source endpoint rejects operative, wrong branch, foreign order, unrelated 
             './receiving-order-removal':{}
         });
         const promise=f.receivingAction({...user,role:options.operative?'OPERATIVE':'MANAGER'},{action:'resetPacking',sessionId:SESSION,orderId:ORDER,destination:true});
-        if(Object.keys(options).length){await assert.rejects(promise);assert.equal(resetArgs,undefined);}
+        if(Object.keys(options).length&&!options.internal){await assert.rejects(promise);assert.equal(resetArgs,undefined);}
         else {await promise;assert.equal(resetArgs[4].destination,false);assert.equal(resetArgs[2],ORDER);}
     }
 });
