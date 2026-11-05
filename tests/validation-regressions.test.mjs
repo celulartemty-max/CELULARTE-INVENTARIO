@@ -32,6 +32,10 @@ test('legacy credential fallback still resolves an active user',async()=>{
  const result=await authenticate(user.email,'correct-password');assert.equal(result.id,user.id);assert.equal(result.primaryBranchId,null);
  assert.equal(calls.length,2);assert.ok(calls.every(c=>c.query.includes("status::text='ACTIVE'")));
 });
+test('reset managed password disables the old legacy password for the same account',async()=>{
+ const {authenticate,calls}=authFixture([[{...user,password_hash:'fixture-hash:new-password'}]],[{email:user.email,passwordHash:'fixture-hash:old-password'}]);
+ assert.equal(await authenticate(user.email,'old-password'),null);assert.equal(calls.length,1);
+});
 test('missing or inactive user cannot log in through legacy fallback',async()=>{
  const {authenticate}=authFixture([[],[]],[{email:user.email,passwordHash:'fixture-hash:correct-password'}]);
  assert.equal(await authenticate(user.email,'correct-password'),null);
