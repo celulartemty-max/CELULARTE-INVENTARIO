@@ -39,6 +39,28 @@ function quantity(value: unknown) {
     const trimmed = value.trim();
     return /^\d+$/.test(trimmed) ? Number(trimmed) : value;
 }
+function groupCartonRows(boxes: unknown) {
+    // Repeated CTN rows are normal in spreadsheets. Merge only their item lists,
+    // never quantities: duplicate model/colour pairs must still fail validation.
+    if (!Array.isArray(boxes) || boxes.length > 1000) return boxes;
+    if (boxes.some(box => !record(box) || typeof box.number !== 'string'
+        || !box.number.trim() || !Array.isArray(box.items) || !box.items.length
+        || box.items.length > 500)) return boxes;
+    const grouped: Record<string, unknown>[] = [];
+    const byNumber = new Map<string, Record<string, unknown>>();
+    for (const box of boxes as Record<string, unknown>[]) {
+        const number = (box.number as string).trim();
+        const previous = byNumber.get(number);
+        if (previous) {
+            previous.items = [...previous.items as unknown[], ...box.items as unknown[]];
+        } else {
+            const copy = { ...box, number, items: [...box.items as unknown[]] };
+            grouped.push(copy);
+            byNumber.set(number, copy);
+        }
+    }
+    return grouped;
+}
 export function parsePackingReading(content: unknown) {
     let value: unknown;
     try { value = typeof content === 'string' ? JSON.parse(content) : content; }
@@ -48,12 +70,12 @@ export function parsePackingReading(content: unknown) {
             ...value,
             reference: value.reference == null ? '' : label(value.reference),
             warnings: value.warnings == null ? [] : value.warnings,
-            boxes: Array.isArray(value.boxes) ? value.boxes.map(box => !record(box) ? box : {
+            boxes: groupCartonRows(Array.isArray(value.boxes) ? value.boxes.map(box => !record(box) ? box : {
                 ...box, number: label(box.number),
                 items: Array.isArray(box.items) ? box.items.map(item => !record(item) ? item : {
                     ...item, model: label(item.model), expected: quantity(item.expected)
                 }) : box.items
-            }) : value.boxes
+            }) : value.boxes)
         };
     }
     const parsed = packingSchema.safeParse(value);

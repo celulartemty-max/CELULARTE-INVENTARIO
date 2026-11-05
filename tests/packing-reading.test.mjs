@@ -34,9 +34,31 @@ test('never turn invalid or unknown quantity into zero, round it, or silently dr
 test('duplicates, malformed JSON, empty or oversized readings remain rejected',()=>{
     assert.throws(()=>parse('{'),/incompleta/);
     assert.throws(()=>parse({...packing,boxes:[]}),/Formato/);
-    assert.throws(()=>parse({...packing,boxes:[packing.boxes[0],{...packing.boxes[0],number:1}]}),/Número de caja repetido/);
+    assert.throws(()=>parse({...packing,boxes:[packing.boxes[0],{...packing.boxes[0],number:1}]}),/Modelo\/color repetido/);
     assert.throws(()=>parse({...packing,boxes:[{number:'1',items:[packing.boxes[0].items[0],packing.boxes[0].items[0]]}]}),/Modelo\/color repetido/);
     assert.throws(()=>parse({...packing,reference:'x'.repeat(161)}),/Formato/);
+});
+test('diamond packing rows 1, 2, 2 become two cartons, preserving all 1550 pieces',()=>{
+    const colors=['gold','rainbow','black','silver','pink','orange'];
+    const row=(number,model,values)=>({number,items:values.flatMap((expected,i)=>expected===null?[]:[{model,color:colors[i],expected}])});
+    const input={...packing,colors,boxes:[row(1,'18 PRO/18 PRO MAX',[50,100,200,249,250,null]),row('2','18 DUO',[50,50,100,101,100,null]),row(' 2 ','17 PRO MAX',[null,null,null,null,null,300])]};
+    const before=JSON.stringify(input),result=parse(input);
+    assert.deepEqual(result.boxes.map(b=>b.number),['1','2']);
+    assert.equal(result.boxes[1].items.length,6);
+    assert.equal(result.boxes[1].items.at(-1).model,'17 PRO MAX');
+    assert.equal(result.boxes.flatMap(b=>b.items).reduce((sum,item)=>sum+item.expected,0),1550);
+    assert.equal(result.boxes[0].items[3].expected,249);assert.equal(result.boxes[1].items[3].expected,101);
+    assert.deepEqual(result.colors,colors);assert.equal(JSON.stringify(input),before);
+});
+test('grouping keeps safety limits, malformed rows and duplicate combinations visible',()=>{
+    const row=(model,expected=null)=>({number:'1',items:[{model,color:'black',expected}]});
+    assert.throws(()=>parse({...packing,boxes:Array.from({length:1001},(_,i)=>row(String(i)))}),/Formato/);
+    assert.throws(()=>parse({...packing,boxes:Array.from({length:501},(_,i)=>row(String(i)))}),/Formato/);
+    assert.throws(()=>parse({...packing,boxes:[row('A'),{number:'1',items:[]}]}),/Formato/);
+    assert.throws(()=>parse({...packing,boxes:[row('A'),row('a')]}),/Modelo\/color repetido/);
+    const result=parse({...packing,boxes:[row('A',0),{...row('C'),number:'01'},row('B')]});
+    assert.deepEqual(result.boxes.map(b=>b.number),['1','01']);
+    assert.deepEqual(result.boxes[0].items.map(i=>i.expected),[0,null]);
 });
 test('transcription of the reported seven-carton document preserves all 6411 pieces',()=>{
     const quantities=[[250,150,200,150,50,50,70],[100,300,50,100,150,150,20,50],[40,150,20,150,60,50,100,160,60,30,100],[540,300,100],[560,270,60,50],[40,501,150,30,50,50,120],[300,180,50,300]];
