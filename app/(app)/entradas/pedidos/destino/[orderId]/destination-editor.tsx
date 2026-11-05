@@ -92,6 +92,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
                     const r = await fetch('/api/receiving/documents', { method: 'POST', body: form }); const result = await r.json();
                     if (!r.ok) throw new Error(result.error); setAttachedFile(file); setNotice('Archivo adjuntado al pedido.'); startTransition(() => router.refresh());
                 })}/>
+            {error&&<p className="receivingError" role="alert">{error}</p>}
             <PackingReset orderId={order.id} destination busy={busy} onDone={()=>{setPacking(null);setFile(null);setAttachedFile(null);setAddBox(null);setVisited([]);setActiveBox('');setCountVersion(v=>v+1);setNotice('Contenido retirado. Carga el packing list correcto en este mismo pedido.');startTransition(()=>router.refresh())}}/>
             {data.documents.some(d=>!d.previous) && <details className="packingUploadSaved"><summary>Ver archivos vigentes</summary>{data.documents.filter(d=>!d.previous).map(d => <a className="packingUploadDocument" key={d.id} href={`/api/receiving/documents?id=${d.id}&destination=true`}><span aria-hidden="true">📄</span><span>{d.filename}</span><b aria-hidden="true">↓</b></a>)}</details>}
             {data.documents.some(d=>d.previous) && <details className="packingUploadSaved"><summary>Archivos anteriores · no vigentes</summary>{data.documents.filter(d=>d.previous).map(d=><a className="packingUploadDocument" key={d.id} href={`/api/receiving/documents?id=${d.id}&destination=true`}>{d.filename}</a>)}</details>}
@@ -125,7 +126,7 @@ function DestinationCount({ box, items, busy, review, canRecount, save, onAdd, c
         await save({ action: finish ? 'count' : 'saveCount', boxId: box.id, lines, notes: fields.get('notes') });
     }
     return <form ref={formRef} className="receivingCompactForm" onSubmit={e => { e.preventDefault(); void submit(true); }}><h3>Caja {box.carton_number}{box.counted_at ? ' · Conteo terminado ✓' : ''}</h3>
-        <CountGrid items={items} colorOrder={colorOrder} disabled={busy || Boolean(box.counted_at)} showReference={review && Boolean(box.counted_at)} onAdd={box.counted_at ? undefined : onAdd}/>
+        <CountGrid items={items} colorOrder={colorOrder} disabled={busy || Boolean(box.counted_at)} showReference={review && Boolean(box.counted_at)} onAdd={box.counted_at ? undefined : onAdd} onAddCombination={(model,color)=>{void save({action:'addItem',boxId:box.id,model,color})}}/>
         {!items.length && <p>Agrega un packing list o utiliza “Añadir modelo” para empezar.</p>}
         <label className="receivingField">Observaciones<textarea name="notes" maxLength={2000} defaultValue={box.notes} disabled={busy || Boolean(box.counted_at)}/></label>
         {!box.counted_at ? <div className="actions"><button type="button" disabled={busy || !items.length} onClick={() => submit(false)}>Guardar avance</button><button className="receivingSave" disabled={busy || !items.length}>Terminar conteo de esta caja</button></div> : canRecount && <button type="button" disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se guardarán las cantidades anteriores en auditoría y se reiniciará esta caja.')) void save({ action: 'reopenBox', boxId: box.id }); }}>Autorizar reconteo</button>}

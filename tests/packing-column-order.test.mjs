@@ -16,6 +16,19 @@ function load(path) {
 }
 const helpers=load('lib/inventory/packing-column-order.ts');
 const Grid=load('app/(app)/entradas/pedidos/[id]/count-grid.tsx').default;
+test('missing count combinations can be enabled explicitly, without creating zero counts',()=>{
+    const items=[{id:'a',model:'HONOR',color:'BLACK',counted:50},{id:'b',model:'OPPO',color:'CLEAR',counted:null}];
+    const before=JSON.stringify(items), calls=[];
+    const tree=Grid({items,disabled:false,showReference:false,onAddCombination:(...args)=>calls.push(args)});
+    function visit(node){if(!node||typeof node!=='object')return;if(node.props?.['aria-label']==='Añadir cantidad: OPPO, BLACK')node.props.onClick();for(const child of [node.props?.children].flat(Infinity))visit(child);}
+    visit(tree);assert.deepEqual(calls,[['OPPO','BLACK']]);assert.equal(JSON.stringify(items),before);
+    const html=renderToStaticMarkup(tree);assert.match(html,/Añadir cantidad: OPPO, BLACK/);assert.match(html,/name="a"[^>]*value="50"/);assert.match(html,/name="b"[^>]*value=""/);
+});
+test('finished and busy count grids keep missing combinations read-only',()=>{
+    const items=[{id:'a',model:'HONOR',color:'BLACK',counted:50},{id:'b',model:'OPPO',color:'CLEAR',counted:null}];
+    const html=renderToStaticMarkup(React.createElement(Grid,{items,disabled:true,showReference:false,onAddCombination:()=>{throw new Error('must not run')}}));
+    assert.doesNotMatch(html,/Añadir cantidad:/);assert.match(html,/Combinación no incluida/);
+});
 const review=load('app/(app)/entradas/pedidos/[id]/packing-review.tsx');
 const packing={reference:'PEDIDO',colors:['NEGRO','AZUL','ROSA'],warnings:[],boxes:[{number:'1',items:[{model:'A',color:'AZUL',expected:5},{model:'B',color:'NEGRO',expected:10},{model:'B',color:'ROSA',expected:0}]}]};
 test('column order follows explicit header even when the first model has missing colours',()=>{

@@ -146,6 +146,7 @@ export default function ReceivingEditor({ data, products }: {
  <label>Excel o imagen (hasta 2 MB)<input type="file" accept=".xlsx,.png,.jpg,.jpeg" disabled={busy} onChange={e => { setFile(e.target.files?.[0] ?? null); setPacking(null); }}/></label>
  <div className="actions"><button disabled={busy || !file || !targetOrder} onClick={() => run(async () => { const f = new FormData(); f.set('file', file!); const r = await fetch('/api/receiving/interpret', { method: 'POST', body: f }); const j = await r.json(); if (!r.ok)
             throw new Error(j.error); setReviewVersion(v => v + 1); setPacking(j); setRaw(JSON.stringify(j, null, 2)); })}>{busy ? 'Procesando…' : 'Leer packing list con IA'}</button><button disabled={busy || !targetOrder} onClick={manual}>Capturar sin archivo</button></div>
+ {error&&<p className="receivingError" role="alert">{error}</p>}
  {packing && <form className="formGrid receivingPackingForm" onSubmit={e => { e.preventDefault(); const form = new FormData(e.currentTarget); run(async () => { const p = packingSchema.parse(JSON.parse(raw)); if(!targetOrder)throw new Error('Selecciona el pedido.'); p.reference = targetOrder.reference; const j = await act({ action: 'packing', orderId: targetOrder.id, packing: p, documentReference: String(form.get('reference')||'') }); setPacking(null); setRaw(''); if (file) {
                 try {
                     await upload(file, { orderId: j.orderId });
@@ -179,7 +180,7 @@ export default function ReceivingEditor({ data, products }: {
                 return; run(async () => { await act({ action: saving ? 'saveCount' : 'count', boxId: b.id, lines: items.map(l => ({ id: l.id, quantity: f.get(l.id) === '' ? null : Number(f.get(l.id)) })), notes: f.get('notes') }); if (!saving)
                 setActive(null); }); }}>
  {!data.items.some(l=>l.carton_id===b.id)&&<p>Esta caja aún no tiene contenido registrado. Agrega el packing list arriba o captura sus modelos/colores abajo; las cantidades empiezan vacías.</p>}
- <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} colorOrder={b.color_order} disabled={!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at} onAdd={()=>setAddingBox(b.id)}/>
+ <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} colorOrder={b.color_order} disabled={!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at} onAdd={()=>setAddingBox(b.id)} onAddCombination={(model,color)=>run(async()=>{await act({action:'addItem',boxId:b.id,model,color})})}/>
  <label>Observaciones<textarea name="notes" maxLength={2000} defaultValue={b.notes} disabled={!!b.counted_at || !draft || busy}/></label>{!b.counted_at && draft && <div className="actions"><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)} value="draft" formNoValidate>Guardar avance</button><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)}>Terminar conteo de esta caja</button></div>}
  </form>}
  {active === b.id && b.counted_at && draft && data.canRecount && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Las cantidades quedarán vacías y se conservará el conteo anterior en auditoría.'))
