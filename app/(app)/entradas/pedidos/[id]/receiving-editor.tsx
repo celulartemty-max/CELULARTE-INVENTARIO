@@ -183,8 +183,8 @@ export default function ReceivingEditor({ data, products }: {
  <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} colorOrder={b.color_order} disabled={!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at} onAdd={()=>setAddingBox(b.id)} onAddCombination={(model,color)=>run(async()=>{await act({action:'addItem',boxId:b.id,model,color})})}/>
  <label>Observaciones<textarea name="notes" maxLength={2000} defaultValue={b.notes} disabled={!!b.counted_at || !draft || busy}/></label>{!b.counted_at && draft && <div className="actions"><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)} value="draft" formNoValidate>Guardar avance</button><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)}>Terminar conteo de esta caja</button></div>}
  </form>}
- {active === b.id && b.counted_at && draft && data.canRecount && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Las cantidades quedarán vacías y se conservará el conteo anterior en auditoría.'))
-            run(async () => { await act({ action: 'reopenBox', boxId: b.id }); setActive(null); }); }}>Autorizar reconteo</button>}
+ {active === b.id && b.counted_at && draft && data.canRecount && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se conservarán las cantidades para corregir solo lo necesario y el conteo anterior quedará en auditoría. Vuelve a terminar el conteo para confirmar los cambios.'))
+            run(async () => { await act({ action: 'reopenBox', boxId: b.id }); }); }}>Autorizar reconteo</button>}
  </article>)}</section>
  </div>
  </>}

@@ -108,6 +108,21 @@ test('source endpoint rejects operative, wrong branch, foreign order, unrelated 
     }
 });
 
+test('source reconteo preserves quantities and audits them; only MASTER can reopen an available draft carton',async()=>{
+    for(const options of [{role:'MANAGER'},{role:'OPERATIVE'},{closed:true},{missing:true},{}]) {
+        const queries=[],previous=[{id:ITEM,counted:12},{id:id(20),counted:0},{id:id(21),counted:null}];
+        const c={query:async(sql,args=[])=>{
+            queries.push({sql,args});
+            const rows=sql.startsWith('SELECT * FROM receiving_sessions')?[{id:SESSION,branch_id:BRANCH,status:options.closed?'CLOSED':'DRAFT'}]:sql.startsWith('SELECT l.id,l.counted')?previous:sql.startsWith('UPDATE receiving_cartons')&&!options.missing?[{id:BOX}]:[];
+            return {rows,rowCount:rows.length};
+        }};
+        const f=load('lib/inventory/receiving.ts',{'server-only':{},'@/lib/db':{withTransaction:fn=>fn(c)},'@/lib/auth/special-permissions':{},'@/lib/auth/authorization':{hasModulePermission:async()=>true,assertBranchAccess:async()=>{}},'./receiving-validation':load('lib/inventory/receiving-validation.ts'),'./shipping-marks':{},'./packing-reset':{},'./packing-column-order':{},'./receiving-order-removal':{}});
+        const promise=f.receivingAction({...user,role:options.role||'MASTER'},{action:'reopenBox',sessionId:SESSION,boxId:BOX});
+        if(Object.keys(options).length) await assert.rejects(promise);
+        else {await promise;const audit=queries.find(q=>q.sql.startsWith('INSERT INTO audit_events'));assert.deepEqual(JSON.parse(audit.args[3]).previous,previous);assert.ok(queries.some(q=>q.sql.includes('counted_at=NULL,counted_by=NULL')));}
+        assert.equal(queries.some(q=>/^UPDATE receiving_items|^DELETE/.test(q.sql)),false);
+    }
+});
 function nodes(node){if(!node||typeof node!=='object')return [];return [node,...[node.props?.children].flat(Infinity).flatMap(nodes)]}
 function words(node){if(node==null||typeof node==='boolean')return '';if(Array.isArray(node))return node.map(words).join('');return typeof node==='object'?words(node.props?.children):String(node)}
 function uiFixture({blocked='',failReset=false,destination=false}={}) {

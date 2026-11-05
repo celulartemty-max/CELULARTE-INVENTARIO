@@ -91,6 +91,8 @@ test('completed cartons block edits and only MASTER can reopen with audit of pre
     await assert.rejects(fixture({counted:true}).destinationAction(manager,action('reopenBox')),/administrador/);
     const f=fixture({counted:true});await f.destinationAction({...manager,role:'MASTER'},action('reopenBox'));
     assert.equal(f.audit[0].previous[0].counted,12);
+    assert.equal(f.queries.some(q=>/^UPDATE receiving_items|^DELETE/.test(q.sql)),false);
+    assert.ok(f.queries.some(q=>q.sql.startsWith('UPDATE receiving_cartons SET counted_at=NULL,counted_by=NULL')));
 });
 test('destination documents require reviewer, destination branch and confirmed arrival',async()=>{
     for(const opts of [{allowed:[ORIGIN]},{confirmed:false}]) await assert.rejects(fixture(opts).destinationDocumentBranch({query:async(sql)=>{

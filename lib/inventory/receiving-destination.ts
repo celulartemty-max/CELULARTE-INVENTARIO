@@ -120,7 +120,7 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
             if (!b.counted_at) throw new Error('La caja no tiene conteo terminado.');
             const previous = (await c.query('SELECT id,counted FROM receiving_items WHERE carton_id=$1', [boxId])).rows;
             await c.query('UPDATE receiving_cartons SET counted_at=NULL,counted_by=NULL WHERE id=$1', [boxId]);
-            await c.query('UPDATE receiving_items SET counted=NULL WHERE carton_id=$1', [boxId]);
+            // Reopen for correction without erasing the physical count.
             await audit(c, u, branch, 'RECEIVING_DESTINATION_RECOUNT', { orderId: o.id, boxId, previous });
             return { ok: true };
         }

@@ -177,7 +177,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             if (!q.rowCount)
                 throw new Error('Caja no disponible.');
             await audit(c, u, s.branch_id, 'RECEIVING_RECOUNT_AUTHORIZED', { sessionId, boxId, previous: before.rows });
-            await c.query('UPDATE receiving_items SET counted=NULL WHERE carton_id=$1', [boxId]);
+            // Reopen for correction; preserve quantities (including zero and null).
             return { ok: true };
         }
         if (b.action === 'order') {
