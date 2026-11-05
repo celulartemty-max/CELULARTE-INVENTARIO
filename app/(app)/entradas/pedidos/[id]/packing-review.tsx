@@ -49,6 +49,19 @@ export default function PackingReview({ packing, busy, onChange }: {
         if (!box || box.items.length >= 500) return;
         changeBox({ ...box, items: [...box.items, { model, color, expected: null }] });
     }
+    function removeRow(model: string) {
+        if (!box || !confirm(`¿Quitar la fila ${model || 'sin modelo'} y todas sus cantidades de esta caja? No se modificarán otras cajas.`)) return;
+        const items = box.items.filter(item => item.model !== model);
+        changeBox({ ...box, items: items.length ? items : [{ model: '', color: '', expected: null }] });
+    }
+    function addRow() {
+        if (!box || !newModel.trim() || box.items.some(item => item.model === newModel.trim())) return;
+        const colors = grid?.colors.length ? grid.colors : [''];
+        if (box.items.length + colors.length > 500) return;
+        const items = box.items.filter(item => item.model !== '' || item.color !== '' || item.expected !== null);
+        changeBox({ ...box, items: [...items, ...colors.map(color => ({ model: newModel.trim(), color, expected: null }))] });
+        setNewModel('');
+    }
     function addBox() {
         const used = new Set(packing.boxes.map(value => value.number));
         let number = 1;
@@ -78,7 +91,7 @@ export default function PackingReview({ packing, busy, onChange }: {
                 <table className="packingSheet">
                     <caption>Caja {box.number}: modelos en filas y colores en columnas</caption>
                     <thead><tr><th scope="col">Modelo / Color</th>{grid.colors.map(color => <th scope="col" key={color}>{color || 'Sin color'}</th>)}</tr></thead>
-                    <tbody>{grid.models.map(model => <tr key={model}><th scope="row">{model || 'Sin modelo'}</th>{grid.colors.map(color => {
+                    <tbody>{grid.models.map(model => <tr key={model}><th scope="row"><span>{model || 'Sin modelo'}</span><br/><button type="button" className="packingDanger" style={{padding:'8px 10px',marginTop:8,fontSize:14}} aria-label={`Quitar fila ${model || 'sin modelo'} de caja ${box.number}`} onClick={() => removeRow(model)}>Quitar fila</button></th>{grid.colors.map(color => {
                         const lines = grid.cells.get(JSON.stringify([model, color])) ?? [];
                         return <td key={color} className={lines.some(i => box.items[i].expected === null) ? 'packingUnclear' : ''}>
                             {lines.length ? lines.map((lineIndex, duplicate) => <div className="packingCell" key={lineIndex}>
@@ -89,6 +102,10 @@ export default function PackingReview({ packing, busy, onChange }: {
                         </td>;
                     })}</tr>)}</tbody>
                 </table>
+            </div>
+            <div className="actions" style={{display:'flex',flexWrap:'wrap',gap:8,marginBlock:12}}>
+                <input aria-label="Modelo de nueva fila" placeholder="Nuevo modelo" maxLength={160} value={newModel} onChange={event => setNewModel(event.target.value)} style={{minWidth:0,flex:'1 1 180px'}} />
+                <button type="button" className="receivingSecondary" disabled={!newModel.trim() || box.items.some(item => item.model === newModel.trim()) || box.items.length + (grid.colors.length || 1) > 500} onClick={addRow}>+ Agregar fila</button>
             </div>
             <div className="packingReviewBottom"><span>{missing > 0 ? `${missing} cantidades sin identificar. Puedes conservarlas vacías.` : 'Todas las cantidades de referencia tienen un valor.'}</span>
                 <button type="button" className="receivingPrimary" disabled={reviewed.includes(index)} onClick={() => { setReviewed(previous => [...previous, index]); if (position < visible.length - 1) setSelected(visible[position + 1]); }}>{reviewed.includes(index) ? '✓ Caja revisada' : '✓ Marcar caja revisada'}</button>
