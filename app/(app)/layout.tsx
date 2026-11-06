@@ -3,7 +3,6 @@ import Link from "next/link";
 import { getModulePermissions, requireUser } from "@/lib/auth/authorization";
 import MobileNav from "./mobile-nav";
 import MobileTopbar from "./mobile-topbar";
-import PosCameraGuard from "./pos-camera-guard";
 import "./desktop-premium.css";
 
 function Brand(){return <img src="/celularte-logo.png" alt="CELULARTE" className="celularteLogo" style={{width:"clamp(150px, 42vw, 220px)",height:"auto",display:"block",objectFit:"contain"}}/>}
@@ -18,6 +17,5 @@ export default async function AppLayout({children}:{children:React.ReactNode}){
     <MobileTopbar role={user.role} userName={user.name} initials={initials} permissions={permissions}/>
     <main className="content"><RegistrationAccess allowed={can("REGISTRO_SISTEMA")}>{children}</RegistrationAccess></main>
     <MobileNav role={user.role} userName={user.name} permissions={permissions}/>
-    <PosCameraGuard/>
   </div>
 }

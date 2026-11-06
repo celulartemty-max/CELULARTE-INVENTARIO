@@ -35,8 +35,6 @@ export async function registerCustomerSale(u:SessionUser,id:string){
   const t=await lock(c,u,id);await assertBranchAccess(u,t.origin_branch_id);
   if(!t.paid_at||!t.sent_at||t.status==='RECEIVED_WITH_DIFFERENCES')throw Error('Confirma el pago y el envío; resuelve cualquier diferencia antes de registrar la venta.');
   if(t.origin_pos_registered_at)throw Error('La venta ya fue registrada.');
-  const photo=await c.query("SELECT 1 FROM audit_events WHERE user_id=$1 AND movement_id=$2 AND branch_id=$3 AND action='POS_EVIDENCE_CAPTURED' AND created_at>now()-interval '10 minutes'",[u.id,id,t.origin_branch_id]);
-  if(!photo.rowCount)throw Error('Agrega una foto del registro de venta en sistema.');
   await c.query('UPDATE transfers SET origin_pos_registered_by=$2,origin_pos_registered_at=now() WHERE id=$1',[t.id,u.id]);
   await c.query("INSERT INTO pos_registration_events(movement_id,branch_id,event_type,transfer_side,movement_version,user_id) SELECT $1,$2,'INITIAL','ORIGIN',current_version,$3 FROM inventory_movements WHERE id=$1",[id,t.origin_branch_id,u.id]);
   await c.query("INSERT INTO audit_events(user_id,branch_id,movement_id,action) VALUES($1,$2,$3,'CUSTOMER_SALE_REGISTERED')",[u.id,t.origin_branch_id,id]);

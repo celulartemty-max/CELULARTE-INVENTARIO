@@ -90,10 +90,6 @@ export async function confirmRegistration(user: SessionUser, raw: unknown) {
     const { row } = await registrationDetail(user, key);
     await assertBranchAccess(user, row.branch_id);
     if(key.kind==='CLIENT_SALE'){await registerCustomerSale(user,key.id);return;}
-    if (key.kind !== 'RECEIVING' && key.kind !== 'DESTINATION') {
-        const evidence = await withTransaction(async c => c.query(`SELECT 1 FROM audit_events WHERE user_id=$1 AND movement_id=$2 AND branch_id=$3 AND action='POS_EVIDENCE_CAPTURED' AND created_at>now()-interval '10 minutes' LIMIT 1`, [user.id,key.id,row.branch_id]));
-        if (!evidence.rowCount) throw new Error('Agrega primero una foto del registro en sistema.');
-    }
     // Existing methods perform their own locked status, version and branch checks.
     if (key.kind === 'RECEIVING') return receivingAction(user, { action:'pos',sessionId:key.id });
     if (key.kind === 'DESTINATION') return withTransaction(async c => {

@@ -44,10 +44,9 @@ test('new receipt confirmation delegates to locked existing state machine, never
     assert.equal(f.calls[0][0],'RECEIVING');assert.equal(f.calls[0][1].action,'pos');assert.equal(f.calls[0][1].sessionId,id);
     assert.ok(f.queries.every(q=>!q.sql.startsWith('UPDATE')&&!q.sql.startsWith('INSERT')));
 });
-test('legacy registrations require current user photo evidence and transfer sides stay independent',async()=>{
-    const f=registrationFixture({kind:'TRANSFER',side:'destination',evidence:false});await assert.rejects(f.confirmRegistration(user,f.key),/foto/);assert.equal(f.calls.length,0);
-    const allowed=registrationFixture({kind:'TRANSFER',side:'destination'});await allowed.confirmRegistration(user,allowed.key);assert.deepEqual(allowed.calls,[['TRANSFER','destination']]);
-    const query=allowed.queries.find(q=>q.sql.includes("action='POS_EVIDENCE_CAPTURED'"));assert.deepEqual(Array.from(query.args),[user.id,id,branch]);
+test('registrations need no photo and transfer side remains independent',async()=>{
+ const f=registrationFixture({kind:'TRANSFER',side:'destination',evidence:false});await f.confirmRegistration(user,f.key);
+ assert.deepEqual(f.calls,[['TRANSFER','destination']]);assert.ok(f.queries.every(q=>!q.sql.includes('POS_EVIDENCE_CAPTURED')));
 });
 test('bitacora permission and branch restrictions apply to reads and payloads are recursively redacted',async()=>{
     let permitted=false,queried=false;

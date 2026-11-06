@@ -58,7 +58,7 @@ test('corrections identify final quantities instead of suggesting a duplicate mo
     const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row:{...row,correction:true},lines:[{quantity:5}]}}));
     assert.match(html,/no dupliques el movimiento/);
 });
-test('queue preserves photo and permission workflow but blocks incomplete confirmation',()=>{
+test('queue preserves permission workflow and blocks incomplete confirmation without requesting photos',()=>{
     const queue=readFileSync(new URL('../app/(app)/registros/registration-queue.tsx',import.meta.url),'utf8');
-    assert.match(queue,/<RegistrationDetail detail=\{detail\}/);assert.match(queue,/!registrationQuantities\(detail.lines\).complete/);assert.match(queue,/Foto del registro en sistema/);assert.match(queue,/\/api\/system-registration/);
+    assert.match(queue,/<RegistrationDetail detail=\{detail\}/);assert.match(queue,/!registrationQuantities\(detail.lines\).complete/);assert.doesNotMatch(queue,/Foto del registro en sistema|\/api\/pos-evidence|capture=/);assert.match(queue,/\/api\/system-registration/);
 });

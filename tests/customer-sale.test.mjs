@@ -13,10 +13,10 @@ test('only destination confirms payment before sending or receiving; actor and d
 test('payment denies unrelated branch, module denial, repeat, legacy and cancelled',async()=>{
  for(const [state,allowed,module]of [[{},['other'],true],[{},['destination'],false],[{paid_at:'already'},['destination'],true],[{customer_sale:false},['destination'],true],[{status:'CANCELLED'},['destination'],true]]){const f=fixture(state,allowed,module);await assert.rejects(f.payCustomerSale({id:'actor'},'movement','destination'));assert.equal(f.queries.some(q=>q.sql.startsWith('UPDATE')),false)}
 });
-test('sale registration is origin-only, paid and sent, with special permission and photo; receipt can follow later',async()=>{
+test('sale registration is origin-only, paid and sent, with special permission, without photo; receipt can follow later',async()=>{
  const ready={status:'WAITING_RECEIPT',sent_at:'sent',paid_at:'paid'};
- for(const f of [fixture(ready,['destination']),fixture({},['origin']),fixture(ready,['origin'],true,false),fixture(ready,['origin'],true,true,false)]){await assert.rejects(f.registerCustomerSale({id:'actor'},'movement'));assert.equal(f.queries.some(q=>q.sql.startsWith('UPDATE')),false)}
- const f=fixture(ready);await f.registerCustomerSale({id:'actor'},'movement');assert.ok(f.queries.some(q=>q.sql.includes('origin_pos_registered_by')));assert.ok(f.queries.every(q=>!q.sql.includes('SET destination_pos_registered')));
+ for(const f of [fixture(ready,['destination']),fixture({},['origin']),fixture(ready,['origin'],true,false)]){await assert.rejects(f.registerCustomerSale({id:'actor'},'movement'));assert.equal(f.queries.some(q=>q.sql.startsWith('UPDATE')),false)}
+ const f=fixture(ready,['origin'],true,true,false);await f.registerCustomerSale({id:'actor'},'movement');assert.ok(f.queries.some(q=>q.sql.includes('origin_pos_registered_by')));assert.ok(f.queries.every(q=>!q.sql.includes('SET destination_pos_registered')));
  const completion=f.queries.find(q=>q.sql.includes("SET status='COMPLETED'"));assert.match(completion.sql,/received_at IS NOT NULL AND paid_at IS NOT NULL AND origin_pos_registered_at IS NOT NULL/);
 });
 test('registration instructions never ask for transfer-out or destination-in for client sales',()=>{
