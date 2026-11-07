@@ -65,3 +65,9 @@ test('entry menu uses requested labels; existing creation and registration route
  const detail=read('app/(app)/salidas/pedidos/[orderId]/page.tsx');assert.match(detail,/user.role==='MASTER'/);assert.match(detail,/no hay sincronización automática/);
  const migration=read('migrations/20261106_full_orders.sql');assert.doesNotMatch(migration,/DROP|DELETE|UPDATE /);assert.match(migration,/UNIQUE INDEX.*full_orders_reference_unique/);
 });
+test('management is pending-only and FULL creation lives in Nueva salida',async()=>{
+ const list=read('app/(app)/salidas/pedidos/page.tsx');assert.doesNotMatch(list,/NewOrder|Crear pedido|<form/);assert.match(list,/No hay pedidos pendientes/);
+ const page=read('app/(app)/salidas/nueva/page.tsx');assert.match(page,/canCreateFull=\{u.role==='MASTER'\}/);
+ const form=read('app/(app)/salidas/nueva/exit-new.tsx');assert.match(form,/channel==='MERCADO_LIBRE'&&exitType==='FULL'/);assert.match(form,/isFull\?'\/api\/full-orders':'\/api\/exits'/);assert.match(form,/name="reference"/);assert.match(form,/name="title"/);assert.match(form,/branchIds:f.getAll\('branch'\)/);
+ const f=fixture({ids:[id(1)]});await f.fullOrderRows(f.user,undefined,1);const q=f.queries[0];assert.match(q.sql,/pending.branch_id=e.branch_id/);assert.match(q.sql,/\$2::uuid IS NOT NULL OR pending.status::text NOT IN \('POS_REGISTERED','POS_RECONCILED','CANCELLED'\)/);assert.equal(q.args[2],50);
+});

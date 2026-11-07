@@ -47,7 +47,7 @@ export async function fullOrderRows(user:SessionUser,id?:string,page=0):Promise<
  FROM full_orders o JOIN full_order_exits x ON x.order_id=o.id JOIN inventory_movements m ON m.id=x.movement_id AND m.branch_id=x.branch_id
  JOIN branches b ON b.id=x.branch_id LEFT JOIN users u ON u.id=m.pos_registered_by
  WHERE ($1::uuid[] IS NULL OR x.branch_id=ANY($1::uuid[])) AND ($2::uuid IS NULL OR o.id=$2)
- AND o.id IN (SELECT f.id FROM full_orders f WHERE ($2::uuid IS NULL OR f.id=$2) AND EXISTS(SELECT 1 FROM full_order_exits e WHERE e.order_id=f.id AND ($1::uuid[] IS NULL OR e.branch_id=ANY($1::uuid[]))) ORDER BY f.created_at DESC,f.id DESC LIMIT 50 OFFSET $3)
+ AND o.id IN (SELECT f.id FROM full_orders f WHERE ($2::uuid IS NULL OR f.id=$2) AND EXISTS(SELECT 1 FROM full_order_exits e JOIN inventory_movements pending ON pending.id=e.movement_id AND pending.branch_id=e.branch_id WHERE e.order_id=f.id AND ($1::uuid[] IS NULL OR e.branch_id=ANY($1::uuid[])) AND ($2::uuid IS NOT NULL OR pending.status::text NOT IN ('POS_REGISTERED','POS_RECONCILED','CANCELLED'))) ORDER BY f.created_at DESC,f.id DESC LIMIT 50 OFFSET $3)
  ORDER BY o.created_at DESC,o.id,b.name`,[ids,id??null,id?0:page*50])).rows);
 }
 export async function fullOrderProducts(user:SessionUser,id:string) {
