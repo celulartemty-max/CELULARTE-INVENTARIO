@@ -81,3 +81,7 @@ test('FULL detail uses compact branch cards and keeps audit and help inside coll
  for(const token of ['fullOrderTotal','fullOrderBranch','Abrir salida →','Ver detalles'])assert.ok(detail.includes(token));
  const css=read('app/(app)/salidas/full-orders.css');assert.match(css,/font-size:26px/);assert.match(css,/min-height:44px/);
 });
+test('exit capture has a compact FULL heading and collapses the long folio',()=>{
+ const page=read('app/(app)/salidas/[id]/page.tsx');assert.match(page,/fullExitHeading/);assert.match(page,/← Pedido/);assert.doesNotMatch(page,/Mercado Libre FULL #| · Salida #/);assert.match(page,/<details><summary>Detalles<\/summary><small>Folio: \{m.folio\}/);
+ assert.ok(page.indexOf('await assertBranchAccess')<page.indexOf('FROM full_orders'));assert.match(page,/<ExitEditor movement=\{m\}/);
+});
