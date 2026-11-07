@@ -71,3 +71,13 @@ test('management is pending-only and FULL creation lives in Nueva salida',async(
  const form=read('app/(app)/salidas/nueva/exit-new.tsx');assert.match(form,/channel==='MERCADO_LIBRE'&&exitType==='FULL'/);assert.match(form,/isFull\?'\/api\/full-orders':'\/api\/exits'/);assert.match(form,/name="reference"/);assert.match(form,/name="title"/);assert.match(form,/branchIds:f.getAll\('branch'\)/);
  const f=fixture({ids:[id(1)]});await f.fullOrderRows(f.user,undefined,1);const q=f.queries[0];assert.match(q.sql,/pending.branch_id=e.branch_id/);assert.match(q.sql,/\$2::uuid IS NOT NULL OR pending.status::text NOT IN \('POS_REGISTERED','POS_RECONCILED','CANCELLED'\)/);assert.equal(q.args[2],50);
 });
+test('FULL detail uses compact branch cards and keeps audit and help inside collapsed details',()=>{
+ const detail=read('app/(app)/salidas/pedidos/[orderId]/page.tsx');
+ assert.equal((detail.match(/\{order.title\}/g)||[]).length,1);
+ assert.doesNotMatch(detail,/Consolidado|piezas capturadas|Aún no hay productos capturados/);
+ const start=detail.indexOf('<details className="fullOrderDetails">');assert.ok(start>0);
+ assert.ok(detail.indexOf('Folio:')>start);assert.ok(detail.indexOf('no hay sincronización automática')>start);
+ assert.doesNotMatch(detail,/<details[^>]*\bopen[ =>]/);
+ for(const token of ['fullOrderTotal','fullOrderBranch','Abrir salida →','Ver detalles'])assert.ok(detail.includes(token));
+ const css=read('app/(app)/salidas/full-orders.css');assert.match(css,/font-size:26px/);assert.match(css,/min-height:44px/);
+});

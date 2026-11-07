@@ -7,7 +7,18 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
  if(!rows.length)return <p>Pedido no disponible para tus sucursales.</p>;
  const products=await fullOrderProducts(user,orderId),order=rows[0],total=rows.reduce((n,r)=>n+(r.status==='CANCELLED'?0:r.pieces),0);
  const expected=order.expected_pieces,difference=expected===null?null:total-expected;
- return <div className="fullWorkspace"><Link href="/salidas/pedidos">← Gestión de Pedidos</Link><p>Mercado Libre FULL #{order.reference}</p><h1>{order.title}</h1><p>{fullOrderStatus(rows)}</p>{user.role==='MASTER'&&<section className="card pad"><h2>Consolidado</h2><p>{total.toLocaleString('es-MX')} piezas capturadas{expected!==null?` / ${expected.toLocaleString('es-MX')} en Mercado Libre`:''}</p>{difference!==null&&<p>{difference===0?'✓ El total cuadra con el pedido.':difference<0?`Faltan ${-difference} piezas por capturar.`:`Hay ${difference} piezas de más. Revisa las salidas.`}</p>}<small>Los totales se comparan con lo capturado aquí; no hay sincronización automática con Mercado Libre.</small></section>}
- {rows.map(r=><section className="card pad" key={r.movement_id} style={{marginTop:16}}><h2>{r.branch}</h2><b>{order.title}</b><p>Salida #{r.folio}</p><p>{r.pieces} piezas · {fullOrderStatus([r])}</p>{r.pos_registered_at&&<small>Registro confirmado por {r.registered_by||'Usuario'} · {new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'short',timeStyle:'short'}).format(new Date(r.pos_registered_at))}</small>}<p><Link href={'/salidas/'+r.movement_id}>Abrir salida →</Link></p></section>)}
- <section className="card pad" style={{marginTop:16}}><h2>Productos por sucursal</h2>{products.length?products.map((p,i)=><p key={i}><b>{p.product}</b> · {p.branch}: {p.quantity} piezas</p>):<p>Aún no hay productos capturados.</p>}</section></div>;
+ return <div className="fullWorkspace fullOrderDetail">
+  <Link href="/salidas/pedidos">← Pedidos</Link>
+  <header className="fullOrderHeading"><small>FULL #{order.reference}</small><h1>{order.title}</h1><span className="fullOrderBadge">{fullOrderStatus(rows)}</span></header>
+  {user.role==='MASTER'&&<section className="fullOrderTotal" aria-label="Total del pedido"><strong>{total.toLocaleString('es-MX')}{expected!==null?` / ${expected.toLocaleString('es-MX')}`:''} <span>piezas</span></strong>{difference!==null&&<small>{difference===0?'✓ Total completo':difference<0?`Faltan ${(-difference).toLocaleString('es-MX')}`:`${difference.toLocaleString('es-MX')} de más`}</small>}</section>}
+  <div className="fullOrderBranches">{rows.map(r=><section className="card fullOrderBranch" key={r.movement_id}>
+   <div className="fullOrderBranchTop"><h2>{r.branch}</h2><strong>{r.pieces.toLocaleString('es-MX')} <span>pzas</span></strong></div>
+   <div className="fullOrderBranchAction"><small>{fullOrderStatus([r])}</small><Link href={'/salidas/'+r.movement_id}>Abrir salida →</Link></div>
+  </section>)}</div>
+  <details className="fullOrderDetails"><summary>Ver detalles</summary>
+   {rows.map(r=><div key={r.movement_id}><p><b>{r.branch}</b><br/><small>Folio: {r.folio}</small></p>{r.pos_registered_at&&<small>Registró {r.registered_by||'Usuario'} · {new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'short',timeStyle:'short'}).format(new Date(r.pos_registered_at))}</small>}</div>)}
+   {products.length>0&&<><h3>Productos por sucursal</h3>{products.map((p,i)=><p key={i}><b>{p.product}</b> · {p.branch}: {p.quantity.toLocaleString('es-MX')} piezas</p>)}</>}
+   {user.role==='MASTER'&&<small>Captura manual; no hay sincronización automática con Mercado Libre.</small>}
+  </details>
+ </div>;
 }
