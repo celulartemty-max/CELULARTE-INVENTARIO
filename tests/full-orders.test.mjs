@@ -73,7 +73,7 @@ test('management is pending-only and FULL creation lives in Nueva salida',async(
 });
 test('FULL detail uses compact branch cards and keeps audit and help inside collapsed details',()=>{
  const detail=read('app/(app)/salidas/pedidos/[orderId]/page.tsx');
- assert.equal((detail.match(/\{order.title\}/g)||[]).length,1);
+ assert.equal((detail.match(/<h1>\{order.title\}<\/h1>/g)||[]).length,1);
  assert.doesNotMatch(detail,/Consolidado|piezas capturadas|Aún no hay productos capturados/);
  const start=detail.indexOf('<details className="fullOrderDetails">');assert.ok(start>0);
  assert.ok(detail.indexOf('Folio:')>start);assert.ok(detail.indexOf('no hay sincronización automática')>start);

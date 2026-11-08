@@ -1,5 +1,6 @@
 import '../../full-orders.css';
 import Link from 'next/link';
+import EditName from './edit-name';
 import { requireUser } from '@/lib/auth/authorization';
 import { fullOrderRows,fullOrderProducts,fullOrderStatus } from '@/lib/inventory/full-orders';
 export default async function Page({params}:{params:Promise<{orderId:string}>}){
@@ -9,7 +10,7 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
  const expected=order.expected_pieces,difference=expected===null?null:total-expected;
  return <div className="fullWorkspace fullOrderDetail">
   <Link href="/salidas/pedidos">← Pedidos</Link>
-  <header className="fullOrderHeading"><small>FULL #{order.reference}</small><h1>{order.title}</h1><span className="fullOrderBadge">{fullOrderStatus(rows)}</span></header>
+  <header className="fullOrderHeading"><small>FULL #{order.reference}</small><h1>{order.title}</h1>{user.role==='MASTER'&&<EditName id={orderId} title={order.title}/>}<span className="fullOrderBadge">{fullOrderStatus(rows)}</span></header>
   {user.role==='MASTER'&&<section className="fullOrderTotal" aria-label="Total del pedido"><strong>{total.toLocaleString('es-MX')}{expected!==null?` / ${expected.toLocaleString('es-MX')}`:''} <span>piezas</span></strong>{difference!==null&&<small>{difference===0?'✓ Total completo':difference<0?`Faltan ${(-difference).toLocaleString('es-MX')}`:`${difference.toLocaleString('es-MX')} de más`}</small>}</section>}
   <div className="fullOrderBranches">{rows.map(r=><section className="card fullOrderBranch" key={r.movement_id}>
    <div className="fullOrderBranchTop"><h2>{r.branch}</h2><strong>{r.pieces.toLocaleString('es-MX')} <span>pzas</span></strong></div>
