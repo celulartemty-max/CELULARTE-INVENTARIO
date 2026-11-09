@@ -6,6 +6,11 @@ function useAction(){const router=useRouter(),lock=useRef(false),token=useRef<st
  if(lock.current||refreshing)return false;lock.current=true;setBusy(true);setError('');token.current??=crypto.randomUUID();
  try{const r=await fetch('/api/full-workflow',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({requestId:token.current,action,payload})});const j=await r.json();if(!r.ok){token.current=null;throw Error(j.error||'No se pudo guardar.');}token.current=null;startRefresh(()=>router.refresh());return true;}catch(e){setError(e instanceof Error?e.message:'No se pudo guardar.');return false;}finally{lock.current=false;setBusy(false);}
  }};}
+export function ShippingAction({orderId,movementId}:{orderId:string;movementId?:string}){
+ const a=useAction(),[done,setDone]=useState(false),waive=Boolean(movementId);
+ if(done)return <small>{waive?'Sin aportación':'Envío cerrado'}</small>;
+ return <div><button type="button" disabled={a.busy} onClick={async()=>{if(confirm(waive?'¿Confirmar que esta sucursal no aportará piezas?':'¿El FULL ya salió físicamente hacia Mercado Libre? No confirma registros en sistema pendientes.'))if(await a.run(waive?'waive':'ship',waive?{orderId,movementId}:{orderId}))setDone(true);}}>{a.busy?'Guardando…':waive?'Sin aportación':'Cerrar envío'}</button>{a.error&&<p role="alert">{a.error}</p>}</div>;
+}
 export function ReviewShipment({movementId,version,lines}:{movementId:string;version:number;lines:ReviewLine[]}){
  const a=useAction(),[done,setDone]=useState(false);if(done)return <p>Revisión guardada.</p>;
  return <form className="formGrid" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const payload={movementId,version,lines:lines.map(l=>({id:l.id,sent:l.quantity,accepted:Number(f.get(l.id)),detail:String(f.get(l.id+'detail')||'')}))};if(!confirm('¿Confirmar lo recibido? Solo las piezas correctas contarán para FULL; las demás quedarán por devolver.'))return;if(await a.run('review',payload))setDone(true);}}>

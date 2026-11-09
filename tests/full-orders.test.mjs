@@ -44,7 +44,7 @@ test('duplicate reference cannot create another order or exit',async()=>{
 });
 test('list and detail scope every read to current branch assignments and deny missing module',async()=>{
  const f=fixture({role:'OPERATIVE',ids:[id(1)]});await f.fullOrderRows(f.user,id(3));
- assert.deepEqual(JSON.parse(JSON.stringify(f.queries[0].args)),[[id(1)],id(3),0]);assert.match(f.queries[0].sql,/x.branch_id=ANY/);assert.match(f.queries[0].sql,/m.branch_id=x.branch_id/);
+ assert.deepEqual(JSON.parse(JSON.stringify(f.queries[0].args)),[[id(1)],id(3),0,false]);assert.match(f.queries[0].sql,/x.branch_id=ANY/);assert.match(f.queries[0].sql,/m.branch_id=x.branch_id/);
  const empty=fixture({ids:[]});assert.equal((await empty.fullOrderRows(empty.user)).length,0);assert.equal(empty.queries.length,0);
  const denied=fixture({permission:false});await assert.rejects(denied.fullOrderRows(denied.user));assert.equal(denied.queries.length,0);
 });
@@ -66,10 +66,10 @@ test('entry menu uses requested labels; existing creation and registration route
  const migration=read('migrations/20261106_full_orders.sql');assert.doesNotMatch(migration,/DROP|DELETE|UPDATE /);assert.match(migration,/UNIQUE INDEX.*full_orders_reference_unique/);
 });
 test('management is pending-only and FULL creation lives in Nueva salida',async()=>{
- const list=read('app/(app)/salidas/pedidos/page.tsx');assert.doesNotMatch(list,/NewOrder|Crear pedido|<form/);assert.match(list,/No hay pedidos pendientes/);
+ const list=read('app/(app)/salidas/pedidos/page.tsx');assert.doesNotMatch(list,/NewOrder|Crear pedido|<form/);assert.match(list,/No hay pedidos en esta vista/);
  const page=read('app/(app)/salidas/nueva/page.tsx');assert.match(page,/canCreateFull=\{u.role==='MASTER'\}/);
  const form=read('app/(app)/salidas/nueva/exit-new.tsx');assert.match(form,/channel==='MERCADO_LIBRE'&&exitType==='FULL'/);assert.match(form,/isFull\?'\/api\/full-orders':'\/api\/exits'/);assert.match(form,/name="reference"/);assert.match(form,/name="title"/);assert.match(form,/branchIds:f.getAll\('branch'\)/);
- const f=fixture({ids:[id(1)]});await f.fullOrderRows(f.user,undefined,1);const q=f.queries[0];assert.match(q.sql,/pending.branch_id=e.branch_id/);assert.match(q.sql,/\$2::uuid IS NOT NULL OR pending.status::text NOT IN \('POS_REGISTERED','POS_RECONCILED','CANCELLED'\)/);assert.equal(q.args[2],50);
+ const f=fixture({ids:[id(1)]});await f.fullOrderRows(f.user,undefined,1);const q=f.queries[0];assert.match(q.sql,/pending.branch_id=e.branch_id/);assert.match(q.sql,/f.shipped_at IS NOT NULL/);assert.equal(q.args[2],50);
 });
 test('FULL detail uses compact branch cards and keeps audit and help inside collapsed details',()=>{
  const detail=read('app/(app)/salidas/pedidos/[orderId]/page.tsx');

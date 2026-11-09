@@ -2,8 +2,8 @@ import '../../full-orders.css';
 import Link from 'next/link';
 import EditName from './edit-name';
 import {fullReviewData} from '@/lib/inventory/full-review';
-import {Contribution,AdjustTarget} from '../workflow-controls';
-import { requireUser } from '@/lib/auth/authorization';
+import {Contribution,AdjustTarget,ShippingAction} from '../workflow-controls';
+import { requireUser,getAuthorizedBranchIds } from '@/lib/auth/authorization';
 import { fullOrderRows,fullOrderProducts,fullOrderStatus } from '@/lib/inventory/full-orders';
 export default async function Page({params}:{params:Promise<{orderId:string}>}){
  const user=await requireUser(),{orderId}=await params,rows=await fullOrderRows(user,orderId);
@@ -11,16 +11,20 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
  const products=await fullOrderProducts(user,orderId),order=rows[0],total=rows.reduce((n,r)=>n+(r.status==='CANCELLED'?0:r.pieces),0);
  const expected=order.expected_pieces,difference=expected===null?null:total-expected;
  const review=await fullReviewData(user,orderId);
+ const allowed=await getAuthorizedBranchIds(user);
  return <div className="fullWorkspace fullOrderDetail">
   <Link href="/salidas/pedidos">← Pedidos</Link>
   <header className="fullOrderHeading"><small>FULL #{order.reference}</small><h1>{order.title}</h1>{user.role==='MASTER'&&<EditName id={orderId} title={order.title}/>}<span className="fullOrderBadge">{fullOrderStatus(rows)}</span></header>
   {user.role==='MASTER'&&<section className="fullOrderTotal" aria-label="Total del pedido"><strong>{total.toLocaleString('es-MX')}{expected!==null?` / ${expected.toLocaleString('es-MX')}`:''} <span>piezas</span></strong>{difference!==null&&<small>{difference===0?'✓ Total completo':difference<0?`Faltan ${(-difference).toLocaleString('es-MX')}`:`${difference.toLocaleString('es-MX')} de más`}</small>}</section>}
   <div className="fullOrderBranches">{rows.map(r=><section className="card fullOrderBranch" key={r.movement_id}>
    <div className="fullOrderBranchTop"><h2>{r.branch}</h2><strong>{r.pieces.toLocaleString('es-MX')} <span>pzas</span></strong></div>
-   <div className="fullOrderBranchAction"><small>{fullOrderStatus([r])}</small><Link href={'/salidas/'+r.movement_id}>Abrir salida →</Link></div>
+   <div className="fullOrderBranchAction"><small>{r.waived_at?'Sin aportación':fullOrderStatus([r])}</small>{!r.waived_at&&<Link href={'/salidas/'+r.movement_id}>{order.shipped_at?'Ver salida →':'Abrir salida →'}</Link>}</div>
+   {!order.shipped_at&&!r.waived_at&&r.status==='DRAFT'&&r.pieces===0&&(allowed===null||allowed.includes(r.branch_id))&&<ShippingAction orderId={orderId} movementId={r.movement_id}/>}
   </section>)}</div>
   {review.canReview&&review.shipment&&!review.shipment.reviewed&&review.shipment.status!=='DRAFT'&&<p><Link href={'/salidas/revision-full?order='+orderId}>Revisar piezas de Plaza →</Link></p>}
-  {review.canReview&&<Contribution orderId={orderId} products={review.products}/>}
+  {!order.shipped_at&&review.canReview&&<Contribution orderId={orderId} products={review.products}/>}
+  {!order.shipped_at&&review.canReview&&<ShippingAction orderId={orderId}/>}
+  {order.shipped_at&&<p>Enviado por {order.shipped_by_name||'Usuario'} · {new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'short',timeStyle:'short'}).format(new Date(order.shipped_at))}</p>}
   <p><Link href="/salidas/devoluciones-full">Regresos a Plaza →</Link></p>
   <details className="fullOrderDetails"><summary>Ver detalles</summary>
    {review.summary.sent>0&&<p>Plaza envió {review.summary.sent} · Correctas {review.summary.accepted} · Separadas para devolver {review.summary.rejected}</p>}

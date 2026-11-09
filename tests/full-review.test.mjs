@@ -1,12 +1,15 @@
 import test from 'node:test';import assert from 'node:assert/strict';import{readFileSync}from'node:fs';import{createRequire}from'node:module';import vm from'node:vm';
 const require=createRequire(import.meta.url),ts=require('typescript'),read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
-function load(path,mocks){const m={exports:{}};const code=ts.transpileModule(read(path),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext('(function(require,module,exports){'+code+'})',{Error,Set,Date,JSON})(n=>n==='server-only'?{}:mocks[n]??require(n),m,m.exports);return m.exports;}
+function load(path,mocks){const m={exports:{}};const code=ts.transpileModule(read(path),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext('(function(require,module,exports){'+code+'})',{Error,Set,Date,JSON})(n=>n==='server-only'?{}:mocks[n]??(n==='./full-shipping-lock'?load('lib/inventory/full-shipping-lock.ts',{}):require(n)),m,m.exports);return m.exports;}
 function fixture({permission=true,allowed=[id(2)],status='CLOSED',reviewed=false,version=1}={}){
  const state={quantity:100,reviewed,reviewLines:[],allocations:[],mutations:0},queries=[];
  const c={query:async(sql,args=[])=>{
   queries.push({sql,args});let rows=[];
-  if(sql.startsWith('SELECT id::text FROM branches'))rows=[{id:args[0]==='Treviño'?id(2):id(1)}];
+  if(sql.startsWith('SELECT o.shipped_at'))rows=[];
+  else if(sql.startsWith('SELECT shipped_at FROM full_orders'))rows=[{shipped_at:null}];
+  else if(sql.startsWith('SELECT waived_at'))rows=[{waived_at:null}];
+  else if(sql.startsWith('SELECT id::text FROM branches'))rows=[{id:args[0]==='Treviño'?id(2):id(1)}];
   else if(sql.startsWith('SELECT x.order_id'))rows=[{order_id:id(3),branch_id:id(1),status,current_version:version}];
   else if(sql.startsWith('SELECT 1 FROM full_exit_reviews'))rows=state.reviewed?[{}]:[];
   else if(sql.startsWith('SELECT id::text,product_id'))rows=state.quantity?[{id:id(4),product_id:id(5),quantity:state.quantity}]:[];
@@ -47,7 +50,7 @@ test('actual exit correction helper preserves snapshots and sets POS review only
  for(const status of ['DRAFT','CLOSED','POS_REGISTERED']){
   let quantity=100,version=1;const queries=[];
   const c={query:async(sql,args)=>{queries.push({sql,args});if(sql.startsWith('SELECT id::text,branch_id'))return{rows:[{id:id(8),branch_id:id(1),status,current_version:version,pos_registered_at:status==='POS_REGISTERED'?'today':null}]};if(sql.startsWith('SELECT jsonb_build_object'))return{rows:[{snapshot:{quantity},total:quantity}]};if(sql.startsWith('UPDATE inventory_movements'))return{rows:[{current_version:++version}]};return{rows:[]};}};
-  const mod=load('lib/inventory/exits.ts',{'@/lib/auth/special-permissions':{requireSystemRegistration:async()=>{}},'@/lib/db':{},'@/lib/auth/authorization':{},'./policy':load('lib/inventory/policy.ts',{})});
+  const mod=load('lib/inventory/exits.ts',{'@/lib/auth/special-permissions':{requireSystemRegistration:async()=>{}},'@/lib/db':{},'@/lib/auth/authorization':{},'./full-shipping-lock':{lockFullForMovement:async()=>{}},'./policy':load('lib/inventory/policy.ts',{})});
   await mod.mutateReviewedFullExit(c,{id:id(30)},id(8),async()=>{quantity=80;});
   const change=queries.find(q=>q.sql.startsWith('INSERT INTO movement_change_sets'));
   if(status==='DRAFT'){assert.equal(change,undefined);assert.equal(version,1);}else{assert.equal(change.args[3],100);assert.equal(change.args[4],80);assert.equal(change.args[5],-20);assert.match(queries.find(q=>q.sql.startsWith('UPDATE inventory_movements')).sql,/WHEN pos_registered_at IS NULL THEN status ELSE 'POS_CORRECTION_PENDING'/);}

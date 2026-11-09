@@ -8,6 +8,7 @@ import type {SessionUser} from '@/lib/auth/types';
 import {requireFullAccess} from './full-orders';
 import {runFullWorkflow} from './full-workflow-request';
 import {mutateReviewedFullExit} from './exits';
+import {assertFullOpen,lockFullForMovement} from './full-shipping-lock';
 const uuid=z.string().uuid(),qty=z.number().int().min(1).max(10000000);
 async function branch(c:PoolClient,user:SessionUser,name:string){
  const q=await c.query<{id:string}>(`SELECT id::text FROM branches WHERE name=$1 AND status::text='ACTIVE'`,[name]);
@@ -19,7 +20,7 @@ export async function reviewFullShipment(u:SessionUser,raw:unknown,requestId:str
  await requireFullAccess(u);const data=reviewSchema.parse(raw);
  return runFullWorkflow(u,requestId,'review',data,async c=>{
   const holding=await branch(c,u,'Treviño');
-  await c.query(`SELECT o.id FROM full_orders o JOIN full_order_exits x ON x.order_id=o.id WHERE x.movement_id=$1 FOR UPDATE OF o`,[data.movementId]);
+  await lockFullForMovement(c,data.movementId);
   const q=await c.query<{order_id:string;branch_id:string;status:string;current_version:number}>(`SELECT x.order_id::text,m.branch_id::text,m.status::text,m.current_version FROM inventory_movements m JOIN full_order_exits x ON x.movement_id=m.id AND x.branch_id=m.branch_id JOIN branches b ON b.id=m.branch_id WHERE m.id=$1 AND m.movement_type='EXIT' AND b.name='Plaza del Audio' FOR UPDATE OF m`,[data.movementId]);
   const m=q.rows[0];if(!m||!['CLOSED','PENDING_POS','POS_REGISTERED','POS_RECONCILED','POS_CORRECTION_PENDING'].includes(m.status))throw Error('Plaza debe cerrar la captura antes de revisar.');
   if(m.current_version!==data.version)throw Error('La salida cambió. Recarga antes de revisar.');
@@ -68,10 +69,12 @@ export async function contributeToFull(u:SessionUser,raw:unknown,requestId:strin
  return runFullWorkflow(u,requestId,'contribute',data,async c=>{
   const trevino=await branch(c,u,'Treviño');
   // Serialize branch creation with other FULL contributions, not a second exit.
-  if(!(await c.query('SELECT id FROM full_orders WHERE id=$1 FOR UPDATE',[data.orderId])).rows.length)throw Error('Pedido no encontrado.');
+  await assertFullOpen(c,data.orderId);
   if(!(await c.query("SELECT id FROM products WHERE id=$1 AND status::text='ACTIVE'",[data.productId])).rows.length)throw Error('Producto no disponible.');
   let exits=await c.query<{movement_id:string}>('SELECT movement_id::text FROM full_order_exits WHERE order_id=$1 AND branch_id=$2',[data.orderId,trevino]);
   if(!exits.rows.length){const m=await c.query<{id:string}>(`INSERT INTO inventory_movements(folio,movement_type,branch_id,created_by) VALUES($1,'EXIT',$2,$3) RETURNING id::text`,['SAL-'+Date.now()+'-'+randomUUID().slice(0,8).toUpperCase(),trevino,u.id]);await c.query("INSERT INTO exits(movement_id,channel,exit_type) VALUES($1,'MERCADO_LIBRE','FULL')",[m.rows[0].id]);await c.query('INSERT INTO full_order_exits(order_id,branch_id,movement_id) VALUES($1,$2,$3)',[data.orderId,trevino,m.rows[0].id]);exits={...exits,rows:[{movement_id:m.rows[0].id}]};}
+  const waived=await c.query('SELECT waived_at FROM full_order_exits WHERE movement_id=$1',[exits.rows[0].movement_id]);
+  if(waived.rows[0]?.waived_at){await c.query("UPDATE inventory_movements SET status='DRAFT',updated_at=now() WHERE id=$1",[exits.rows[0].movement_id]);await c.query('UPDATE full_order_exits SET waived_at=NULL,waived_by=NULL WHERE movement_id=$1',[exits.rows[0].movement_id]);}
   await mutateReviewedFullExit(c,u,exits.rows[0].movement_id,async()=>{await c.query('INSERT INTO exit_lines(movement_id,product_id,quantity) VALUES($1,$2,$3)',[exits.rows[0].movement_id,data.productId,data.quantity]);});
   await audit(c,u,trevino,exits.rows[0].movement_id,'FULL_TREVINO_CONTRIBUTION',data);
  });
@@ -83,11 +86,12 @@ export async function fullReviewData(u:SessionUser,orderId:string){
   const b=await c.query<{id:string;name:string}>(`SELECT id::text,name FROM branches WHERE name IN ('Treviño','Plaza del Audio') AND status::text='ACTIVE'`);
   const canReview=b.rows.some(b=>b.name==='Treviño'&&(ids===null||ids.includes(b.id)));
   if(!b.rows.some(b=>ids===null||ids.includes(b.id)))throw Error('Sin acceso a sucursal.');
+  const order=await c.query<{shipped_at:string|null}>('SELECT shipped_at FROM full_orders WHERE id=$1',[orderId]);
   const shipment=canReview?await c.query<{id:string;current_version:number;status:string;reviewed:boolean}>(`SELECT m.id::text,m.current_version,m.status::text,EXISTS(SELECT 1 FROM full_exit_reviews r WHERE r.movement_id=m.id) reviewed FROM full_order_exits x JOIN inventory_movements m ON m.id=x.movement_id JOIN branches b ON b.id=x.branch_id WHERE x.order_id=$1 AND b.name='Plaza del Audio' AND m.status::text<>'CANCELLED'`,[orderId]):{rows:[]};
   const s=shipment.rows[0];const lines=s?await c.query<ReviewLine>(`SELECT l.id::text,p.name product,l.quantity FROM exit_lines l JOIN products p ON p.id=l.product_id WHERE l.movement_id=$1 ORDER BY l.created_at`,[s.id]):{rows:[]};
   const summary=await c.query<{sent:number;accepted:number;rejected:number}>(`SELECT COALESCE(sum(l.sent),0)::int sent,COALESCE(sum(l.accepted),0)::int accepted,COALESCE(sum(l.sent-l.accepted),0)::int rejected FROM full_exit_reviews r JOIN full_review_lines l ON l.review_id=r.id WHERE r.order_id=$1 AND ($2::uuid[] IS NULL OR r.source_branch_id=ANY($2::uuid[]) OR r.holding_branch_id=ANY($2::uuid[]))`,[orderId,ids]);
   const products=canReview?await c.query<{id:string;name:string}>("SELECT id::text,name FROM products WHERE status::text='ACTIVE' ORDER BY name"):{rows:[]};
-  return{canReview,shipment:s??null,lines:lines.rows,summary:summary.rows[0],products:products.rows};
+  return{canReview,shippedAt:order.rows[0]?.shipped_at??null,shipment:s??null,lines:lines.rows,summary:summary.rows[0],products:products.rows};
  });
 }
 export async function fullReturnData(u:SessionUser){
@@ -104,13 +108,14 @@ export async function fullReturnData(u:SessionUser){
 }
 export async function fullReviewQueue(u:SessionUser){
  await requireFullAccess(u);return withTransaction(async c=>{
-  await branch(c,u,'Treviño');return(await c.query<{id:string;reference:string;title:string}>(`SELECT o.id::text,o.reference,o.title FROM full_orders o JOIN full_order_exits x ON x.order_id=o.id JOIN inventory_movements m ON m.id=x.movement_id JOIN branches b ON b.id=x.branch_id WHERE b.name='Plaza del Audio' AND m.status::text IN ('CLOSED','PENDING_POS','POS_REGISTERED','POS_RECONCILED','POS_CORRECTION_PENDING') AND NOT EXISTS(SELECT 1 FROM full_exit_reviews r WHERE r.movement_id=m.id) ORDER BY o.created_at LIMIT 100`)).rows;
+  await branch(c,u,'Treviño');return(await c.query<{id:string;reference:string;title:string}>(`SELECT o.id::text,o.reference,o.title FROM full_orders o JOIN full_order_exits x ON x.order_id=o.id JOIN inventory_movements m ON m.id=x.movement_id JOIN branches b ON b.id=x.branch_id WHERE o.shipped_at IS NULL AND b.name='Plaza del Audio' AND m.status::text IN ('CLOSED','PENDING_POS','POS_REGISTERED','POS_RECONCILED','POS_CORRECTION_PENDING') AND NOT EXISTS(SELECT 1 FROM full_exit_reviews r WHERE r.movement_id=m.id) ORDER BY o.created_at LIMIT 100`)).rows;
  });
 }
 const targetSchema=z.object({orderId:uuid,expectedPieces:qty.nullable(),previousExpected:qty.nullable(),reason:z.string().trim().min(1).max(500)}).strict();
 export async function adjustFullTarget(u:SessionUser,raw:unknown,requestId:string){
  await requireFullAccess(u);if(u.role!=='MASTER')throw Error('Solo MASTER puede ajustar el total del pedido.');const data=targetSchema.parse(raw);
  return runFullWorkflow(u,requestId,'target',data,async c=>{
+  await assertFullOpen(c,data.orderId);
   const order=await c.query<{expected_pieces:number|null}>('SELECT expected_pieces FROM full_orders WHERE id=$1 FOR UPDATE',[data.orderId]);
   if(!order.rows.length||order.rows[0].expected_pieces!==data.previousExpected)throw Error('El pedido cambió. Recarga antes de ajustar.');
   await c.query('UPDATE full_orders SET expected_pieces=$1 WHERE id=$2',[data.expectedPieces,data.orderId]);
