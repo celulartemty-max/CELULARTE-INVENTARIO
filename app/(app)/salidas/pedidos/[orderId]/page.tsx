@@ -1,6 +1,8 @@
 import '../../full-orders.css';
 import Link from 'next/link';
 import EditName from './edit-name';
+import {fullReviewData} from '@/lib/inventory/full-review';
+import {Contribution,AdjustTarget} from '../workflow-controls';
 import { requireUser } from '@/lib/auth/authorization';
 import { fullOrderRows,fullOrderProducts,fullOrderStatus } from '@/lib/inventory/full-orders';
 export default async function Page({params}:{params:Promise<{orderId:string}>}){
@@ -8,6 +10,7 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
  if(!rows.length)return <p>Pedido no disponible para tus sucursales.</p>;
  const products=await fullOrderProducts(user,orderId),order=rows[0],total=rows.reduce((n,r)=>n+(r.status==='CANCELLED'?0:r.pieces),0);
  const expected=order.expected_pieces,difference=expected===null?null:total-expected;
+ const review=await fullReviewData(user,orderId);
  return <div className="fullWorkspace fullOrderDetail">
   <Link href="/salidas/pedidos">← Pedidos</Link>
   <header className="fullOrderHeading"><small>FULL #{order.reference}</small><h1>{order.title}</h1>{user.role==='MASTER'&&<EditName id={orderId} title={order.title}/>}<span className="fullOrderBadge">{fullOrderStatus(rows)}</span></header>
@@ -16,7 +19,12 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
    <div className="fullOrderBranchTop"><h2>{r.branch}</h2><strong>{r.pieces.toLocaleString('es-MX')} <span>pzas</span></strong></div>
    <div className="fullOrderBranchAction"><small>{fullOrderStatus([r])}</small><Link href={'/salidas/'+r.movement_id}>Abrir salida →</Link></div>
   </section>)}</div>
+  {review.canReview&&review.shipment&&!review.shipment.reviewed&&review.shipment.status!=='DRAFT'&&<p><Link href={'/salidas/revision-full?order='+orderId}>Revisar piezas de Plaza →</Link></p>}
+  {review.canReview&&<Contribution orderId={orderId} products={review.products}/>}
+  <p><Link href="/salidas/devoluciones-full">Regresos a Plaza →</Link></p>
   <details className="fullOrderDetails"><summary>Ver detalles</summary>
+   {review.summary.sent>0&&<p>Plaza envió {review.summary.sent} · Correctas {review.summary.accepted} · Separadas para devolver {review.summary.rejected}</p>}
+   {user.role==='MASTER'&&<AdjustTarget orderId={orderId} expected={expected}/>}
    {rows.map(r=><div key={r.movement_id}><p><b>{r.branch}</b><br/><small>Folio: {r.folio}</small></p>{r.pos_registered_at&&<small>Registró {r.registered_by||'Usuario'} · {new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'short',timeStyle:'short'}).format(new Date(r.pos_registered_at))}</small>}</div>)}
    {products.length>0&&<><h3>Productos por sucursal</h3>{products.map((p,i)=><p key={i}><b>{p.product}</b> · {p.branch}: {p.quantity.toLocaleString('es-MX')} piezas</p>)}</>}
    {user.role==='MASTER'&&<small>Captura manual; no hay sincronización automática con Mercado Libre.</small>}
