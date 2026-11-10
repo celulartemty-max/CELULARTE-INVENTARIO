@@ -11,6 +11,7 @@ import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 import BatchIntake, {type Batch, type PendingCarton} from './batch-intake';
 import PackingReview from './packing-review';
 import CountGrid from './count-grid';
+import CountComparison from './count-comparison';
 import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
 import ReceivingModal from './receiving-modal';
 import ReceivingClose from './receiving-close';
@@ -179,6 +180,7 @@ export default function ReceivingEditor({ data, products }: {
  {data.review&&<section className="card pad"><h2>Archivos del pedido</h2>{data.documents.filter(d=>d.order_id===packingOrder&&!d.previous).map(d=><p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>{d.filename}</a></p>)}{data.documents.some(d=>d.order_id===packingOrder&&d.previous)&&<details><summary>Archivos anteriores · no vigentes</summary>{data.documents.filter(d=>d.order_id===packingOrder&&d.previous).map(d=><p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>{d.filename}</a></p>)}</details>}{draft&&<form className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget).get('document');if(f instanceof File)run(()=>upload(f,{orderId:packingOrder}))}}><label className="receivingField">Adjuntar original (Excel, PDF o imagen)<input name="document" type="file" required accept=".xlsx,.pdf,.png,.jpg,.jpeg" disabled={busy}/></label><button disabled={busy}>Adjuntar archivo</button></form>}</section>}
  </div>
  <div key={countVersion} hidden={foreignOrder||(data.review&&detailTab!=='count')}>
+ {data.review&&<CountComparison boxes={currentBoxes} items={data.items}/>}
  <section className="card pad"><h2>Conteo</h2><p>Cuenta físicamente. Vacío significa sin contar; 0 significa que no llegó ninguna pieza.</p><div className="receivingCartonSquares" aria-label="Seleccionar caja">{currentBoxes.map(b=><button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-label={`Caja ${b.carton_number}, ${b.counted_at?'contada':'pendiente de conteo'}`} aria-pressed={active===b.id} data-counted={!!b.counted_at} onClick={()=>setActive(b.id)}><b>{b.carton_number}</b><span>{b.counted_at?'✓':'·'}</span></button>)}</div><p className="receivingMuted">Selecciona un número para contar esa caja. ✓ = conteo terminado.</p>{currentBoxes.map(b => <article key={`${b.id}:${b.counted_at||'draft'}`} hidden={active!==b.id} className="card pad"><h3>Caja {b.carton_number}</h3><p>{b.product} · {b.shipping} · {b.marking} · {b.counted_at?'Contada':'Pendiente de conteo'}</p>{<form className="formGrid" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); const items = data.items.filter(l => l.carton_id === b.id); const saving = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'draft'; if (!saving && items.some(l => f.get(l.id) === '')) {
                 setError('Captura todas las cantidades; usa 0 donde no haya piezas.');
                 return;
