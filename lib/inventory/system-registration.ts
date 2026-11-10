@@ -11,7 +11,7 @@ import { registerExitPos } from './exits';
 import { registerReturnPos } from './returns';
 import { registerTransferPos } from './transfers';
 
-export const registrationSchema = z.object({ id: z.string().uuid(), kind: z.enum(['RECEIVING','DESTINATION','RECEPTION','EXIT','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER','TRANSFER','CLIENT_SALE']), side: z.enum(['origin','destination']).nullable().default(null) });
+export const registrationSchema = z.object({ id: z.string().uuid(), kind: z.enum(['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION','EXIT','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER','TRANSFER','CLIENT_SALE']), side: z.enum(['origin','destination']).nullable().default(null), revision:z.string().regex(/^[a-f0-9]{64}$/).optional() });
 export type RegistrationKey = z.infer<typeof registrationSchema>;
 export type RegistrationPending = RegistrationKey & { reference: string; branch_id: string; branch: string; created_at: string; correction: boolean; created_by_name?: string | null };
 
@@ -19,7 +19,13 @@ export type RegistrationPending = RegistrationKey & { reference: string; branch_
 // pending sides, never two confirmations for the same side.
 export const pendingSql = `WITH pending AS (
     SELECT s.id,'RECEIVING'::text kind,NULL::text side,s.reference,s.branch_id,s.created_at,false correction
-    FROM receiving_sessions s WHERE s.status='CLOSED'
+    FROM receiving_sessions s WHERE s.status='CLOSED' AND EXISTS(SELECT 1 FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=s.id AND NOT o.is_foreign AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id))
+    UNION ALL
+    SELECT o.id,'RECEIVING_ORDER',NULL::text,o.reference,o.branch_id,min(s.created_at),false
+    FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id JOIN receiving_sessions s ON s.id=b.session_id
+    WHERE NOT o.is_foreign AND o.voided_at IS NULL AND s.status IN ('DRAFT')
+    AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id)
+    GROUP BY o.id HAVING count(*) FILTER(WHERE b.counted_at IS NULL OR NOT EXISTS(SELECT 1 FROM receiving_items l WHERE l.carton_id=b.id) OR EXISTS(SELECT 1 FROM receiving_items l WHERE l.carton_id=b.id AND l.counted IS NULL))=0
     UNION ALL
     SELECT o.id,'DESTINATION',NULL::text,o.reference,o.destination_branch_id,min(a.received_at),bool_or(r.carton_id IS NOT NULL)
     FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id JOIN receiving_destination_arrivals a ON a.carton_id=b.id AND a.branch_id=o.destination_branch_id
@@ -43,9 +49,9 @@ export const pendingSql = `WITH pending AS (
     WHERE t.customer_sale AND t.paid_at IS NOT NULL AND t.sent_at IS NOT NULL AND t.origin_pos_registered_at IS NULL AND t.status::text IN ('WAITING_RECEIPT','PENDING_POS')
 ) SELECT p.id::text,p.kind,p.side,p.reference,p.branch_id::text,b.name branch,p.created_at::text,p.correction,creator.name created_by_name
   FROM pending p JOIN branches b ON b.id=p.branch_id
-  LEFT JOIN inventory_movements source_m ON source_m.id=p.id AND p.kind NOT IN ('RECEIVING','DESTINATION')
+  LEFT JOIN inventory_movements source_m ON source_m.id=p.id AND p.kind NOT IN ('RECEIVING','DESTINATION','RECEIVING_ORDER')
   LEFT JOIN receiving_sessions source_s ON source_s.id=p.id AND p.kind='RECEIVING'
-  LEFT JOIN receiving_orders source_o ON source_o.id=p.id AND p.kind='DESTINATION'
+  LEFT JOIN receiving_orders source_o ON source_o.id=p.id AND (p.kind='DESTINATION' OR p.kind='RECEIVING_ORDER')
   LEFT JOIN users creator ON creator.id=COALESCE(source_m.created_by,source_s.created_by,source_o.created_by)
   WHERE ($1::uuid[] IS NULL OR p.branch_id=ANY($1::uuid[])) ORDER BY p.created_at,p.id,p.side LIMIT 500`;
 
@@ -62,33 +68,35 @@ export async function registrationHistory(user: SessionUser) {
         FROM audit_events a JOIN users u ON u.id=a.user_id LEFT JOIN branches b ON b.id=a.branch_id
         LEFT JOIN inventory_movements m ON m.id=a.movement_id
         LEFT JOIN receiving_sessions s ON s.id=CASE WHEN a.action='RECEIVING_POS_REGISTERED' THEN (a.new_value->>'sessionId')::uuid END
-        LEFT JOIN receiving_orders o ON o.id=CASE WHEN a.action='RECEIVING_DESTINATION_POS_REGISTERED' THEN (a.new_value->>'orderId')::uuid END
+        LEFT JOIN receiving_orders o ON o.id=CASE WHEN a.action IN ('RECEIVING_DESTINATION_POS_REGISTERED','RECEIVING_ORDER_POS_REGISTERED') THEN (a.new_value->>'orderId')::uuid END
         WHERE a.action=ANY($2::text[]) AND ($1::uuid[] IS NULL OR a.branch_id=ANY($1::uuid[]))
-        ORDER BY a.created_at DESC,a.id DESC LIMIT 100`, [branches, ['RECEIVING_POS_REGISTERED','RECEIVING_DESTINATION_POS_REGISTERED','POS_REGISTERED','POS_CORRECTION_REGISTERED','EXIT_POS_REGISTERED','EXIT_POS_CORRECTION_REGISTERED','RETURN_POS_REGISTERED','RETURN_POS_CORRECTION_REGISTERED','TRANSFER_ORIGIN_POS','TRANSFER_DESTINATION_POS','CUSTOMER_SALE_REGISTERED']])).rows);
+        ORDER BY a.created_at DESC,a.id DESC LIMIT 100`, [branches, ['RECEIVING_ORDER_POS_REGISTERED','RECEIVING_POS_REGISTERED','RECEIVING_DESTINATION_POS_REGISTERED','POS_REGISTERED','POS_CORRECTION_REGISTERED','EXIT_POS_REGISTERED','EXIT_POS_CORRECTION_REGISTERED','RETURN_POS_REGISTERED','RETURN_POS_CORRECTION_REGISTERED','TRANSFER_ORIGIN_POS','TRANSFER_DESTINATION_POS','CUSTOMER_SALE_REGISTERED']])).rows);
 }
 export async function registrationDetail(user: SessionUser, raw: unknown) {
     await requireSystemRegistration(user);
     const key = registrationSchema.parse(raw);
-    // Reuse the scoped queue: no draft, archived, foreign-only or reconciled
-    // records can be turned into a pending confirmation by a supplied ID.
+    // Reuse the scoped queue: only finished, unregistered responsibilities are
+    // accessible. A receipt may stay open while an individual order is ready.
     const row = (await registrationPending(user)).find(p => p.id === key.id && p.kind === key.kind && p.side === key.side);
     if (!row) throw new Error('El registro ya no está pendiente o no tienes acceso a esa sucursal.');
     await assertBranchAccess(user, row.branch_id);
     const lines = await withTransaction(async c => {
+        if(key.kind==='RECEIVING_ORDER')return (await c.query((await import('./receiving-origin-registration')).originOrderLinesSql,[key.id])).rows;
         if (key.kind === 'DESTINATION') return (await c.query(`SELECT o.product_id,b.id carton_id,COALESCE(p.name,o.product_label) product,b.carton_number box,l.model,l.color,l.counted quantity FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN receiving_destination_arrivals a ON a.carton_id=b.id AND a.branch_id=o.destination_branch_id LEFT JOIN receiving_destination_registrations r ON r.carton_id=b.id LEFT JOIN products p ON p.id=o.product_id JOIN receiving_items l ON l.carton_id=b.id WHERE o.id=$1 AND (r.carton_id IS NULL OR r.counted_at IS DISTINCT FROM b.counted_at) ORDER BY b.carton_number,l.model,l.color`,[key.id])).rows;
-        if (key.kind === 'RECEIVING') return (await c.query(`SELECT o.product_id,b.id carton_id,COALESCE(p.name,o.product_label) product,b.carton_number box,l.model,l.color,l.counted quantity FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id JOIN receiving_items l ON l.carton_id=b.id WHERE b.session_id=$1 AND NOT o.is_foreign ORDER BY p.name,b.carton_number,l.model,l.color`, [key.id])).rows;
+        if (key.kind === 'RECEIVING') return (await c.query(`SELECT o.product_id,b.id carton_id,COALESCE(p.name,o.product_label) product,b.carton_number box,l.model,l.color,l.counted quantity FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id JOIN receiving_items l ON l.carton_id=b.id WHERE b.session_id=$1 AND NOT o.is_foreign AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id) ORDER BY p.name,b.carton_number,l.model,l.color`, [key.id])).rows;
         if (key.kind === 'RECEPTION') return (await c.query(`SELECT l.product_id,b.id carton_id,p.name product,b.box_number::text box,l.model_reference model,c.name color,l.quantity FROM reception_box_lines l JOIN reception_boxes b ON b.id=l.box_id JOIN receptions r ON r.id=b.reception_id JOIN products p ON p.id=l.product_id LEFT JOIN product_colors c ON c.id=l.color_id WHERE r.movement_id=$1 ORDER BY b.box_number,l.model_reference,c.name`, [key.id])).rows;
         if (key.kind === 'EXIT') return (await c.query('SELECT p.name product,l.quantity FROM exit_lines l JOIN products p ON p.id=l.product_id WHERE l.movement_id=$1 ORDER BY p.name,l.id', [key.id])).rows;
         if (key.kind === 'TRANSFER'||key.kind==='CLIENT_SALE') return (await c.query(`SELECT p.name product,CASE WHEN $2='destination' THEN l.received_quantity ELSE l.sent_quantity END quantity FROM transfer_lines l JOIN transfers t ON t.id=l.transfer_id JOIN products p ON p.id=l.product_id WHERE t.movement_id=$1 ORDER BY p.name,l.id`, [key.id,key.side])).rows;
         return (await c.query('SELECT p.name product,l.model_reference model,c.name color,l.quantity,l.condition::text condition FROM return_lines l JOIN products p ON p.id=l.product_id LEFT JOIN product_colors c ON c.id=l.color_id WHERE l.movement_id=$1 ORDER BY p.name,l.model_reference,c.name', [key.id])).rows;
     });
-    return { row, lines };
+    return { row, lines, ...(key.kind==='RECEIVING_ORDER'?{revision:(await import('./receiving-origin-registration')).originRevision(lines)}:{}) };
 }
 export async function confirmRegistration(user: SessionUser, raw: unknown) {
     await requireSystemRegistration(user);
     const key = registrationSchema.parse(raw);
     const { row } = await registrationDetail(user, key);
     await assertBranchAccess(user, row.branch_id);
+    if(key.kind==='RECEIVING_ORDER')return (await import('./receiving-origin-registration')).confirmOriginOrder(user,key.id,key.revision);
     if(key.kind==='CLIENT_SALE'){await registerCustomerSale(user,key.id);return;}
     // Existing methods perform their own locked status, version and branch checks.
     if (key.kind === 'RECEIVING') return receivingAction(user, { action:'pos',sessionId:key.id });

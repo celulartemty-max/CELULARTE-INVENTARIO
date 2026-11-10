@@ -1,7 +1,7 @@
 import type { RegistrationPending } from '@/lib/inventory/system-registration';
 
 export type RegistrationLine={product?:string;product_id?:string;carton_id?:string;box?:string;model?:string;color?:string;quantity?:number|null;condition?:string};
-export type RegistrationDetailData={row:RegistrationPending;lines:RegistrationLine[]};
+export type RegistrationDetailData={row:RegistrationPending;lines:RegistrationLine[];revision?:string};
 
 export function registrationInstruction(row:Pick<RegistrationPending,'kind'|'side'|'correction'>){
     if(row.kind==='CLIENT_SALE')return 'Registrar una VENTA en la sucursal de origen';
@@ -29,7 +29,7 @@ export function registrationConfirmLabel(row:Pick<RegistrationPending,'kind'|'si
 
 export default function RegistrationDetail({detail}:{detail:RegistrationDetailData}){
     const {row,lines}=detail,{complete,total}=registrationQuantities(lines);
-    const grouped=['RECEIVING','DESTINATION','RECEPTION'].includes(row.kind);
+    const grouped=['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION'].includes(row.kind);
     const groups=new Map<string,{product:string;boxes:Set<string>;lines:RegistrationLine[]}>();
     if(grouped)for(const line of lines){
         const key=line.product_id||line.product||'Producto sin nombre';

@@ -17,6 +17,8 @@ import ReceivingClose from './receiving-close';
 import PackingReset from './packing-reset';
 import OrderRemoval from './order-removal';
 import ReceiptEdit from './receipt-edit';
+import RegistrationQueue from '../../../registros/registration-queue';
+import type {RegistrationPending} from '@/lib/inventory/system-registration';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
     id: string;
@@ -41,6 +43,8 @@ type Item = {
 type Data = {
     removedOrders?: {id:string;created_at:string;product:string;marking:string;shipping:string;received:string;reason:string;actor:string|null}[];
     canRegisterSystem?: boolean;
+    registrationRows?:RegistrationPending[];
+    registeredBoxIds?:string[];
     review: boolean;
     canRecount: boolean;
     orders: {
@@ -137,6 +141,8 @@ export default function ReceivingEditor({ data, products }: {
  {packingOrder&&<>{data.review&&draft&&<details className="card pad"><summary>Editar datos del pedido</summary><form key={packingOrder+':'+currentBatch?.marking+':'+currentBatch?.supplier} className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);run(async()=>{await act({action:'editOrder',orderId:packingOrder,marking:f.get('marking'),supplier:f.get('supplier')});setPacking(null);setActive(null)})}}><label className="receivingField">Shipping Mark<select name="marking" required defaultValue={currentBatch?.marking}>{SHIPPING_MARKS.map(mark=><option key={mark}>{mark}</option>)}</select></label><label className="receivingField">Proveedor (opcional)<input name="supplier" maxLength={160} defaultValue={currentBatch?.supplier||''}/></label><p className="receivingMuted">Se aplica a todas las cajas del pedido. No cambia ni borra cantidades contadas.</p><button className="receivingSave" disabled={busy}>Guardar datos del pedido</button></form></details>}{foreignOrder&&!internalDestination?<section className="card pad"><h2>Cajas ajenas · solo registro</h2><p>No requieren packing list ni conteo.</p><p>Números recibidos: {currentForeign.map(b=>b.carton_number).join(', ')||'—'}</p></section>:<>
  {packingOrder&&data.canRecount&&draft&&!foreignOrder&&<BoxProductChange key={packingOrder} sessionId={s.id} orderId={packingOrder} boxes={currentBoxes} products={products} onDone={()=>{setPackingOrder('');setPacking(null);setRaw('');setActive(null);setOrderNotice('Producto corregido. Los números de caja, packing list y conteos se conservaron.')}}/>}
  {data.review&&<div className="receivingTabs" aria-label="Trabajo del pedido"><button aria-pressed={detailTab==='packing'} onClick={()=>setDetailTab('packing')}>Packing list</button><button disabled={foreignOrder} aria-pressed={detailTab==='count'} onClick={()=>setDetailTab('count')}>Contar piezas</button></div>}
+ {data.canRegisterSystem&&<RegistrationQueue compact rows={(data.registrationRows??[]).filter(r=>r.id===packingOrder)} buttonLabel="Registrar en sistema"/>}
+ {!!currentBoxes.length&&currentBoxes.every(b=>data.registeredBoxIds?.includes(b.id))&&<p className="registrationSuccess" role="status">✓ Registrado en sistema</p>}
  <div hidden={data.review&&detailTab!=='packing'}>
  {internalDestination&&<p className="card pad" role="status">Packing list para {currentBatch?.destination_name}. Aquí solo preparas el documento. El conteo y el registro se harán en destino después de confirmar la llegada física.</p>}
  {data.review && draft && <>
@@ -183,7 +189,7 @@ export default function ReceivingEditor({ data, products }: {
  <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} colorOrder={b.color_order} disabled={!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at} onAdd={()=>setAddingBox(b.id)} onAddCombination={(model,color)=>run(async()=>{await act({action:'addItem',boxId:b.id,model,color})})}/>
  <label>Observaciones<textarea name="notes" maxLength={2000} defaultValue={b.notes} disabled={!!b.counted_at || !draft || busy}/></label>{!b.counted_at && draft && <div className="actions"><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)} value="draft" formNoValidate>Guardar avance</button><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)}>Terminar conteo de esta caja</button></div>}
  </form>}
- {active === b.id && b.counted_at && draft && data.canRecount && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se conservarán las cantidades para corregir solo lo necesario y el conteo anterior quedará en auditoría. Vuelve a terminar el conteo para confirmar los cambios.'))
+ {active === b.id && b.counted_at && draft && data.canRecount && !data.registeredBoxIds?.includes(b.id) && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se conservarán las cantidades para corregir solo lo necesario y el conteo anterior quedará en auditoría. Vuelve a terminar el conteo para confirmar los cambios.'))
             run(async () => { await act({ action: 'reopenBox', boxId: b.id }); }); }}>Autorizar reconteo</button>}
  </article>)}</section>
  </div>

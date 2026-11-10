@@ -6,9 +6,9 @@ test('pending creator comes from original movement/session/order, never confirmi
  const s=read('lib/inventory/system-registration.ts');
  assert.match(s,/creator.name created_by_name/);
  assert.match(s,/COALESCE\(source_m.created_by,source_s.created_by,source_o.created_by\)/);
- assert.match(s,/source_m.id=p.id AND p.kind NOT IN \('RECEIVING','DESTINATION'\)/);
+ assert.match(s,/source_m.id=p.id AND p.kind NOT IN \('RECEIVING','DESTINATION','RECEIVING_ORDER'\)/);
  assert.match(s,/source_s.id=p.id AND p.kind='RECEIVING'/);
- assert.match(s,/source_o.id=p.id AND p.kind='DESTINATION'/);
+ assert.match(s,/source_o.id=p.id AND \(p.kind='DESTINATION' OR p.kind='RECEIVING_ORDER'\)/);
  assert.match(s,/LEFT JOIN users creator/);
  assert.match(s,/p.branch_id=ANY\(\$1::uuid\[\]\)/);
 });

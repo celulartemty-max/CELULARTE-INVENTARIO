@@ -7,7 +7,7 @@ import ReceivingModal from '../entradas/pedidos/[id]/receiving-modal';
 import '../entradas/pedidos/receiving.css';
 import './registration.css';
 
-const labels:Record<string,string>={RECEIVING:'Recepción por pedidos',DESTINATION:'Cajas recibidas de otra sucursal',RECEPTION:'Recepción',EXIT:'Salida',RETURN_ML:'Devolución ML',RETURN_TIKTOK:'Devolución TikTok',RETURN_CUSTOMER:'Devolución de cliente',CLIENT_SALE:'Venta con entrega',TRANSFER:'Traspaso'};
+const labels:Record<string,string>={RECEIVING_ORDER:'Pedido contado',RECEIVING:'Recepción por pedidos',DESTINATION:'Cajas recibidas de otra sucursal',RECEPTION:'Recepción',EXIT:'Salida',RETURN_ML:'Devolución ML',RETURN_TIKTOK:'Devolución TikTok',RETURN_CUSTOMER:'Devolución de cliente',CLIENT_SALE:'Venta con entrega',TRANSFER:'Traspaso'};
 type Detail=RegistrationDetailData;
 export default function RegistrationQueue({rows,compact=false,buttonLabel='Ver detalle y registrar →'}:{rows:RegistrationPending[];compact?:boolean;buttonLabel?:string}){
     const router=useRouter(),lock=useRef(false);
@@ -24,7 +24,7 @@ export default function RegistrationQueue({rows,compact=false,buttonLabel='Ver d
         if(!detail||!registrationQuantities(detail.lines).complete||lock.current||refreshing)return;lock.current=true;setBusy(true);setError('');
         try{
             const {row}=detail;
-            const r=await fetch('/api/system-registration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:row.id,kind:row.kind,side:row.side})});const data=await r.json();if(!r.ok)throw Error(data.error);
+            const r=await fetch('/api/system-registration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:row.id,kind:row.kind,side:row.side,revision:detail.revision})});const data=await r.json();if(!r.ok)throw Error(data.error);
             setDetail(null);setNotice('Registro confirmado. Quedó guardado quién lo registró y cuándo.');startTransition(()=>router.refresh());
         }catch(e){setError(e instanceof Error?e.message:'No se pudo confirmar.')}finally{lock.current=false;setBusy(false)}
     }

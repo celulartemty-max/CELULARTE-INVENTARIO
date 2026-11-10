@@ -54,6 +54,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             await requireSystemRegistration(u);
             if (s.status !== 'CLOSED')
                 throw new Error('Primero termina el conteo.');
+            const remaining=(await c.query(`SELECT b.id FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=$1 AND NOT o.is_foreign AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id) ORDER BY b.id FOR UPDATE OF b`,[sessionId])).rows;
+            await (await import('./receiving-origin-registration')).recordOriginCartons(c,u,remaining.map(b=>b.id));
             await c.query("UPDATE receiving_sessions SET status='POS_REGISTERED' WHERE id=$1", [sessionId]);
             await audit(c, u, s.branch_id, 'RECEIVING_POS_REGISTERED', { sessionId });
             return { ok: true };
@@ -241,7 +243,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const foreign = await c.query('SELECT (SELECT count(*) FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=$1 AND o.is_foreign)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n', [sessionId]);
             if (n.rows[0].n + foreign.rows[0].n !== s.total_boxes || n.rows[0].pending)
                 throw new Error('Completa el total físico entre cajas de la sucursal y ajenas. Cuenta solo las de esta sucursal.');
-            const status = n.rows[0].n === 0 ? 'ARCHIVED' : 'CLOSED';
+            const outstanding=await c.query(`SELECT count(*)::int n FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=$1 AND NOT o.is_foreign AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id)`,[sessionId]);
+            const status = n.rows[0].n === 0 ? 'ARCHIVED' : outstanding.rows[0].n===0 ? 'POS_REGISTERED' : 'CLOSED';
             await c.query('UPDATE receiving_sessions SET status=$1 WHERE id=$2', [status,sessionId]);
             await audit(c, u, s.branch_id, 'RECEIVING_CLOSED', { sessionId, status, own: n.rows[0].n, foreign: foreign.rows[0].n });
             return { ok: true };
@@ -268,5 +271,8 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const documents = review ? await sql `SELECT d.id::text,d.filename,d.order_id::text,EXISTS(SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_PACKING_RESET' AND a.new_value->>'orderId'=d.order_id::text AND (a.new_value->'documentIds') ? d.id::text) previous FROM receiving_documents d WHERE (d.session_id=${sessionId}::uuid AND ${u.role === 'MASTER'}) OR d.order_id IN (SELECT id FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND (NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name=CASE marking WHEN 'PER' THEN 'Treviño' WHEN 'JAPS' THEN 'Plaza del Audio' END))))` : [];
     const orders = review ? await sql `SELECT id::text,reference FROM receiving_orders WHERE branch_id=${session.branch_id}::uuid AND (NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name=CASE marking WHEN 'PER' THEN 'Treviño' WHEN 'JAPS' THEN 'Plaza del Audio' END))) AND voided_at IS NULL ORDER BY created_at DESC` : [];
     const removedOrders=review ? await sql `SELECT a.id::text,a.created_at::text,a.new_value->>'product' product,a.new_value->>'marking' marking,a.new_value->>'shipping' shipping,a.new_value->>'received' received,a.new_value->>'reason' reason,u.name actor FROM audit_events a LEFT JOIN users u ON u.id=a.user_id WHERE a.action='RECEIVING_ORDER_REMOVED' AND a.branch_id=${session.branch_id}::uuid AND a.new_value->>'sessionId'=${sessionId} ORDER BY a.created_at DESC,a.id DESC LIMIT 100` : [];
-    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canRecount: u.role === 'MASTER', canRegisterSystem: await hasModulePermission(u,'REGISTRO_SISTEMA') };
+    const canRegisterSystem=await hasModulePermission(u,'REGISTRO_SISTEMA');
+    const registrationRows=canRegisterSystem ? (await (await import('./system-registration')).registrationPending(u)).filter(r=>r.kind==='RECEIVING_ORDER'&&boxes.some(b=>b.order_id===r.id)) : [];
+    const registeredBoxes=await sql `SELECT r.carton_id::text FROM receiving_origin_registrations r WHERE r.session_id=${sessionId}::uuid`;
+    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)) };
 }
