@@ -27,6 +27,26 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('order badges distinguish uncounted, partial, counted and registered cartons in the current receipt',()=>{
+ const Status=load(base+'batch-intake.tsx').BatchStatus;
+ const render=change=>renderToStaticMarkup(React.createElement(Status,{batch:{...batch,...change}}));
+ assert.match(render({counted_here:0}),/Pendientes · 0\/18 contadas/);
+ assert.match(render({counted_here:5}),/Pendientes · 5\/18 contadas/);
+ assert.match(render({counted_here:18}),/✓ Contadas · 18\/18/);
+ assert.match(render({counted_here:18,registered_here:18}),/✓ Registrado en sistema/);
+ const partial=render({counted_here:18,registered_here:7});assert.match(partial,/✓ Contadas/);assert.match(partial,/7\/18 registradas/);assert.doesNotMatch(partial,/✓ Registrado en sistema/);
+ assert.doesNotMatch(render({counted_here:0,received_here:0,registered_here:0}),/✓ Contadas|✓ Registrado/);
+});
+test('foreign external orders need no count; internal orders show only destination progress',()=>{
+ const Status=load(base+'batch-intake.tsx').BatchStatus;
+ const render=change=>renderToStaticMarkup(React.createElement(Status,{batch:{...batch,is_foreign:true,...change}}));
+ assert.match(render({destination_name:null}),/Solo registro/);assert.doesNotMatch(render({destination_name:'CDMX'}),/Pendientes|Contadas/);
+ assert.match(render({destination_name:'Plaza del Audio',counted_here:1}),/Estado en destino/);
+ assert.match(render({destination_name:'Treviño',counted_here:18,registered_here:18}),/✓ Registrado en sistema/);
+ const source=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');
+ assert.match(source,/b.counted_at IS NOT NULL AND \(NOT o.is_foreign OR EXISTS/);
+ assert.match(source,/dr.counted_at=b.counted_at/);assert.match(source,/receiving_origin_registrations orig/);
+});
 test('overview has one simple table and add button, no inline form or packing/count instructions',()=>{
  const html=renderToStaticMarkup(React.createElement(BatchIntake,{batches:[batch,{...batch,id:'pending',received_here:0}],pending:[],products,busy:false,draft:true,save:async()=>true,onOpen(){}}));
  assert.match(html,/Agregar pedido/);assert.match(html,/Abrir pedido/);assert.match(html,/Faltan del pedido/);assert.match(html,/<b>18<\/b> <small>de 20<\/small>/);
