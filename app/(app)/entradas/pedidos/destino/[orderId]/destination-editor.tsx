@@ -77,7 +77,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
         });
     }
     return <>
-        <header className="receivingHomeHero"><span className="receivingEyebrow">{order.destination}</span><h1>{order.product}</h1><p>{order.marking} · {order.shipping} · {order.total} cajas{order.supplier ? ` · ${order.supplier}` : ''}</p><small>{order.reference} · Origen: {order.origin}</small></header>
+        <header className="receivingHomeHero"><span className="receivingEyebrow">{order.destination}</span><h1>{order.product}</h1><h2 className="receivingOrderTag">{order.marking}{order.display_title?` · ${order.display_title}`:''}</h2><p>{order.shipping} · {order.total} cajas{order.supplier ? ` · ${order.supplier}` : ''}</p><small>{order.reference} · Origen: {order.origin}</small></header>
         {error && <p className="receivingError" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
         <section className="card pad"><h2>Llegada a {order.destination}</h2><p>{arrived.length} de {order.total} cajas recibidas aquí · {order.counted} contadas</p>
             {pending.length > 0 && <><p>Estas cajas están registradas en origen. Selecciona únicamente las que ya tienes físicamente.</p>

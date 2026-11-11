@@ -12,11 +12,11 @@ test('dashboard starts with greeting and indicators without the extra receiving 
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
     const queries = [], mod = { exports: {} };
     const mocks = {
-        '@/lib/inventory/receiving-stats': { receivingStats: async () => ({open:3,closed:2}) },
+        '@/lib/inventory/receiving-stats': { receivingStats: async branches => {assert.equal(branches,null);return {open:3,closed:2};} },
         './registration-notice': { default: () => null },
         './transfer-receipt-notice': { default: () => null },
         'next/link': { default: props => React.createElement('a', props, props.children) },
-        '@/lib/auth/authorization': { requireUser: async () => ({ id: 'user', name: 'Alejandro', role: 'MASTER', primaryBranchId: null }), getAuthorizedBranchIds: async () => null },
+        '@/lib/auth/authorization': { requireUser: async () => ({ id: 'user', name: 'Alejandro', role: 'MASTER', primaryBranchId: null }), getAuthorizedBranchIds: async () => null,hasModulePermission:async()=>true },
         '@/lib/db': { sql: async parts => { queries.push(parts.join('?')); return []; } },
     };
     vm.runInNewContext('(function(require,module,exports){' + code + '})', { Intl, Date })(name => name in mocks ? mocks[name] : require(name), mod, mod.exports);

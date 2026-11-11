@@ -3,5 +3,5 @@ export const receiptPendingSql=`s.status='DRAFT' AND (
   s.total_boxes > (SELECT count(*) FROM receiving_cartons b WHERE b.session_id=s.id)
     + COALESCE((SELECT sum(f.carton_count) FROM receiving_foreign_cartons f WHERE f.session_id=s.id AND f.voided_at IS NULL),0)
   OR EXISTS(SELECT 1 FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id
-    WHERE b.session_id=s.id AND ((NOT o.is_foreign AND o.destination_branch_id=s.branch_id) OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=o.id AND dc.branch_id=s.branch_id)) AND b.counted_at IS NULL)
+    WHERE b.session_id=s.id AND ((NOT o.is_foreign AND o.destination_branch_id=s.branch_id) OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) AND b.counted_at IS NULL)
 )`;

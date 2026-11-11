@@ -61,7 +61,7 @@ test('foreign external orders need no count; internal orders show only destinati
  assert.match(render({destination_name:'Plaza del Audio',counted_here:1}),/Estado en destino/);
  assert.match(render({destination_name:'Treviño',counted_here:18,registered_here:18}),/✓ Registrado en sistema/);
  const source=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');
- assert.match(source,/b.counted_at IS NOT NULL AND \(NOT o.is_foreign OR EXISTS/);
+ assert.match(source,/b.counted_at IS NOT NULL AND \(NOT o.is_foreign OR \(o.marking IN/);
  assert.match(source,/dr.counted_at=b.counted_at/);assert.match(source,/receiving_origin_registrations orig/);
 });
 test('overview has one simple table and add button, no inline form or packing/count instructions',()=>{
@@ -108,7 +108,7 @@ test('JAPS destination packing can be prepared at source without enabling source
  const render=mount(base+'receiving-editor.tsx','default',{data,products});let tree=render();nodes(tree).find(n=>n.props?.onOpen).props.onOpen('J');tree=render();
  assert.match(text(tree),/Packing list para Plaza del Audio/);assert.match(text(tree),/Leer packing list con IA/);assert.match(text(tree),/japs-original.xlsx/);assert.doesNotMatch(text(tree),/Cajas ajenas · solo registro/);
  assert.equal(nodes(tree).find(n=>n.type==='button'&&text(n)==='Contar piezas').props.disabled,true);assert.ok(!nodes(tree).some(n=>n.props?.className==='receivingBoxButton'));
- const core=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');assert.match(core,/order.is_foreign && !order.packing_allowed/);assert.match(core,/marking IN \('PER','JAPS'\)/);assert.match(core,/NOT o.is_foreign OR EXISTS\(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=o.id AND dc.branch_id=o.branch_id\)/);
+ const core=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');assert.match(core,/order.is_foreign && !order.packing_allowed/);assert.match(core,/marking IN \('PER','JAPS'\)/);assert.match(core,/NOT o.is_foreign OR \(o.marking IN/);
 });
 test('explicitly delegated JAPS boxes enable origin counting without a POS action',()=>{
  const japs={...batch,id:'J',marking:'JAPS',destination_name:'Plaza del Audio',is_foreign:true,received_here:1};

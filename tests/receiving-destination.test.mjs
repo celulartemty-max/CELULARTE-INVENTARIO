@@ -46,23 +46,24 @@ function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,co
     return {...mod,queries,audit,quantities:()=>quantities};
 }
 const action=(action,extra={})=>({action,orderId:ORDER,boxId:BOX,...extra});
-test('delegated origin counts cannot be overwritten by destination counters',async()=>{
- for(const name of ['count','saveCount','addItem','reopenBox']){
-  const f=fixture({delegated:true});await assert.rejects(f.destinationAction(manager,action(name,{lines:[{id:LINE,quantity:1}]})),/asignado a la sucursal de origen/);
-  assert.equal(f.queries.some(q=>q.sql.startsWith('UPDATE')||q.sql.startsWith('INSERT')),false);
- }
+test('shared receiving counts cross branch boundaries but finished cartons cannot be overwritten',async()=>{
+ const f=fixture({allowed:[ORIGIN],delegated:true});await f.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:1}]}));
+ assert.equal(f.quantities()[0].quantity,1);
+ const finished=fixture({allowed:[ORIGIN],counted:true});await assert.rejects(finished.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:2}]})),/terminado/);
+ assert.ok(!finished.queries.some(q=>q.sql.startsWith('UPDATE')));
 });
-test('delegation is order-scoped and does not expand POS registration to foreign orders',()=>{
+test('shared internal counting does not expand POS registration to foreign orders',()=>{
  const source=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');
- assert.match(source,/dc.order_id=receiving_orders.id AND dc.branch_id=receiving_orders.branch_id/);
+ assert.match(source,/marking IN \('PER','JAPS'\) AND destination_branch_id IN/);
  const registration=readFileSync(new URL('../lib/inventory/receiving-origin-registration.ts',import.meta.url),'utf8');
  assert.match(registration,/is_foreign/);assert.doesNotMatch(registration,/receiving_count_delegations/);
 });
-test('destination count authorizes destination, not the source branch, and module access is required',async()=>{
-    for(const opts of [{allowed:[ORIGIN]},{permission:false}]) {
+test('shared count still requires module access and other-branch arrival remains forbidden',async()=>{
+    for(const opts of [{permission:false}]) {
         const f=fixture(opts);await assert.rejects(f.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:1}]})));
         assert.equal(f.queries.some(q=>q.sql.startsWith('UPDATE')),false);
     }
+    const f=fixture({allowed:[ORIGIN]});await assert.rejects(f.destinationAction(manager,action('confirmArrival',{boxIds:[BOX]})),/FORBIDDEN_BRANCH/);
 });
 test('unconfirmed boxes cannot be counted, edited, reopened or packed',async()=>{
     const packing={reference:'JAPS-20',warnings:[],boxes:[{number:'1',items:[{model:'A06',color:'NEGRO',expected:10}]}]};
@@ -114,7 +115,7 @@ test('destination documents require reviewer, destination branch and confirmed a
 });
 test('incoming list scope filters destination IDs rather than original branch',async()=>{
     const f=fixture();await f.destinationOrders(manager);
-    const q=f.queries[0];assert.ok(q.sql.includes('o.destination_branch_id=ANY($1::uuid[])'));assert.deepEqual(q.args[0],[DEST]);
+    const q=f.queries[0];assert.ok(q.sql.includes('o.destination_branch_id=ANY($1::uuid[])'));assert.equal(q.args[0],null);
 });
 test('receipt overview nests a destination into its original session without adding to the physical total',async()=>{
     const queries=[];
@@ -127,7 +128,7 @@ test('receipt overview nests a destination into its original session without add
     });
     const rows=await mod.receivingOverview(manager);
     assert.equal(rows.length,1);assert.equal(rows[0].total_boxes,43);assert.equal(rows[0].arrived,43);assert.equal(rows[0].destinations.length,1);assert.equal(rows[0].destinations[0].boxes,5);
-    assert.deepEqual(queries[0].args[0],[DEST]);assert.ok(queries[0].sql.includes('EXISTS('));
+    assert.equal(queries[0].args[0],null);assert.ok(queries[0].sql.includes('EXISTS('));
     assert.match(queries[0].sql,/ELSE NULL END counted/);assert.match(queries[1].sql,/GROUP BY b.session_id,o.id/);
     assert.ok(queries.every(q=>q.sql.includes('$1::uuid[] IS NULL')));assert.ok(queries.every(q=>!q.sql.includes('receiving_items')));
 });

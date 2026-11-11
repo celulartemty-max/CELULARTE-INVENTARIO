@@ -113,3 +113,4 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .receivingProductOptions [role=option]:hover,.receivingProductOptions [role=option].active{background:#f0f5ff;color:#135cc5}
 .receivingProductOptions [aria-selected=true]{background:#edf4ff;font-weight:600;color:#135cc5}
 .receivingProductEmpty{padding:16px;color:#758299;font-size:14px}
+.receivingOrderTag{font-size:clamp(22px,4vw,32px);font-weight:800;color:#174b90;margin:12px 0 20px;overflow-wrap:anywhere}

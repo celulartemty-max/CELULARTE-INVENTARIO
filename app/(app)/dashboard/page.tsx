@@ -2,7 +2,7 @@ import {receivingStats} from '@/lib/inventory/receiving-stats';
 import RegistrationNotice from './registration-notice';
 import TransferReceiptNotice from './transfer-receipt-notice';
 import Link from "next/link";
-import { requireUser, getAuthorizedBranchIds } from "@/lib/auth/authorization";
+import { requireUser, getAuthorizedBranchIds, hasModulePermission } from "@/lib/auth/authorization";
 import { sql } from "@/lib/db";
 
 const badgeDateFmt=new Intl.DateTimeFormat("es-MX",{timeZone:"America/Monterrey",day:"2-digit",month:"short",year:"numeric"});
@@ -21,7 +21,7 @@ export default async function Dashboard(){
   const user=await requireUser(),branches=await getAuthorizedBranchIds(user);
   const statsRows=branches===null?await sql`SELECT count(*) FILTER(WHERE m.movement_type='RECEPTION' AND m.status::text='DRAFT')::int reception_in_progress,count(*) FILTER(WHERE m.movement_type='RECEPTION' AND m.status::text<>'DRAFT' AND m.created_at>=now()-interval '30 days')::int receptions_closed_30,count(DISTINCT COALESCE(x.order_id,m.id)) FILTER(WHERE m.movement_type='EXIT' AND m.status::text='DRAFT')::int exits_in_progress,count(*) FILTER(WHERE m.movement_type='TRANSFER' AND COALESCE(t.status::text,'') NOT IN ('COMPLETED','CANCELLED'))::int active_transfers FROM inventory_movements m LEFT JOIN full_order_exits x ON x.movement_id=m.id LEFT JOIN transfers t ON t.movement_id=m.id`:branches.length===0?[{reception_in_progress:0,receptions_closed_30:0,exits_in_progress:0,active_transfers:0}]:await sql`WITH a AS (SELECT m.*,x.order_id full_order_id,t.status::text transfer_status FROM inventory_movements m LEFT JOIN full_order_exits x ON x.movement_id=m.id LEFT JOIN transfers t ON t.movement_id=m.id WHERE (m.movement_type<>'TRANSFER' AND m.branch_id=ANY(${branches}::uuid[])) OR (m.movement_type='TRANSFER' AND (t.origin_branch_id=ANY(${branches}::uuid[]) OR t.destination_branch_id=ANY(${branches}::uuid[])))) SELECT count(*) FILTER(WHERE movement_type='RECEPTION' AND status::text='DRAFT')::int reception_in_progress,count(*) FILTER(WHERE movement_type='RECEPTION' AND status::text<>'DRAFT' AND created_at>=now()-interval '30 days')::int receptions_closed_30,count(DISTINCT COALESCE(full_order_id,id)) FILTER(WHERE movement_type='EXIT' AND status::text='DRAFT')::int exits_in_progress,count(*) FILTER(WHERE movement_type='TRANSFER' AND COALESCE(transfer_status,'') NOT IN ('COMPLETED','CANCELLED'))::int active_transfers FROM a`;
   const stats=statsRows[0]??{};
-  const receipts=await receivingStats(branches);
+  const receipts=await hasModulePermission(user,'ENTRADAS') ? await receivingStats(null) : {open:0,closed:0};
   const branchName=user.primaryBranchId?(await sql`SELECT name FROM branches WHERE id=${user.primaryBranchId}::uuid`)[0]?.name:null;
   const firstName=user.name.split(/\s+/)[0]||user.name;
 

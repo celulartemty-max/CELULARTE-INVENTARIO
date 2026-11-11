@@ -1,7 +1,7 @@
 import 'server-only';
 import { requireSystemRegistration } from '@/lib/auth/special-permissions';
 import { sql, withTransaction } from '@/lib/db';
-import { assertBranchAccess, hasModulePermission } from '@/lib/auth/authorization';
+import { assertBranchAccess, getAuthorizedBranchIds, hasModulePermission } from '@/lib/auth/authorization';
 import type { SessionUser } from '@/lib/auth/types';
 import { arrivalSchema, countSchema, isReviewer, packingSchema, foreignCartonSchema, batchSchema, parseCartonNumbers } from './receiving-validation';
 import { z } from 'zod';
@@ -41,7 +41,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         const s = r.rows[0];
         if (!s)
             throw new Error('Recepción no encontrada.');
-        await assertBranchAccess(u, s.branch_id);
+        // Counting is shared across receiving teams; approvals and POS retain scope.
+        if(!['count','saveCount','addItem'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
         if(b.action==='changeBoxProduct'){
             const {changeBoxProduct}=await import('./box-product-change');
             return changeBoxProduct(c,u,s,b);
@@ -62,6 +63,15 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         }
         if (s.status !== 'DRAFT')
             throw new Error('La recepción ya está cerrada.');
+        if(b.action==='setOrderTitle'){
+            if(u.role!=='MASTER')throw new Error('Solo el máster puede editar el título.');
+            const orderId=id.parse(b.orderId),title=z.string().trim().max(80).parse(b.title??'');
+            const order=(await c.query('SELECT o.id,o.display_title FROM receiving_orders o WHERE o.id=$1 AND o.branch_id=$2 AND o.voided_at IS NULL AND EXISTS(SELECT 1 FROM receiving_cartons b WHERE b.order_id=o.id AND b.session_id=$3) FOR UPDATE',[orderId,s.branch_id,sessionId])).rows[0];
+            if(!order)throw new Error('Pedido no disponible en esta recepción.');
+            await c.query('UPDATE receiving_orders SET display_title=$1 WHERE id=$2',[title,orderId]);
+            await audit(c,u,s.branch_id,'RECEIVING_ORDER_TITLE_EDITED',{orderId,previous:order.display_title,title});
+            return {ok:true};
+        }
         if(b.action==='removeOrderPreview'||b.action==='removeOrder') {
             await receivingAccess(u,true);
             return removeReceivingOrder(c,u,sessionId,s.branch_id,b);
@@ -160,9 +170,9 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const model = z.string().trim().max(160).parse(b.model).toUpperCase(), color = z.string().trim().max(160).parse(b.color).toUpperCase();
             if (!model && !color)
                 throw new Error('Indica modelo o color del artículo adicional.');
-            const order=(await c.query('SELECT o.id FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id WHERE b.id=$1 AND b.session_id=$2 AND (NOT o.is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=o.id AND dc.branch_id=o.branch_id)) AND o.voided_at IS NULL FOR UPDATE OF o',[boxId,sessionId])).rows[0];
+            const order=(await c.query(`SELECT o.id FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id WHERE b.id=$1 AND b.session_id=$2 AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) AND o.voided_at IS NULL FOR UPDATE OF o`, [boxId,sessionId])).rows[0];
             if(!order) throw new Error('Caja no disponible.');
-            const box = await c.query('SELECT id FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND counted_at IS NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=receiving_orders.id AND dc.branch_id=receiving_orders.branch_id)) FOR UPDATE', [boxId, sessionId]);
+            const box = await c.query(`SELECT id FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND counted_at IS NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) FOR UPDATE`, [boxId, sessionId]);
             if (!box.rowCount)
                 throw new Error('Caja no disponible.');
             await appendPackingColor(c,order.id,color);
@@ -175,7 +185,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
                 throw new Error('Solo un administrador puede autorizar un reconteo.');
             const boxId = id.parse(b.boxId);
             const before = await c.query('SELECT l.id,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.id=$1 AND b.session_id=$2', [boxId, sessionId]);
-            const q = await c.query('UPDATE receiving_cartons SET counted_at=NULL,counted_by=NULL WHERE id=$1 AND session_id=$2 AND counted_at IS NOT NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=receiving_orders.id AND dc.branch_id=receiving_orders.branch_id)) RETURNING id', [boxId, sessionId]);
+            if((await c.query('SELECT 1 FROM receiving_destination_registrations WHERE carton_id=$1 UNION ALL SELECT 1 FROM receiving_origin_registrations WHERE carton_id=$1',[boxId])).rowCount)throw new Error('La caja ya está registrada en sistema. No se puede reabrir.');
+            const q = await c.query(`UPDATE receiving_cartons SET counted_at=NULL,counted_by=NULL WHERE id=$1 AND session_id=$2 AND counted_at IS NOT NULL AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) RETURNING id`, [boxId, sessionId]);
             if (!q.rowCount)
                 throw new Error('Caja no disponible.');
             await audit(c, u, s.branch_id, 'RECEIVING_RECOUNT_AUTHORIZED', { sessionId, boxId, previous: before.rows });
@@ -222,7 +233,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (b.action === 'count' || b.action === 'saveCount') {
             const saving = b.action === 'saveCount';
             const boxId = id.parse(b.boxId), lines = saving ? z.array(z.object({ id, quantity: z.number().int().min(0).max(1000000).nullable() })).min(1).max(500).refine(v => new Set(v.map(l => l.id)).size === v.length).parse(b.lines) : countSchema.parse(b.lines), notes = z.string().max(2000).parse(b.notes ?? '');
-            const box = await c.query('SELECT id,counted_at FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=receiving_orders.id AND dc.branch_id=receiving_orders.branch_id)) FOR UPDATE', [boxId, sessionId]);
+            const box = await c.query(`SELECT id,counted_at FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) FOR UPDATE`, [boxId, sessionId]);
             if (!box.rowCount || box.rows[0].counted_at)
                 throw new Error('Caja no disponible para conteo.');
             const expected = await c.query('SELECT id FROM receiving_items WHERE carton_id=$1', [boxId]);
@@ -241,7 +252,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             await receivingAccess(u, true);
             const n = await c.query('SELECT count(*)::int n,count(*) FILTER(WHERE counted_at IS NULL)::int pending FROM receiving_cartons WHERE session_id=$1 AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign)', [sessionId]);
             const foreign = await c.query('SELECT (SELECT count(*) FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=$1 AND o.is_foreign)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n', [sessionId]);
-            if (n.rows[0].n + foreign.rows[0].n !== s.total_boxes || n.rows[0].pending || (await c.query('SELECT 1 FROM receiving_cartons b JOIN receiving_count_delegations dc ON dc.order_id=b.order_id WHERE b.session_id=$1 AND dc.branch_id=$2 AND b.counted_at IS NULL LIMIT 1',[sessionId,s.branch_id])).rowCount)
+            if (n.rows[0].n + foreign.rows[0].n !== s.total_boxes || n.rows[0].pending || (await c.query(`SELECT 1 FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=$1 AND o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE name IN ('Treviño','Plaza del Audio')) AND b.counted_at IS NULL LIMIT 1`,[sessionId])).rowCount)
                 throw new Error('Completa el total físico entre cajas de la sucursal y ajenas. Cuenta solo las de esta sucursal.');
             const outstanding=await c.query(`SELECT count(*)::int n FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=$1 AND NOT o.is_foreign AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id)`,[sessionId]);
             const status = n.rows[0].n === 0 ? 'ARCHIVED' : outstanding.rows[0].n===0 ? 'POS_REGISTERED' : 'CLOSED';
@@ -258,16 +269,18 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const session = rows[0];
     if (!session)
         throw new Error('No encontrada');
-    await assertBranchAccess(u, String(session.branch_id));
+    // ENTRADAS grants shared receipt visibility; freight remains MASTER-only below.
     const review = isReviewer(u.role);
-    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.color_order,COALESCE(b.marking,o.marking) marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND (NOT o.is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=o.id AND dc.branch_id=o.branch_id)) ORDER BY o.reference,b.carton_number`;
-    const foreignBoxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND o.is_foreign AND NOT EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=o.id AND dc.branch_id=o.branch_id) ORDER BY o.reference,b.carton_number`;
+    const authorizedBranches=await getAuthorizedBranchIds(u);
+    const canManageReceipt=authorizedBranches===null||authorizedBranches.includes(String(session.branch_id));
+    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.display_title,o.shipping,o.color_order,COALESCE(b.marking,o.marking) marking,p.name product,b.counted_at::text,b.notes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY o.reference,b.carton_number`;
+    const foreignBoxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND o.is_foreign AND NOT COALESCE((o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio'))),false) ORDER BY o.reference,b.carton_number`;
     const foreign = await sql `SELECT id::text,product,carton_count,shipping,marking,notes FROM receiving_foreign_cartons WHERE session_id=${sessionId}::uuid AND voided_at IS NULL ORDER BY created_at,id`;
     // Expected values never enter the operative response, including server component props.
-    const items = review ? await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted,CASE WHEN b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=receiving_orders.id AND dc.branch_id=receiving_orders.branch_id)) ORDER BY l.model,l.color` : await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=receiving_orders.id AND dc.branch_id=receiving_orders.branch_id)) ORDER BY l.model,l.color`;
+    const items = review ? await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted,CASE WHEN b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY l.model,l.color` : await sql `SELECT l.id::text,l.carton_id::text,l.model,l.color,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY l.model,l.color`;
     const pending = review ? await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,o.is_foreign,COALESCE(p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND o.voided_at IS NULL AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
-    const batches = review ? await sql `SELECT o.id::text,o.reference,o.shipping,o.marking,o.supplier,o.is_foreign,(SELECT name FROM branches WHERE id=o.destination_branch_id) destination_name,COALESCE(p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining,
-      count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid AND b.counted_at IS NOT NULL AND (NOT o.is_foreign OR EXISTS(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=o.id AND dc.branch_id=o.branch_id) OR EXISTS(SELECT 1 FROM receiving_destination_arrivals a WHERE a.carton_id=b.id AND a.branch_id=o.destination_branch_id)))::int counted_here,
+    const batches = review ? await sql `SELECT o.id::text,o.reference,o.display_title,o.shipping,o.marking,o.supplier,o.is_foreign,(SELECT name FROM branches WHERE id=o.destination_branch_id) destination_name,COALESCE(p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining,
+      count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid AND b.counted_at IS NOT NULL AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio'))) OR EXISTS(SELECT 1 FROM receiving_destination_arrivals a WHERE a.carton_id=b.id AND a.branch_id=o.destination_branch_id)))::int counted_here,
       count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid AND CASE WHEN o.is_foreign THEN dr.carton_id IS NOT NULL AND dr.branch_id=o.destination_branch_id AND dr.counted_at=b.counted_at ELSE orig.carton_id IS NOT NULL END)::int registered_here
       FROM receiving_orders o JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id
       LEFT JOIN receiving_origin_registrations orig ON orig.carton_id=b.id LEFT JOIN receiving_destination_registrations dr ON dr.carton_id=b.id
@@ -279,5 +292,5 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const canRegisterSystem=await hasModulePermission(u,'REGISTRO_SISTEMA');
     const registrationRows=canRegisterSystem ? (await (await import('./system-registration')).registrationPending(u)).filter(r=>r.kind==='RECEIVING_ORDER'&&boxes.some(b=>b.order_id===r.id)) : [];
     const registeredBoxes=await sql `SELECT r.carton_id::text FROM receiving_origin_registrations r WHERE r.session_id=${sessionId}::uuid`;
-    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)) };
+    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canManageReceipt, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)) };
 }

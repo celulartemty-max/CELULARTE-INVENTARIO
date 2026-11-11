@@ -1,7 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import { withTransaction } from '@/lib/db';
-import { assertBranchAccess, getAuthorizedBranchIds } from '@/lib/auth/authorization';
+import { assertBranchAccess } from '@/lib/auth/authorization';
 import type { SessionUser } from '@/lib/auth/types';
 import { receivingAccess } from './receiving';
 import { isReviewer, packingSchema } from './receiving-validation';
@@ -10,7 +10,7 @@ import { savePackingColorOrder, appendPackingColor } from './packing-column-orde
 
 const uuid = z.string().uuid();
 type Client = Parameters<Parameters<typeof withTransaction>[0]>[0];
-export type DestinationOrder = { id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number; color_order?: string[] };
+export type DestinationOrder = { display_title?: string; id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number; color_order?: string[] };
 export type DestinationBox = { id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
 export type DestinationItem = { id: string; carton_id: string; model: string; color: string; counted: number | null; expected: number | null };
 export type DestinationView = { order: DestinationOrder; boxes: DestinationBox[]; items: DestinationItem[]; documents: { id: string; filename: string; previous?: boolean }[]; review: boolean; canRecount: boolean };
@@ -20,7 +20,6 @@ async function authorizedOrder(c: Client, u: SessionUser, orderId: string) {
     const order = (await c.query('SELECT * FROM receiving_orders WHERE id=$1 FOR UPDATE', [uuid.parse(orderId)])).rows[0];
     if (!order || order.voided_at || !order.destination_branch_id || order.destination_branch_id === order.branch_id)
         throw new Error('Pedido no disponible para recepción en destino.');
-    await assertBranchAccess(u, order.destination_branch_id);
     return order;
 }
 async function audit(c: Client, u: SessionUser, branchId: string, action: string, value: unknown) {
@@ -29,14 +28,15 @@ async function audit(c: Client, u: SessionUser, branchId: string, action: string
 export async function destinationDocumentBranch(c: Client, u: SessionUser, orderId: string): Promise<string> {
     await receivingAccess(u, true);
     const o = await authorizedOrder(c, u, orderId);
+    await assertBranchAccess(u,o.destination_branch_id);
     if (!(await c.query('SELECT 1 FROM receiving_destination_arrivals WHERE order_id=$1 AND branch_id=$2 LIMIT 1', [o.id, o.destination_branch_id])).rowCount)
         throw new Error('Confirma primero la llegada de cajas de este pedido.');
     return o.destination_branch_id;
 }
 export async function destinationOrders(u: SessionUser): Promise<DestinationOrder[]> {
     await receivingAccess(u);
-    const ids = await getAuthorizedBranchIds(u);
-    return withTransaction(async c => (await c.query(`SELECT o.id::text,o.reference,COALESCE(p.name,o.product_label,'Sin producto') product,o.marking,o.supplier,o.shipping,
+    const ids = null; // Shared read access, not shared registration permission.
+    return withTransaction(async c => (await c.query(`SELECT o.id::text,o.reference,o.display_title,COALESCE(p.name,o.product_label,'Sin producto') product,o.marking,o.supplier,o.shipping,
         dest.name destination,origin.name origin,count(b.id)::int total,count(b.session_id)::int physical,count(a.carton_id)::int arrived,count(b.counted_at)::int counted
         FROM receiving_orders o JOIN branches dest ON dest.id=o.destination_branch_id JOIN branches origin ON origin.id=o.branch_id
         JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id
@@ -47,7 +47,7 @@ export async function destinationView(u: SessionUser, orderId: string): Promise<
     await receivingAccess(u);
     return withTransaction(async c => {
         const o = await authorizedOrder(c, u, orderId);
-        const order = (await c.query(`SELECT o.id::text,o.reference,o.color_order,COALESCE(p.name,o.product_label,'Sin producto') product,o.marking,o.supplier,o.shipping,
+        const order = (await c.query(`SELECT o.id::text,o.reference,o.display_title,o.color_order,COALESCE(p.name,o.product_label,'Sin producto') product,o.marking,o.supplier,o.shipping,
             dest.name destination,origin.name origin,count(b.id)::int total,count(b.session_id)::int physical,count(a.carton_id)::int arrived,count(b.counted_at)::int counted
             FROM receiving_orders o JOIN branches dest ON dest.id=o.destination_branch_id JOIN branches origin ON origin.id=o.branch_id
             JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id
@@ -70,6 +70,7 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
     return withTransaction(async c => {
         const o = await authorizedOrder(c, u, uuid.parse(body.orderId));
         const branch = o.destination_branch_id;
+        if(!['count','saveCount','addItem'].includes(String(body.action)))await assertBranchAccess(u,branch);
         if (body.action === 'packingResetPreview' || body.action === 'resetPacking') {
             await receivingAccess(u,true);
             if (!(await c.query('SELECT 1 FROM receiving_destination_arrivals WHERE order_id=$1 AND branch_id=$2 LIMIT 1',[o.id,branch])).rowCount)
@@ -112,8 +113,6 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
             return { ok: true };
         }
         const boxId = uuid.parse(body.boxId);
-        if ((await c.query('SELECT 1 FROM receiving_count_delegations WHERE order_id=$1 AND branch_id<>$2',[o.id,branch])).rowCount)
-            throw new Error('El conteo de este pedido está asignado a la sucursal de origen.');
         const b = (await c.query(`SELECT b.* FROM receiving_cartons b JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE b.id=$1 AND b.order_id=$2 AND a.branch_id=$3 FOR UPDATE OF b`, [boxId, o.id, branch])).rows[0];
         if (!b) throw new Error('Primero confirma la llegada física de esta caja a la sucursal destino.');
