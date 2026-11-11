@@ -56,6 +56,21 @@ test('single-colour quantity header and vertically merged Total reconcile whole 
  assert.throws(()=>parse(file([h,[1,'A',350,350],[2,'B',250]],{merge:[{s:{r:1,c:3},e:{r:2,c:3}}]})),/distintas cajas/);
  assert.throws(()=>parse(file([h,[1,'A',350,600],[null,'B',250],[null,null,599,600]],{merge})),/total general/);
 });
+test('merged logistics headers cover separate dimension cells; model-only catalogue after a verified total is excluded with a warning',()=>{
+ const h=['Carton No','Model','BLACK','Quantity','Total','size/cm',null,null,'cbm'];
+ const merge=[{s:{r:0,c:5},e:{r:0,c:7}}];
+ const rows=[h,[1,'IPAD',50,50,50,55,35,42,.081],[null,null,null,50,50], [null,'IPAD catalogue only']];
+ const p=parse(file(rows,{merge}));assert.deepEqual(p.colors,['BLACK']);assert.equal(p.boxes.length,1);assert.equal(p.boxes[0].items[0].expected,50);assert.match(p.warnings[0],/1 referencias sin cantidades/);
+ assert.throws(()=>parse(file(rows)),/sin encabezado/);
+ const bad=[...rows,[null,'OTHER',10]];assert.throws(()=>parse(file(bad,{merge})),/después del total general/);
+ const before=[h,[null,'catalogue'],[1,'IPAD',50,50,50,55,35,42,.081]];assert.throws(()=>parse(file(before,{merge})),/Falta caja/);
+});
+test('isolated text-only notes outside a blank separator are warned, but unnamed quantities remain errors',()=>{
+ const h=['CTN','MODEL','BLACK','Quantity'];
+ const p=parse(file([h,[1,'A',5,5,null,null,'R']]));assert.equal(p.boxes[0].items[0].expected,5);assert.match(p.warnings[0],/notas de texto.*G/);
+ for(const value of [20,'20','R20'])assert.throws(()=>parse(file([h,[1,'A',5,5,null,null,value]])),/sin encabezado/);
+ assert.throws(()=>parse(file([h,[1,'A',5,5,'R']])),/sin encabezado/);
+});
 test('colour subtotal footer with Quantity and Total validates each colour without creating items or a carton',()=>{
  const h=['Carton No','Model','BLACK','CLEAR','Quantity','Total'];
  const rows=[h,[1,'SAM A27',70,50,120,200],[null,'SAM A57',50,30,80],['TOTAL',null,120,80,200,200]];

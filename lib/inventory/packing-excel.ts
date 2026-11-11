@@ -41,7 +41,18 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  const rows=XLSX.utils.sheet_to_json<unknown[]>(sheet,{header:1,defval:null,blankrows:true});
  const header=rows.findIndex((row,i)=>i<30&&row.some(v=>role(v)==='box')&&(row.some(v=>role(v)==='model')||row.some(v=>role(v)==='quantity')));
  if(header<0)throw Error('No se reconoció la tabla del Excel. Usa CTN o Carton No (caja), Quantity (cantidad) y columnas de colores. MODEL es opcional para accesorios sin modelo.');
- const headers=rows[header],roles=headers.map(role);
+ const headers=[...rows[header]];
+ // Suppliers often merge Size/CM across the length, width and height columns.
+ // Expand only recognized logistics headers, never unnamed quantity columns.
+ for(const m of sheet['!merges']??[])if(m.s.r===header&&m.e.r===header&&m.e.c>m.s.c&&role(headers[m.s.c])==='metadata'){
+  for(let c=m.s.c+1;c<=m.e.c;c++){if(!empty(headers[c]))throw Error(`Hay encabezados superpuestos en la columna ${XLSX.utils.encode_col(c)}.`);headers[c]=headers[m.s.c];}
+ }
+ const roles=headers.map(role);
+ const lastHeader=headers.reduce<number>((last,v,c)=>empty(v)?last:c,-1),noteColumns=new Set<number>();
+ if(rows.slice(header+1).every(row=>empty(row[lastHeader+1])))for(let c=lastHeader+2;c<=range.e.c;c++){
+  const values=rows.slice(header+1).map(row=>row[c]);
+  if(values.some(v=>!empty(v))&&values.every(v=>empty(v)||(typeof v==='string'&&!/\d/.test(v)))&&!Object.entries(sheet).some(([address,cell])=>!address.startsWith('!')&&XLSX.utils.decode_cell(address).c===c&&cell.f))noteColumns.add(c);
+ }
  for(const r of ['box','model','color','quantity','boxTotal','total'])if(roles.filter(x=>x===r).length>1)throw Error('Hay encabezados de control repetidos en el Excel. Revisa la tabla.');
  const boxCol=roles.indexOf('box'),modelCol=roles.indexOf('model'),colorCol=roles.indexOf('color'),qtyCol=roles.indexOf('quantity');
  let totalCol=roles.indexOf('total'),boxTotalCol=roles.indexOf('boxTotal');
@@ -60,10 +71,14 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  const colors:string[]=[],boxes:{number:string;items:{model:string;color:string;expected:number}[]}[]=[],byBox=new Map<string,typeof boxes[number]>(),pairs=new Set<string>(),declared=new Map<string,number>();
  if(colorCol<0){for(const c of wideColors){if(colors.some(v=>key(v)===key(c.name)))throw Error('Hay columnas de color repetidas en el Excel.');colors.push(c.name);}}
  const merged=(r:number,c:number)=>{const cell=rows[r]?.[c];if(!empty(cell))return cell;const m=(sheet['!merges']??[]).find(m=>m.s.c===c&&m.e.c===c&&m.s.r<=r&&m.e.r>=r);return m?rows[m.s.r]?.[c]:cell;};
- let current='',overall:number|undefined,ended=false,total=0;const rowBoxes=new Map<number,string>();
+ let current='',overall:number|undefined,ended=false,total=0,ignoredDescriptions=0;const rowBoxes=new Map<number,string>();
  for(let r=header+1;r<rows.length;r++){
   const row=rows[r];if(row.every(empty))continue;
-  if(row.some((v,c)=>c>=headers.length&&!empty(v))||row.some((v,c)=>!empty(v)&&empty(headers[c])))throw Error(`Hay datos sin encabezado en la fila ${r+1}.`);
+  if(ended){
+   if(modelCol>=0&&typeof row[modelCol]==='string'&&row.every((v,c)=>empty(v)||c===modelCol)){ignoredDescriptions++;continue;}
+   throw Error(`Hoja ${name}, fila ${r+1}: hay datos después del total general. Usa una sola tabla por pedido.`);
+  }
+  if(row.some((v,c)=>!empty(v)&&empty(headers[c])&&!noteColumns.has(c)))throw Error(`Hay datos sin encabezado en la fila ${r+1}.`);
   const rawBox=merged(r,boxCol),model=modelCol>=0?label(merged(r,modelCol)):'';
   const isTotal=['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(rawBox))||['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(model))||(!model&&empty(rawBox));
   if(isTotal){
@@ -105,5 +120,5 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  for(const m of sheet['!merges']??[])if(m.s.c===boxTotalCol&&m.e.c===boxTotalCol&&m.e.r>m.s.r){const covered=new Set<string>();for(let r=m.s.r;r<=m.e.r;r++){const box=rowBoxes.get(r);if(box)covered.add(box)}if(covered.size>1)throw Error(`Hoja ${name}: un total combinado abarca distintas cajas, filas ${m.s.r+1}-${m.e.r+1}.`);}
  for(const box of boxes)if(declared.has(box.number)&&box.items.reduce((s,l)=>s+l.expected,0)!==declared.get(box.number))throw Error(`Hoja ${name}, caja ${box.number}: piezas suman ${box.items.reduce((s,l)=>s+l.expected,0)}; total de caja indica ${declared.get(box.number)}.`);
  if(overall!==undefined&&overall!==total)throw Error(`Hoja ${name}: piezas suman ${total}; total general indica ${overall}.`);
- return packingSchema.parse({reference:name,colors,warnings:[],boxes});
+ return packingSchema.parse({reference:name,colors,warnings:[...(ignoredDescriptions?[`Se omitieron ${ignoredDescriptions} referencias sin cantidades después del total general.`]:[]),...(noteColumns.size?[`Se omitieron notas de texto fuera de la tabla, columnas ${[...noteColumns].map(c=>XLSX.utils.encode_col(c)).join(', ')}.`]:[])],boxes});
 }
