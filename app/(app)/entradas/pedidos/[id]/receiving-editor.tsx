@@ -96,6 +96,7 @@ export default function ReceivingEditor({ data, products }: {
     const [packingNotice,setPackingNotice] = useState('');
     const [orderNotice,setOrderNotice] = useState('');
     const [countVersion,setCountVersion] = useState(0);
+    const [sheetChoice,setSheetChoice]=useState<{file:File|null;names:string[];selected:string}>({file:null,names:[],selected:''});
     const foreignTotal = data.foreignBoxes.length + data.foreign.reduce((n, r) => n + r.carton_count, 0);
 
     const targetOrder = data.orders.find(o=>o.id===packingOrder);
@@ -151,7 +152,8 @@ export default function ReceivingEditor({ data, products }: {
  <PackingReset key={packingOrder} orderId={packingOrder} sessionId={s.id} busy={busy} onDone={()=>{setPacking(null);setRaw('');setFile(null);setActive(null);setAddingBox(null);setCountVersion(v=>v+1);setPackingNotice('Contenido retirado. Ya puedes cargar el packing list correcto en este mismo pedido.');router.refresh()}}/>
  {packingNotice&&<p role="status">{packingNotice}</p>}
  <label>Excel o imagen (hasta 2 MB)<input type="file" accept=".xlsx,.png,.jpg,.jpeg" disabled={busy} onChange={e => { setFile(e.target.files?.[0] ?? null); setPacking(null); }}/></label>
- <div className="actions"><button disabled={busy || !file || !targetOrder} onClick={() => run(async () => { const f = new FormData(); f.set('file', file!); const r = await fetch('/api/receiving/interpret', { method: 'POST', body: f }); const j = await r.json(); if (!r.ok)
+ {file&&sheetChoice.file===file&&sheetChoice.names.length>1&&<label className="receivingField">Hoja del pedido<select disabled={busy} value={sheetChoice.selected} onChange={e=>{setSheetChoice({...sheetChoice,selected:e.target.value});setPacking(null)}}><option value="">Selecciona una hoja…</option>{sheetChoice.names.map(name=><option key={name}>{name}</option>)}</select><small>Solo se leerá la hoja elegida.</small></label>}
+ <div className="actions"><button disabled={busy || !file || !targetOrder || (sheetChoice.file===file&&sheetChoice.names.length>1&&!sheetChoice.selected)} onClick={() => run(async () => { const f = new FormData(); f.set('file', file!); if(sheetChoice.file===file&&sheetChoice.selected)f.set('sheet',sheetChoice.selected); const r = await fetch('/api/receiving/interpret', { method: 'POST', body: f }); const j = await r.json(); if(r.status===409&&Array.isArray(j.sheets)){setSheetChoice({file,names:j.sheets,selected:''});setPacking(null);return} if (!r.ok)
             throw new Error(j.error); setReviewVersion(v => v + 1); setPacking(j); setRaw(JSON.stringify(j, null, 2)); })}>{busy ? 'Procesando…' : file&&/\.xlsx$/i.test(file.name)?'Leer Excel':'Leer packing list con IA'}</button><button disabled={busy || !targetOrder} onClick={manual}>Capturar sin archivo</button></div>
  {error&&<p className="receivingError" role="alert">{error}</p>}
  {packing && <form className="formGrid receivingPackingForm" onSubmit={e => { e.preventDefault(); const form = new FormData(e.currentTarget); run(async () => { const p = packingSchema.parse(JSON.parse(raw)); if(!targetOrder)throw new Error('Selecciona el pedido.'); p.reference = targetOrder.reference; const j = await act({ action: 'packing', orderId: targetOrder.id, packing: p, documentReference: String(form.get('reference')||'') }); setPacking(null); setRaw(''); if (file) {

@@ -32,6 +32,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
     const [excluded, setExcluded] = useState(0);
     const [addBox, setAddBox] = useState<string | null>(null);
     const [countVersion,setCountVersion] = useState(0);
+    const [sheetChoice,setSheetChoice]=useState<{file:File|null;names:string[];selected:string}>({file:null,names:[],selected:''});
     const busy = working || refreshing;
     const { order, boxes, items } = data;
     const pending = boxes.filter(b => b.session_id && !b.received_at);
@@ -55,8 +56,11 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
         if (!file) return;
         await run(async () => {
             const form = new FormData(); form.set('file', file);
+            if(sheetChoice.file===file&&sheetChoice.names.length>1&&!sheetChoice.selected)throw new Error('Selecciona la hoja del pedido.');
+            if(sheetChoice.file===file&&sheetChoice.selected)form.set('sheet',sheetChoice.selected);
             const r = await fetch('/api/receiving/interpret', { method: 'POST', body: form });
             const result = await r.json();
+            if(r.status===409&&Array.isArray(result.sheets)){setSheetChoice({file,names:result.sheets,selected:''});setPacking(null);return}
             if (!r.ok) throw new Error(result.error);
             const parsed = packingSchema.parse(result);
             // Keep the original full-order file, but import only confirmed, empty boxes.
@@ -87,6 +91,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
             {order.total > order.physical && <p className="receivingMuted">{order.total - order.physical} cajas todavía no llegan al origen.</p>}
         </section>
         {data.review && arrived.length > 0 && <section className="card pad packingUploadCard"><div className="packingUploadHeading"><div><h2>Packing list</h2><p>Archivos de este pedido</p></div>{data.documents.length > 0 && <span className="packingUploadCount">{data.documents.length} {data.documents.length === 1 ? 'archivo' : 'archivos'}</span>}</div>
+            {file&&sheetChoice.file===file&&sheetChoice.names.length>1&&<label className="receivingField">Hoja del pedido<select disabled={busy} value={sheetChoice.selected} onChange={e=>{setSheetChoice({...sheetChoice,selected:e.target.value});setPacking(null)}}><option value="">Selecciona una hoja…</option>{sheetChoice.names.map(name=><option key={name}>{name}</option>)}</select><small>Solo se leerá la hoja elegida.</small></label>}
             <PackingUpload file={file} busy={busy} attached={Boolean(file && attachedFile === file)} onChange={next => { setFile(next); setAttachedFile(null); setPacking(null); }} onInterpret={interpret} onAttach={() => run(async () => {
                     if (!file) return;
                     const form = new FormData(); form.set('file', file!); form.set('orderId', order.id); form.set('destination', 'true');

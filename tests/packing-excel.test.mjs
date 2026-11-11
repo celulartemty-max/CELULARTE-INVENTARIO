@@ -39,7 +39,7 @@ test('bad quantities, row totals, carton totals and grand totals fail closed',()
  assert.throws(()=>parse(file([header,[1,'A',5,null,5,10]])),/total/);
  assert.throws(()=>parse(file([header,[1,'A',5,null,5],['TOTAL',null,null,null,10]])),/total general/);
  assert.throws(()=>parse(file([header,[1,'A',5,null,5],[null,null,5,null,5]])),/Falta modelo/);
- assert.throws(()=>parse(file([['CTN','MODEL','Negro','Quantity','Total'],[1,'A',5,5,10]])),/ambiguos/);
+ assert.throws(()=>parse(file([['CTN','MODEL','Negro','Quantity','Total'],[1,'A',5,5,10]])),/total de caja/);
 });
 test('multiple branches, unidentified columns, unknown layouts and data after total require review',()=>{
  assert.throws(()=>parse(file([header,[1,'A',5,null,5]],{second:true})),/una sola hoja/);
@@ -47,8 +47,34 @@ test('multiple branches, unidentified columns, unknown layouts and data after to
  assert.throws(()=>parse(file([header,[1,'A',5,null,5,null,null,null,999]])),/sin encabezado/);
  assert.throws(()=>parse(file([header,[1,'A',5,null,5],['TOTAL',null,null,null,5],[2,'B',5,null,5]])),/después del total/);
 });
+test('supplier Quantity plus Total distinguishes row and carton controls including merged cells',()=>{
+ const p=parse(file([['Carton No.','Model','BLACK','BLUE','quantity','total'],[1,'A',4,1,5,8],[null,'B',3,null,3],['TOTAL',null,null,null,8,8]],{merge:[{s:{r:1,c:0},e:{r:2,c:0}},{s:{r:1,c:5},e:{r:2,c:5}}]}));
+ assert.equal(p.boxes.length,1);assert.equal(p.boxes[0].items.reduce((s,i)=>s+i.expected,0),8);
+ assert.throws(()=>parse(file([['CTN','MODEL','BLACK','Quantity','Total'],[1,'A',5,5,5],['TOTAL',null,null,5,9]])),/totales generales son distintos/);
+});
+test('blank or formatting-only sheets are ignored, real sheets require explicit selection and never merge',()=>{
+ const w=XLSX.utils.book_new();XLSX.utils.book_append_sheet(w,XLSX.utils.aoa_to_sheet([header,[1,'A',5,null,5]]),'PER');
+ XLSX.utils.book_append_sheet(w,{'!ref':'A1:Z9000',A1:{t:'s',v:'  '}},'Vacía');
+ const data=()=>XLSX.write(w,{type:'buffer',bookType:'xlsx'});assert.equal(parse(data()).boxes.length,1);
+ XLSX.utils.book_append_sheet(w,XLSX.utils.aoa_to_sheet([header,[1,'B',7,null,7]]),'JAPS');
+ assert.throws(()=>parse(data()),e=>{assert.deepEqual(e.sheets,['PER','JAPS']);return true});
+ assert.equal(parse(data(),'JAPS').boxes[0].items[0].model,'B');assert.equal(parse(data(),'PER').boxes[0].items[0].expected,5);
+ assert.throws(()=>parse(data(),'Vacía'),/vacía/);assert.throws(()=>parse(data(),'missing'),/no existe/);
+});
+test('common localized headers work and reconciliation errors identify the sheet, row and carton',()=>{
+ const p=parse(file([['CTN #','MODELO','Rojo','QTY (PCS)'],[1,'A',6,6]]));assert.equal(p.boxes[0].items[0].expected,6);
+ assert.throws(()=>parse(file([header,[1,'A',5,null,9]])),/Hoja PER AIR, fila 2, caja 1: colores suman 5; Quantity indica 9/);
+});
 test('Excel route returns before OpenAI key, usage limits, network or database writes; permission remains required',async()=>{
  const user={id:'operator'};const calls=[];
  const mod=load('app/api/receiving/interpret/route.ts',{'@/lib/audit/route':{auditRoute:f=>f},'@/lib/auth/authorization':{requireUser:async()=>{calls.push('user');return user}},'@/lib/inventory/receiving':{receivingAccess:async(u,review)=>{assert.equal(u,user);assert.equal(review,true);calls.push('permission')}},'@/lib/inventory/receiving-files':{readReceivingFile:async()=>({data:file([header,[1,'A',5,null,5]]),mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})},'@/lib/inventory/packing-excel':{readPackingExcel:parse},'@/lib/inventory/packing-reading':{},'@/lib/db':{withTransaction:()=>{throw Error('Database must not be called')}}});
  const form=new FormData();form.set('file',new File(['fixture'],'packing.xlsx'));const response=await mod.POST(new Request('http://localhost/api/receiving/interpret',{method:'POST',body:form}));assert.equal(response.status,200);const p=await response.json();assert.equal(p.boxes[0].items[0].expected,5);assert.deepEqual(calls,['user','permission']);
+});
+test('route offers sheet selection without importing and forwards the chosen sheet',async()=>{
+ const data=file([header,[1,'A',5,null,5]],{second:true});
+ const mod=load('app/api/receiving/interpret/route.ts',{'@/lib/audit/route':{auditRoute:f=>f},'@/lib/auth/authorization':{requireUser:async()=>({id:'reviewer'})},'@/lib/inventory/receiving':{receivingAccess:async()=>{}},'@/lib/inventory/receiving-files':{readReceivingFile:async()=>({data,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})},'@/lib/inventory/packing-excel':{readPackingExcel:parse},'@/lib/inventory/packing-reading':{},'@/lib/db':{withTransaction:()=>assert.fail('must not write')}});
+ const request=sheet=>{const form=new FormData();form.set('file',new File(['fixture'],'packing.xlsx'));if(sheet)form.set('sheet',sheet);return new Request('http://localhost/api/receiving/interpret',{method:'POST',body:form})};
+ const choice=await mod.POST(request());assert.equal(choice.status,409);assert.deepEqual((await choice.json()).sheets,['PER AIR','JAPS']);
+ const chosen=await mod.POST(request('PER AIR'));assert.equal(chosen.status,200);assert.equal((await chosen.json()).boxes.length,1);
+ assert.equal((await mod.POST(request('missing'))).status,400);
 });

@@ -17,7 +17,7 @@ async function handlePOST(req: Request) {
         if (!(file instanceof File))
             throw new Error('Selecciona un packing list.');
         const { data, mime } = await readReceivingFile(file);
-        if(mime.includes('spreadsheet'))return Response.json(readPackingExcel(data),{headers:{'Cache-Control':'no-store'}});
+        if(mime.includes('spreadsheet'))return Response.json(readPackingExcel(data,typeof f.get('sheet')==='string'?String(f.get('sheet')):undefined),{headers:{'Cache-Control':'no-store'}});
         if (!process.env.OPENAI_API_KEY)
             throw new Error('La lectura con IA no está configurada en este entorno.');
         const content: unknown[] = [];
@@ -48,6 +48,7 @@ async function handlePOST(req: Request) {
         return Response.json(packing, { headers: { 'Cache-Control': 'no-store' } });
     }
     catch (e) {
+        if(e instanceof Error&&'sheets' in e&&Array.isArray(e.sheets))return Response.json({error:e.message,sheets:e.sheets},{status:409,headers:{'Cache-Control':'no-store'}});
         return Response.json({ error: e instanceof Error ? e.message : 'No se pudo interpretar. No se importó nada.' }, { status: 400 });
     }
 }

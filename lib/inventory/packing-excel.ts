@@ -10,11 +10,11 @@ function quantity(v:unknown,where:string){
  return n;
 }
 function role(v:unknown){
- const k=key(v);
- if(['CTN','CAJA','BOX','CARTON','NUMERO DE CAJA','BOX NO','CTN NO','CARTON NO','CARTON NUMBER','箱号'].includes(k))return 'box';
- if(['MODEL','MODELO','MODELS','MODELOS'].includes(k))return 'model';
+ const k=key(v).replace(/[#.:：]/g,'').replace(/\s+/g,' ').trim();
+ if(['CTN','CAJA','CAJAS','BOX','CARTON','NUMERO DE CAJA','N° CAJA','NO CAJA','BOX NO','CTN NO','CARTON NO','CARTON NUMBER','箱号','箱號'].includes(k))return 'box';
+ if(['MODEL','MODELO','MODELS','MODELOS','PRODUCT MODEL','型号','型號'].includes(k))return 'model';
  if(['COLOR','COLOUR'].includes(k))return 'color';
- if(['QUANTITY','QTY','CANTIDAD','PIEZAS','数量'].includes(k))return 'quantity';
+ if(['QUANTITY','QTY','CANTIDAD','PIEZAS','PCS','QTY (PCS)','QUANTITY (PCS)','CANTIDAD (PZAS)','数量'].includes(k))return 'quantity';
  if(['CTN TOTAL','BOX TOTAL','TOTAL CAJA','TOTAL POR CAJA','总数'].includes(k))return 'boxTotal';
  if(['TOTAL','TOTAL PIEZAS'].includes(k))return 'total';
  if(['KG','KGS','WEIGHT','WEIGHT/KG','WEIGHT / KG','PESO','重量','CM','SIZE/CM','SIZE / CM','CBM','DIMENSIONES','MEDIDAS','箱规'].includes(k))return 'metadata';
@@ -22,7 +22,7 @@ function role(v:unknown){
 }
 
 // Excel is data, not a prompt. Only explicit, verifiable tables are accepted.
-export function readPackingExcel(data:Buffer){
+export function readPackingExcel(data:Buffer,sheetName?:string){
  if(!data.length||data.length>2*1024*1024)throw Error('El Excel debe pesar hasta 2 MB.');
  let inflated=0,entries=0;
  for(let i=0;i+46<=data.length;i++)if(data.readUInt32LE(i)===0x02014b50){
@@ -31,8 +31,11 @@ export function readPackingExcel(data:Buffer){
   i+=45+data.readUInt16LE(i+28)+data.readUInt16LE(i+30)+data.readUInt16LE(i+32);
  }
  const workbook=XLSX.read(data,{type:'buffer',sheetRows:5001});
- if(workbook.SheetNames.length!==1)throw Error('El Excel debe contener una sola hoja del pedido. Separa las sucursales antes de cargarlo.');
- const name=workbook.SheetNames[0],sheet=workbook.Sheets[name];
+ const names=workbook.SheetNames.filter(name=>Object.entries(workbook.Sheets[name]).some(([address,cell])=>!address.startsWith('!')&&cell&&(!empty(cell.v)&&label(cell.v)!==''||!!cell.f)));
+ if(!names.length)throw Error('El Excel no contiene hojas con datos.');
+ if(sheetName&&!names.includes(sheetName))throw Error('La hoja elegida no existe o está vacía. Vuelve a seleccionar el archivo.');
+ if(!sheetName&&names.length>1){const error=Object.assign(Error('Elige una sola hoja del pedido para importar. No se mezclaron datos.'),{sheets:names});throw error;}
+ const name=sheetName||names[0],sheet=workbook.Sheets[name];
  const range=XLSX.utils.decode_range(sheet['!ref']||'A1');
  if(range.e.r>=5000||range.e.c>100)throw Error('Excel demasiado extenso. Divídelo por pedido.');
  const rows=XLSX.utils.sheet_to_json<unknown[]>(sheet,{header:1,defval:null,blankrows:true});
@@ -40,8 +43,11 @@ export function readPackingExcel(data:Buffer){
  if(header<0)throw Error('No se reconoció la tabla del Excel. Usa CTN o Carton No (caja), Quantity (cantidad) y columnas de colores. MODEL es opcional para accesorios sin modelo.');
  const headers=rows[header],roles=headers.map(role);
  for(const r of ['box','model','color','quantity','boxTotal','total'])if(roles.filter(x=>x===r).length>1)throw Error('Hay encabezados de control repetidos en el Excel. Revisa la tabla.');
- const boxCol=roles.indexOf('box'),modelCol=roles.indexOf('model'),colorCol=roles.indexOf('color'),qtyCol=roles.indexOf('quantity'),totalCol=roles.indexOf('total'),boxTotalCol=roles.indexOf('boxTotal');
- if(qtyCol>=0&&totalCol>=0)throw Error('Hay dos totales de fila ambiguos. Usa Quantity para la fila y CTN TOTAL para el total de caja.');
+ const boxCol=roles.indexOf('box'),modelCol=roles.indexOf('model'),colorCol=roles.indexOf('color'),qtyCol=roles.indexOf('quantity');
+ let totalCol=roles.indexOf('total'),boxTotalCol=roles.indexOf('boxTotal');
+ // Common supplier layout: Quantity is per model, Total is per carton.
+ // Accept this only when every row, carton and overall control reconciles below.
+ if(qtyCol>=0&&totalCol>=0){if(boxTotalCol>=0)throw Error('Hay tres columnas de cantidad/total. Identifica Quantity y un solo total por caja.');boxTotalCol=totalCol;totalCol=-1;}
  const wideColors=headers.map((v,c)=>({name:label(v),c})).filter(x=>!roles[x.c]&&x.name);
  if(colorCol>=0&&(qtyCol<0||wideColors.length))throw Error('La tabla COLOR/CANTIDAD tiene columnas sin identificar. Revisa sus encabezados.');
  if(colorCol<0&&(!wideColors.length||(qtyCol<0&&totalCol<0)))throw Error('Faltan colores o una columna Quantity/Total para validar el Excel.');
@@ -58,7 +64,9 @@ export function readPackingExcel(data:Buffer){
    if((colorCol>=0&&!empty(row[colorCol]))||(colorCol<0&&wideColors.some(c=>!empty(row[c.c]))))throw Error(`Falta modelo o hay cantidades de colores dentro de un total en la fila ${r+1}.`);
    const n=row[qtyCol>=0?qtyCol:totalCol];
    if(empty(n)||overall!==undefined)throw Error(`Total o fila sin modelo ambiguo en la fila ${r+1}.`);
-   overall=quantity(n,`total fila ${r+1}`);ended=true;continue;
+   overall=quantity(n,`total fila ${r+1}`);
+   if(boxTotalCol>=0&&!empty(row[boxTotalCol])&&quantity(row[boxTotalCol],`total general fila ${r+1}`)!==overall)throw Error(`Hoja ${name}, fila ${r+1}: los dos totales generales son distintos.`);
+   ended=true;continue;
   }
   if(ended)throw Error('Hay datos después del total general. Usa una sola tabla por pedido.');
   if(!empty(rawBox)){
@@ -79,11 +87,11 @@ export function readPackingExcel(data:Buffer){
    if(!colors.some(v=>key(v)===key(color.name)))colors.push(color.name);
   }
   if(!found)throw Error(`La fila ${r+1} no tiene cantidades de colores.`);
-  if(colorCol<0){const control=qtyCol>=0?qtyCol:totalCol;if(!empty(row[control])&&quantity(row[control],`total fila ${r+1}`)!==rowSum)throw Error(`Los colores no suman el total de la fila ${r+1}.`);}
+  if(colorCol<0){const control=qtyCol>=0?qtyCol:totalCol;if(!empty(row[control])&&quantity(row[control],`total fila ${r+1}`)!==rowSum)throw Error(`Hoja ${name}, fila ${r+1}, caja ${current}: colores suman ${rowSum}; ${label(headers[control])} indica ${label(row[control])}. Revisa el total de la fila.`);}
   if(boxTotalCol>=0&&!empty(row[boxTotalCol])){const n=quantity(row[boxTotalCol],`total caja ${current}`);if(declared.has(current)&&declared.get(current)!==n)throw Error(`La caja ${current} tiene totales distintos.`);declared.set(current,n);}
   total+=rowSum;
  }
- for(const box of boxes)if(declared.has(box.number)&&box.items.reduce((s,l)=>s+l.expected,0)!==declared.get(box.number))throw Error(`Las piezas de la caja ${box.number} no coinciden con su total.`);
- if(overall!==undefined&&overall!==total)throw Error('Las piezas no coinciden con el total general del Excel.');
+ for(const box of boxes)if(declared.has(box.number)&&box.items.reduce((s,l)=>s+l.expected,0)!==declared.get(box.number))throw Error(`Hoja ${name}, caja ${box.number}: piezas suman ${box.items.reduce((s,l)=>s+l.expected,0)}; total de caja indica ${declared.get(box.number)}.`);
+ if(overall!==undefined&&overall!==total)throw Error(`Hoja ${name}: piezas suman ${total}; total general indica ${overall}.`);
  return packingSchema.parse({reference:name,colors,warnings:[],boxes});
 }
