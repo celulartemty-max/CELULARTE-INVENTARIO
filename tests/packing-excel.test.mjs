@@ -18,6 +18,16 @@ test('merged carton values apply to the full range without manufacturing duplica
 test('long format, repeated model in separate cartons and explicit zero stay exact',()=>{
  const p=parse(file([['CAJA','MODELO','COLOR','CANTIDAD'],[1,'A','Negro',0],[2,'A','Negro','12'],[2,'B','Rosa',3]]));assert.equal(p.boxes.length,2);assert.equal(p.boxes[0].items[0].expected,0);assert.equal(p.boxes[1].items[0].expected,12);assert.deepEqual(p.colors,['Negro','Rosa']);
 });
+test('colour-only accessory packing reads Carton No without inventing a phone model or treating logistics as colours',()=>{
+ const h=['Carton No','#1 NUDE','#2 ROSE','#3 SKY BLUE','#4 ROSE PINK','#5 NAVY','#6 WHITE','#7 PURPLE','#8 YELLOW','#9 ORANGE','#10 BLACK','quantity','weight/kg','size/cm','cbm'];
+ const p=parse(file([['POP SOCKET MAGSAFE PER By Air'],[],h,[1,100,200,100,100,null,null,null,null,null,null,500,17,'51*41*30',0.06273],[2,null,null,null,null,150,150,200,null,null,null,500,17,'51*41*30',0.06273],[3,null,null,null,null,null,null,null,100,50,250,400,13,'51*41*30',0.06273],[null,null,null,null,null,null,null,null,null,null,null,1400,47,null,0.18819]]));
+ assert.deepEqual(p.boxes.map(b=>b.items.reduce((s,i)=>s+i.expected,0)),[500,500,400]);assert.equal(p.colors.length,10);assert.equal(p.boxes.flatMap(b=>b.items).length,10);assert.ok(p.boxes.every(b=>b.items.every(i=>i.model==='')));assert.equal(p.colors.at(-1),'#10 BLACK');
+});
+test('optional MODEL applies only to tables without that column; missing models and wrong accessory totals still fail',()=>{
+ assert.throws(()=>parse(file([header,[1,null,5,null,5]])),/Falta/);
+ assert.throws(()=>parse(file([['Carton No','Negro','Quantity'],[1,5,10]])),/total de la fila/);
+ assert.throws(()=>parse(file([['Carton No','Negro','Quantity'],[1,5,5],[null,null,10]])),/total general/);
+});
 test('actual duplicate pairs are rejected, never summed or dropped; same code is not discarded',()=>{
  assert.throws(()=>parse(file([header,[1,'A',5,null,5],[null,'a',5,null,5]])),/realmente repetido/);
  assert.throws(()=>parse(file([['CTN','MODEL','Negro','NEGRO','Quantity'],[1,'A',5,5,10]])),/color repetidas/);

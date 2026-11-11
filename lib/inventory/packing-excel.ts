@@ -11,13 +11,13 @@ function quantity(v:unknown,where:string){
 }
 function role(v:unknown){
  const k=key(v);
- if(['CTN','CAJA','BOX','CARTON','NUMERO DE CAJA','BOX NO','CTN NO','箱号'].includes(k))return 'box';
+ if(['CTN','CAJA','BOX','CARTON','NUMERO DE CAJA','BOX NO','CTN NO','CARTON NO','CARTON NUMBER','箱号'].includes(k))return 'box';
  if(['MODEL','MODELO','MODELS','MODELOS'].includes(k))return 'model';
  if(['COLOR','COLOUR'].includes(k))return 'color';
  if(['QUANTITY','QTY','CANTIDAD','PIEZAS','数量'].includes(k))return 'quantity';
  if(['CTN TOTAL','BOX TOTAL','TOTAL CAJA','TOTAL POR CAJA','总数'].includes(k))return 'boxTotal';
  if(['TOTAL','TOTAL PIEZAS'].includes(k))return 'total';
- if(['KG','KGS','WEIGHT','PESO','重量','CM','CBM','DIMENSIONES','MEDIDAS','箱规'].includes(k))return 'metadata';
+ if(['KG','KGS','WEIGHT','WEIGHT/KG','WEIGHT / KG','PESO','重量','CM','SIZE/CM','SIZE / CM','CBM','DIMENSIONES','MEDIDAS','箱规'].includes(k))return 'metadata';
  return null;
 }
 
@@ -36,8 +36,8 @@ export function readPackingExcel(data:Buffer){
  const range=XLSX.utils.decode_range(sheet['!ref']||'A1');
  if(range.e.r>=5000||range.e.c>100)throw Error('Excel demasiado extenso. Divídelo por pedido.');
  const rows=XLSX.utils.sheet_to_json<unknown[]>(sheet,{header:1,defval:null,blankrows:true});
- const header=rows.findIndex((row,i)=>i<30&&row.some(v=>role(v)==='box')&&row.some(v=>role(v)==='model'));
- if(header<0)throw Error('No se reconoció la tabla del Excel. Usa encabezados CTN (caja) y MODEL (modelo), con columnas de colores o COLOR y CANTIDAD.');
+ const header=rows.findIndex((row,i)=>i<30&&row.some(v=>role(v)==='box')&&(row.some(v=>role(v)==='model')||row.some(v=>role(v)==='quantity')));
+ if(header<0)throw Error('No se reconoció la tabla del Excel. Usa CTN o Carton No (caja), Quantity (cantidad) y columnas de colores. MODEL es opcional para accesorios sin modelo.');
  const headers=rows[header],roles=headers.map(role);
  for(const r of ['box','model','color','quantity','boxTotal','total'])if(roles.filter(x=>x===r).length>1)throw Error('Hay encabezados de control repetidos en el Excel. Revisa la tabla.');
  const boxCol=roles.indexOf('box'),modelCol=roles.indexOf('model'),colorCol=roles.indexOf('color'),qtyCol=roles.indexOf('quantity'),totalCol=roles.indexOf('total'),boxTotalCol=roles.indexOf('boxTotal');
@@ -52,7 +52,7 @@ export function readPackingExcel(data:Buffer){
  for(let r=header+1;r<rows.length;r++){
   const row=rows[r];if(row.every(empty))continue;
   if(row.some((v,c)=>c>=headers.length&&!empty(v))||row.some((v,c)=>!empty(v)&&empty(headers[c])))throw Error(`Hay datos sin encabezado en la fila ${r+1}.`);
-  const rawBox=merged(r,boxCol),model=label(merged(r,modelCol));
+  const rawBox=merged(r,boxCol),model=modelCol>=0?label(merged(r,modelCol)):'';
   const isTotal=['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(rawBox))||['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(model))||(!model&&empty(rawBox));
   if(isTotal){
    if((colorCol>=0&&!empty(row[colorCol]))||(colorCol<0&&wideColors.some(c=>!empty(row[c.c]))))throw Error(`Falta modelo o hay cantidades de colores dentro de un total en la fila ${r+1}.`);
@@ -66,7 +66,7 @@ export function readPackingExcel(data:Buffer){
    if(number!==current&&byBox.has(number))throw Error(`La caja ${number} aparece en bloques separados. Revisa la tabla.`);
    current=number;
   }
-  if(!current||!model)throw Error(`Falta caja o modelo en la fila ${r+1}.`);
+  if(!current||(modelCol>=0&&!model))throw Error(`Falta caja o modelo en la fila ${r+1}.`);
   let box=byBox.get(current);if(!box){box={number:current,items:[]};byBox.set(current,box);boxes.push(box);}
   const source=colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
   let rowSum=0,found=false;
