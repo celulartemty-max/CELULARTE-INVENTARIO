@@ -56,6 +56,13 @@ test('single-colour quantity header and vertically merged Total reconcile whole 
  assert.throws(()=>parse(file([h,[1,'A',350,350],[2,'B',250]],{merge:[{s:{r:1,c:3},e:{r:2,c:3}}]})),/distintas cajas/);
  assert.throws(()=>parse(file([h,[1,'A',350,600],[null,'B',250],[null,null,599,600]],{merge})),/total general/);
 });
+test('colour subtotal footer with Quantity and Total validates each colour without creating items or a carton',()=>{
+ const h=['Carton No','Model','BLACK','CLEAR','Quantity','Total'];
+ const rows=[h,[1,'SAM A27',70,50,120,200],[null,'SAM A57',50,30,80],['TOTAL',null,120,80,200,200]];
+ const p=parse(file(rows));assert.equal(p.boxes.length,1);assert.equal(p.boxes[0].items.length,4);assert.equal(p.boxes[0].items.reduce((s,i)=>s+i.expected,0),200);
+ const wrong=rows.map(r=>[...r]);wrong[3]=[null,null,110,90,200,200];assert.throws(()=>parse(file(wrong)),/total de BLACK indica 110; las cajas suman 120/);
+ const incomplete=rows.map(r=>[...r]);incomplete[3]=[null,null,120,80,200,null];assert.throws(()=>parse(file(incomplete)),/Falta modelo/);
+});
 test('supplier Quantity plus Total distinguishes row and carton controls including merged cells',()=>{
  const p=parse(file([['Carton No.','Model','BLACK','BLUE','quantity','total'],[1,'A',4,1,5,8],[null,'B',3,null,3],['TOTAL',null,null,null,8,8]],{merge:[{s:{r:1,c:0},e:{r:2,c:0}},{s:{r:1,c:5},e:{r:2,c:5}}]}));
  assert.equal(p.boxes.length,1);assert.equal(p.boxes[0].items.reduce((s,i)=>s+i.expected,0),8);

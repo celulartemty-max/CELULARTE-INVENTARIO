@@ -68,11 +68,13 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
   const isTotal=['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(rawBox))||['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(model))||(!model&&empty(rawBox));
   if(isTotal){
    const colorTotals=colorCol<0&&wideColors.some(c=>!empty(row[c.c]));
-   if((colorCol>=0&&!empty(row[colorCol]))||(colorTotals&&(qtyCol>=0||totalCol>=0||boxTotalCol<0)))throw Error(`Falta modelo o hay cantidades de colores dentro de un total en la fila ${r+1}.`);
+   const controlledColorFooter=boxTotalCol>=0&&((qtyCol<0&&totalCol<0)||(qtyCol>=0&&!empty(row[qtyCol])&&!empty(row[boxTotalCol])));
+   if((colorCol>=0&&!empty(row[colorCol]))||(colorTotals&&!controlledColorFooter))throw Error(`Falta modelo o hay cantidades de colores dentro de un total en la fila ${r+1}.`);
    const n=row[qtyCol>=0?qtyCol:totalCol>=0?totalCol:boxTotalCol];
    if(empty(n)||overall!==undefined)throw Error(`Total o fila sin modelo ambiguo en la fila ${r+1}.`);
    overall=quantity(n,`total fila ${r+1}`);
    if(colorTotals&&wideColors.reduce((s,c)=>s+(empty(row[c.c])?0:quantity(row[c.c],`fila ${r+1}, ${c.name}`)),0)!==overall)throw Error(`Hoja ${name}, fila ${r+1}: los colores del total general no coinciden con ${overall}.`);
+   if(colorTotals)for(const c of wideColors){const declaredColor=empty(row[c.c])?0:quantity(row[c.c],`fila ${r+1}, ${c.name}`),actualColor=boxes.reduce((s,b)=>s+b.items.filter(i=>key(i.color)===key(c.name)).reduce((n,i)=>n+i.expected,0),0);if(declaredColor!==actualColor)throw Error(`Hoja ${name}, fila ${r+1}: total de ${c.name} indica ${declaredColor}; las cajas suman ${actualColor}.`);}
    if(boxTotalCol>=0&&!empty(row[boxTotalCol])&&quantity(row[boxTotalCol],`total general fila ${r+1}`)!==overall)throw Error(`Hoja ${name}, fila ${r+1}: los dos totales generales son distintos.`);
    ended=true;continue;
   }
