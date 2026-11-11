@@ -13,7 +13,7 @@ function moduleFrom(path,mocks={}) {
     vm.runInNewContext('(function(require,module,exports){'+code+'})',{Date,Set})(name=>name in mocks?mocks[name]:name==='./receipt-pending'?{receiptPendingSql:readFileSync(new URL('../lib/inventory/receipt-pending.ts',import.meta.url),'utf8').split('`')[1]}:require(name),mod,mod.exports);
     return mod.exports;
 }
-function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,counted=false}={}) {
+function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,counted=false,delegated=false}={}) {
     const queries=[],audit=[]; let quantities;
     const order={id:ORDER,branch_id:ORIGIN,destination_branch_id:DEST,reference:'JAPS-20'};
     const box={id:BOX,session_id:physical?SESSION:null,branch_id:ORIGIN,carton_number:'1',counted_at:counted?'2026-10-27':null};
@@ -21,6 +21,7 @@ function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,co
         queries.push({sql,args});
         const result=rows=>({rows,rowCount:rows.length});
         if(sql.startsWith('SELECT * FROM receiving_orders'))return result([order]);
+        if(sql.startsWith('SELECT 1 FROM receiving_count_delegations'))return result(delegated?[{ok:1}]:[]);
         if(sql.startsWith('SELECT b.id,b.session_id,s.branch_id'))return result(args[1].filter(v=>[BOX,BOX2].includes(v)).map(v=>({...box,id:v})));
         if(sql.startsWith('INSERT INTO receiving_destination_arrivals'))return result(args[1].map(v=>({carton_id:v})));
         if(sql.startsWith('SELECT b.* FROM receiving_cartons'))return result(confirmed&&args[0]===BOX?[box]:[]);
@@ -45,6 +46,18 @@ function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,co
     return {...mod,queries,audit,quantities:()=>quantities};
 }
 const action=(action,extra={})=>({action,orderId:ORDER,boxId:BOX,...extra});
+test('delegated origin counts cannot be overwritten by destination counters',async()=>{
+ for(const name of ['count','saveCount','addItem','reopenBox']){
+  const f=fixture({delegated:true});await assert.rejects(f.destinationAction(manager,action(name,{lines:[{id:LINE,quantity:1}]})),/asignado a la sucursal de origen/);
+  assert.equal(f.queries.some(q=>q.sql.startsWith('UPDATE')||q.sql.startsWith('INSERT')),false);
+ }
+});
+test('delegation is order-scoped and does not expand POS registration to foreign orders',()=>{
+ const source=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');
+ assert.match(source,/dc.order_id=receiving_orders.id AND dc.branch_id=receiving_orders.branch_id/);
+ const registration=readFileSync(new URL('../lib/inventory/receiving-origin-registration.ts',import.meta.url),'utf8');
+ assert.match(registration,/is_foreign/);assert.doesNotMatch(registration,/receiving_count_delegations/);
+});
 test('destination count authorizes destination, not the source branch, and module access is required',async()=>{
     for(const opts of [{allowed:[ORIGIN]},{permission:false}]) {
         const f=fixture(opts);await assert.rejects(f.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:1}]})));

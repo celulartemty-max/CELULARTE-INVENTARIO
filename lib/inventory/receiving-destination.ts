@@ -112,6 +112,8 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
             return { ok: true };
         }
         const boxId = uuid.parse(body.boxId);
+        if ((await c.query('SELECT 1 FROM receiving_count_delegations WHERE order_id=$1 AND branch_id<>$2',[o.id,branch])).rowCount)
+            throw new Error('El conteo de este pedido está asignado a la sucursal de origen.');
         const b = (await c.query(`SELECT b.* FROM receiving_cartons b JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE b.id=$1 AND b.order_id=$2 AND a.branch_id=$3 FOR UPDATE OF b`, [boxId, o.id, branch])).rows[0];
         if (!b) throw new Error('Primero confirma la llegada física de esta caja a la sucursal destino.');

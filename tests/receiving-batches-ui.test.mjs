@@ -108,7 +108,15 @@ test('JAPS destination packing can be prepared at source without enabling source
  const render=mount(base+'receiving-editor.tsx','default',{data,products});let tree=render();nodes(tree).find(n=>n.props?.onOpen).props.onOpen('J');tree=render();
  assert.match(text(tree),/Packing list para Plaza del Audio/);assert.match(text(tree),/Leer packing list con IA/);assert.match(text(tree),/japs-original.xlsx/);assert.doesNotMatch(text(tree),/Cajas ajenas · solo registro/);
  assert.equal(nodes(tree).find(n=>n.type==='button'&&text(n)==='Contar piezas').props.disabled,true);assert.ok(!nodes(tree).some(n=>n.props?.className==='receivingBoxButton'));
- const core=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');assert.match(core,/order.is_foreign && !order.packing_allowed/);assert.match(core,/marking IN \('PER','JAPS'\)/);assert.match(core,/AND NOT o.is_foreign ORDER BY o.reference/);
+ const core=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');assert.match(core,/order.is_foreign && !order.packing_allowed/);assert.match(core,/marking IN \('PER','JAPS'\)/);assert.match(core,/NOT o.is_foreign OR EXISTS\(SELECT 1 FROM receiving_count_delegations dc WHERE dc.order_id=o.id AND dc.branch_id=o.branch_id\)/);
+});
+test('explicitly delegated JAPS boxes enable origin counting without a POS action',()=>{
+ const japs={...batch,id:'J',marking:'JAPS',destination_name:'Plaza del Audio',is_foreign:true,received_here:1};
+ const data={review:true,canRecount:true,session:{id:'session',reference:'Llegada',arrival_date:'2026-11-03',total_boxes:1,status:'DRAFT'},batches:[japs],orders:[{id:'J',reference:japs.reference}],boxes:[{id:'jbox',order_id:'J',carton_number:'1',product:'Otter',counted_at:null}],items:[{id:'line',carton_id:'jbox',model:'IP 11',color:'BLACK',counted:null}],foreign:[],foreignBoxes:[],documents:[],cost:null,pending:[],registrationRows:[]};
+ const render=mount(base+'receiving-editor.tsx','default',{data,products});let tree=render();nodes(tree).find(n=>n.props?.onOpen).props.onOpen('J');tree=render();
+ assert.equal(nodes(tree).find(n=>n.type==='button'&&text(n)==='Contar piezas').props.disabled,false);
+ assert.doesNotMatch(text(tree),/Packing list para Plaza del Audio|Registrar en sistema/);
+ assert.ok(nodes(tree).some(n=>n.props?.className==='receivingBoxButton'));
 });
 test('order workspace filters boxes and files to the opened order; foreign has no packing or count',()=>{
  const other={...batch,id:'B',reference:'OTHER',product:'Anillo',received_here:1},foreign={...batch,id:'C',is_foreign:true,product:'Mica CDMX',received_here:1};
