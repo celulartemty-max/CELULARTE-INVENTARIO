@@ -47,6 +47,15 @@ test('multiple branches, unidentified columns, unknown layouts and data after to
  assert.throws(()=>parse(file([header,[1,'A',5,null,5,null,null,null,999]])),/sin encabezado/);
  assert.throws(()=>parse(file([header,[1,'A',5,null,5],['TOTAL',null,null,null,5],[2,'B',5,null,5]])),/después del total/);
 });
+test('single-colour quantity header and vertically merged Total reconcile whole cartons, not individual models',()=>{
+ const h=['Carton No','Model','clear/quantity','total','weight/kg'];
+ const merge=[{s:{r:1,c:0},e:{r:2,c:0}},{s:{r:1,c:3},e:{r:2,c:3}}];
+ const p=parse(file([h,[1,'iPh 13',350,600,15.12],[null,'iPh 15',250],[2,'iPh 17',500,500],[null,null,1100,1100]],{merge}));
+ assert.deepEqual(p.colors,['clear']);assert.deepEqual(p.boxes.map(b=>b.items.reduce((s,i)=>s+i.expected,0)),[600,500]);
+ assert.throws(()=>parse(file([h,[1,'A',350,601],[null,'B',250]],{merge})),/total de caja indica 601/);
+ assert.throws(()=>parse(file([h,[1,'A',350,350],[2,'B',250]],{merge:[{s:{r:1,c:3},e:{r:2,c:3}}]})),/distintas cajas/);
+ assert.throws(()=>parse(file([h,[1,'A',350,600],[null,'B',250],[null,null,599,600]],{merge})),/total general/);
+});
 test('supplier Quantity plus Total distinguishes row and carton controls including merged cells',()=>{
  const p=parse(file([['Carton No.','Model','BLACK','BLUE','quantity','total'],[1,'A',4,1,5,8],[null,'B',3,null,3],['TOTAL',null,null,null,8,8]],{merge:[{s:{r:1,c:0},e:{r:2,c:0}},{s:{r:1,c:5},e:{r:2,c:5}}]}));
  assert.equal(p.boxes.length,1);assert.equal(p.boxes[0].items.reduce((s,i)=>s+i.expected,0),8);

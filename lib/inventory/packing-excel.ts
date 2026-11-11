@@ -48,23 +48,31 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  // Common supplier layout: Quantity is per model, Total is per carton.
  // Accept this only when every row, carton and overall control reconciles below.
  if(qtyCol>=0&&totalCol>=0){if(boxTotalCol>=0)throw Error('Hay tres columnas de cantidad/total. Identifica Quantity y un solo total por caja.');boxTotalCol=totalCol;totalCol=-1;}
- const wideColors=headers.map((v,c)=>({name:label(v),c})).filter(x=>!roles[x.c]&&x.name);
+ // A vertically merged Total covers several model rows: it is a carton
+ // control, not a per-row quantity. Reconcile the entire carton below.
+ if(qtyCol<0&&totalCol>=0&&(sheet['!merges']??[]).some(m=>m.s.c===totalCol&&m.e.c===totalCol&&m.s.r>header&&m.e.r>m.s.r)){
+  if(boxTotalCol>=0)throw Error('Hay dos totales por caja. Revisa los encabezados.');
+  boxTotalCol=totalCol;totalCol=-1;
+ }
+ const wideColors=headers.map((v,c)=>({name:label(v).replace(/\s*\/\s*(quantity|qty|cantidad|数量)\s*$/i,''),c})).filter(x=>!roles[x.c]&&x.name);
  if(colorCol>=0&&(qtyCol<0||wideColors.length))throw Error('La tabla COLOR/CANTIDAD tiene columnas sin identificar. Revisa sus encabezados.');
- if(colorCol<0&&(!wideColors.length||(qtyCol<0&&totalCol<0)))throw Error('Faltan colores o una columna Quantity/Total para validar el Excel.');
+ if(colorCol<0&&(!wideColors.length||(qtyCol<0&&totalCol<0&&boxTotalCol<0)))throw Error('Faltan colores o una columna Quantity/Total para validar el Excel.');
  const colors:string[]=[],boxes:{number:string;items:{model:string;color:string;expected:number}[]}[]=[],byBox=new Map<string,typeof boxes[number]>(),pairs=new Set<string>(),declared=new Map<string,number>();
  if(colorCol<0){for(const c of wideColors){if(colors.some(v=>key(v)===key(c.name)))throw Error('Hay columnas de color repetidas en el Excel.');colors.push(c.name);}}
  const merged=(r:number,c:number)=>{const cell=rows[r]?.[c];if(!empty(cell))return cell;const m=(sheet['!merges']??[]).find(m=>m.s.c===c&&m.e.c===c&&m.s.r<=r&&m.e.r>=r);return m?rows[m.s.r]?.[c]:cell;};
- let current='',overall:number|undefined,ended=false,total=0;
+ let current='',overall:number|undefined,ended=false,total=0;const rowBoxes=new Map<number,string>();
  for(let r=header+1;r<rows.length;r++){
   const row=rows[r];if(row.every(empty))continue;
   if(row.some((v,c)=>c>=headers.length&&!empty(v))||row.some((v,c)=>!empty(v)&&empty(headers[c])))throw Error(`Hay datos sin encabezado en la fila ${r+1}.`);
   const rawBox=merged(r,boxCol),model=modelCol>=0?label(merged(r,modelCol)):'';
   const isTotal=['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(rawBox))||['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(model))||(!model&&empty(rawBox));
   if(isTotal){
-   if((colorCol>=0&&!empty(row[colorCol]))||(colorCol<0&&wideColors.some(c=>!empty(row[c.c]))))throw Error(`Falta modelo o hay cantidades de colores dentro de un total en la fila ${r+1}.`);
-   const n=row[qtyCol>=0?qtyCol:totalCol];
+   const colorTotals=colorCol<0&&wideColors.some(c=>!empty(row[c.c]));
+   if((colorCol>=0&&!empty(row[colorCol]))||(colorTotals&&(qtyCol>=0||totalCol>=0||boxTotalCol<0)))throw Error(`Falta modelo o hay cantidades de colores dentro de un total en la fila ${r+1}.`);
+   const n=row[qtyCol>=0?qtyCol:totalCol>=0?totalCol:boxTotalCol];
    if(empty(n)||overall!==undefined)throw Error(`Total o fila sin modelo ambiguo en la fila ${r+1}.`);
    overall=quantity(n,`total fila ${r+1}`);
+   if(colorTotals&&wideColors.reduce((s,c)=>s+(empty(row[c.c])?0:quantity(row[c.c],`fila ${r+1}, ${c.name}`)),0)!==overall)throw Error(`Hoja ${name}, fila ${r+1}: los colores del total general no coinciden con ${overall}.`);
    if(boxTotalCol>=0&&!empty(row[boxTotalCol])&&quantity(row[boxTotalCol],`total general fila ${r+1}`)!==overall)throw Error(`Hoja ${name}, fila ${r+1}: los dos totales generales son distintos.`);
    ended=true;continue;
   }
@@ -75,6 +83,7 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
    current=number;
   }
   if(!current||(modelCol>=0&&!model))throw Error(`Falta caja o modelo en la fila ${r+1}.`);
+  rowBoxes.set(r,current);
   let box=byBox.get(current);if(!box){box={number:current,items:[]};byBox.set(current,box);boxes.push(box);}
   const source=colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
   let rowSum=0,found=false;
@@ -87,10 +96,11 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
    if(!colors.some(v=>key(v)===key(color.name)))colors.push(color.name);
   }
   if(!found)throw Error(`La fila ${r+1} no tiene cantidades de colores.`);
-  if(colorCol<0){const control=qtyCol>=0?qtyCol:totalCol;if(!empty(row[control])&&quantity(row[control],`total fila ${r+1}`)!==rowSum)throw Error(`Hoja ${name}, fila ${r+1}, caja ${current}: colores suman ${rowSum}; ${label(headers[control])} indica ${label(row[control])}. Revisa el total de la fila.`);}
+  if(colorCol<0){const control=qtyCol>=0?qtyCol:totalCol;if(control>=0&&!empty(row[control])&&quantity(row[control],`total fila ${r+1}`)!==rowSum)throw Error(`Hoja ${name}, fila ${r+1}, caja ${current}: colores suman ${rowSum}; ${label(headers[control])} indica ${label(row[control])}. Revisa el total de la fila.`);}
   if(boxTotalCol>=0&&!empty(row[boxTotalCol])){const n=quantity(row[boxTotalCol],`total caja ${current}`);if(declared.has(current)&&declared.get(current)!==n)throw Error(`La caja ${current} tiene totales distintos.`);declared.set(current,n);}
   total+=rowSum;
  }
+ for(const m of sheet['!merges']??[])if(m.s.c===boxTotalCol&&m.e.c===boxTotalCol&&m.e.r>m.s.r){const covered=new Set<string>();for(let r=m.s.r;r<=m.e.r;r++){const box=rowBoxes.get(r);if(box)covered.add(box)}if(covered.size>1)throw Error(`Hoja ${name}: un total combinado abarca distintas cajas, filas ${m.s.r+1}-${m.e.r+1}.`);}
  for(const box of boxes)if(declared.has(box.number)&&box.items.reduce((s,l)=>s+l.expected,0)!==declared.get(box.number))throw Error(`Hoja ${name}, caja ${box.number}: piezas suman ${box.items.reduce((s,l)=>s+l.expected,0)}; total de caja indica ${declared.get(box.number)}.`);
  if(overall!==undefined&&overall!==total)throw Error(`Hoja ${name}: piezas suman ${total}; total general indica ${overall}.`);
  return packingSchema.parse({reference:name,colors,warnings:[],boxes});
