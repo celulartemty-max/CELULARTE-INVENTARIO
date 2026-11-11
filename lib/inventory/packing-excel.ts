@@ -14,10 +14,11 @@ function role(v:unknown){
  if(['CTN','CAJA','CAJAS','BOX','CARTON','NUMERO DE CAJA','N° CAJA','NO CAJA','BOX NO','CTN NO','CARTON NO','CARTON NUMBER','箱号','箱號'].includes(k))return 'box';
  if(['MODEL','MODELO','MODELS','MODELOS','PRODUCT MODEL','型号','型號'].includes(k))return 'model';
  if(['COLOR','COLOUR'].includes(k))return 'color';
+ if(['MATERIAL'].includes(k))return 'description';
  if(['QUANTITY','QTY','CANTIDAD','PIEZAS','PCS','QTY (PCS)','QUANTITY (PCS)','CANTIDAD (PZAS)','数量'].includes(k))return 'quantity';
  if(['CTN TOTAL','BOX TOTAL','TOTAL CAJA','TOTAL POR CAJA','总数'].includes(k))return 'boxTotal';
  if(['TOTAL','TOTAL PIEZAS'].includes(k))return 'total';
- if(['KG','KGS','WEIGHT','WEIGHT/KG','WEIGHT / KG','PESO','重量','CM','SIZE/CM','SIZE / CM','CBM','DIMENSIONES','MEDIDAS','箱规'].includes(k))return 'metadata';
+ if(['KG','KGS','WEIGHT','WEIGHT/KG','WEIGHT / KG','PESO','重量','CM','SIZE/CM','SIZE / CM','CBM','DIMENSIONES','MEDIDAS','箱规','PHOTO','BRAND','WIDTH*LENGTH*HEIGHT'].includes(k))return 'metadata';
  return null;
 }
 
@@ -38,10 +39,15 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  const name=sheetName||names[0],sheet=workbook.Sheets[name];
  const range=XLSX.utils.decode_range(sheet['!ref']||'A1');
  if(range.e.r>=5000||range.e.c>100)throw Error('Excel demasiado extenso. Divídelo por pedido.');
- const rows=XLSX.utils.sheet_to_json<unknown[]>(sheet,{header:1,defval:null,blankrows:true});
+ // Keep absolute worksheet coordinates: !ref need not start at A1.
+ const rows=XLSX.utils.sheet_to_json<unknown[]>(sheet,{header:1,range:{s:{r:0,c:0},e:range.e},defval:null,blankrows:true});
  const header=rows.findIndex((row,i)=>i<30&&row.some(v=>role(v)==='box')&&(row.some(v=>role(v)==='model')||row.some(v=>role(v)==='quantity')));
  if(header<0)throw Error('No se reconoció la tabla del Excel. Usa CTN o Carton No (caja), Quantity (cantidad) y columnas de colores. MODEL es opcional para accesorios sin modelo.');
  const headers=[...rows[header]];
+ // Supplier Quantity spans two columns: detail quantity and carton subtotal.
+ // Only infer the adjacent control for an exact two-column merged header;
+ // every row/carton/grand total still reconciles below.
+ for(const m of sheet['!merges']??[])if(m.s.r===header&&m.e.r===header&&m.e.c===m.s.c+1&&role(headers[m.s.c])==='quantity'&&empty(headers[m.e.c]))headers[m.e.c]='CTN TOTAL';
  // Suppliers often merge Size/CM across the length, width and height columns.
  // Expand only recognized logistics headers, never unnamed quantity columns.
  for(const m of sheet['!merges']??[])if(m.s.r===header&&m.e.r===header&&m.e.c>m.s.c&&role(headers[m.s.c])==='metadata'){
@@ -53,8 +59,8 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
   const values=rows.slice(header+1).map(row=>row[c]);
   if(values.some(v=>!empty(v))&&values.every(v=>empty(v)||(typeof v==='string'&&!/\d/.test(v)))&&!Object.entries(sheet).some(([address,cell])=>!address.startsWith('!')&&XLSX.utils.decode_cell(address).c===c&&cell.f))noteColumns.add(c);
  }
- for(const r of ['box','model','color','quantity','boxTotal','total'])if(roles.filter(x=>x===r).length>1)throw Error('Hay encabezados de control repetidos en el Excel. Revisa la tabla.');
- const boxCol=roles.indexOf('box'),modelCol=roles.indexOf('model'),colorCol=roles.indexOf('color'),qtyCol=roles.indexOf('quantity');
+ for(const r of ['box','model','color','quantity','boxTotal','total','description'])if(roles.filter(x=>x===r).length>1)throw Error('Hay encabezados de control repetidos en el Excel. Revisa la tabla.');
+ const boxCol=roles.indexOf('box'),modelCol=roles.indexOf('model'),colorCol=roles.indexOf('color'),qtyCol=roles.indexOf('quantity'),descriptionCol=roles.indexOf('description');
  let totalCol=roles.indexOf('total'),boxTotalCol=roles.indexOf('boxTotal');
  // Common supplier layout: Quantity is per model, Total is per carton.
  // Accept this only when every row, carton and overall control reconciles below.
@@ -66,8 +72,9 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
   boxTotalCol=totalCol;totalCol=-1;
  }
  const wideColors=headers.map((v,c)=>({name:label(v).replace(/\s*\/\s*(quantity|qty|cantidad|数量)\s*$/i,''),c})).filter(x=>!roles[x.c]&&x.name);
+ const descriptionColors=colorCol<0&&descriptionCol>=0&&qtyCol>=0&&!wideColors.length;
  if(colorCol>=0&&(qtyCol<0||wideColors.length))throw Error('La tabla COLOR/CANTIDAD tiene columnas sin identificar. Revisa sus encabezados.');
- if(colorCol<0&&(!wideColors.length||(qtyCol<0&&totalCol<0&&boxTotalCol<0)))throw Error('Faltan colores o una columna Quantity/Total para validar el Excel.');
+ if(colorCol<0&&!descriptionColors&&(!wideColors.length||(qtyCol<0&&totalCol<0&&boxTotalCol<0)))throw Error('Faltan colores o una columna Quantity/Total para validar el Excel.');
  const colors:string[]=[],boxes:{number:string;items:{model:string;color:string;expected:number}[]}[]=[],byBox=new Map<string,typeof boxes[number]>(),pairs=new Set<string>(),declared=new Map<string,number>();
  if(colorCol<0){for(const c of wideColors){if(colors.some(v=>key(v)===key(c.name)))throw Error('Hay columnas de color repetidas en el Excel.');colors.push(c.name);}}
  const merged=(r:number,c:number)=>{const cell=rows[r]?.[c];if(!empty(cell))return cell;const m=(sheet['!merges']??[]).find(m=>m.s.c===c&&m.e.c===c&&m.s.r<=r&&m.e.r>=r);return m?rows[m.s.r]?.[c]:cell;};
@@ -102,7 +109,9 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
   if(!current||(modelCol>=0&&!model))throw Error(`Falta caja o modelo en la fila ${r+1}.`);
   rowBoxes.set(r,current);
   let box=byBox.get(current);if(!box){box={number:current,items:[]};byBox.set(current,box);boxes.push(box);}
-  const source=colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
+  const materialColor=descriptionColors?label(merged(r,descriptionCol)).match(/[-–—]\s*(black|white|blue|red|pink|purple|green|yellow|orange|gold|silver|clear|transparent|grey|gray|brown|beige|navy|negro|blanco|azul|rojo|rosa|morado|verde|amarillo|naranja|dorado|plateado|transparente|gris|cafe)\s*$/i)?.[1]:undefined;
+  if(descriptionColors&&!materialColor)throw Error(`No se pudo identificar el color al final de Material en la fila ${r+1}. Usa COLOR y CANTIDAD para indicarlo sin ambigüedad.`);
+  const source=descriptionColors?[{name:materialColor!,c:qtyCol}]:colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
   let rowSum=0,found=false;
   for(const color of source){
    if(empty(row[color.c]))continue;

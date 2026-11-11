@@ -8,6 +8,22 @@ function load(path,mocks={}){const m={exports:{}};const code=ts.transpileModule(
 const parse=load('lib/inventory/packing-excel.ts').readPackingExcel;
 function file(rows,{merge=[],second=false}={}){const w=XLSX.utils.book_new(),s=XLSX.utils.aoa_to_sheet(rows);s['!merges']=merge;XLSX.utils.book_append_sheet(w,s,'PER AIR');if(second)XLSX.utils.book_append_sheet(w,XLSX.utils.aoa_to_sheet([['Other branch']]),'JAPS');return XLSX.write(w,{type:'buffer',bookType:'xlsx'});}
 const header=['CTN','MODEL','18 · Negro','NEW 3 · Gris claro','Quantity','CTN TOTAL','KG','CM'];
+test('offset supplier table reads merged Quantity as detail/carton controls and Material suffix as colour',()=>{
+ const h=[null,'Carton No.','Material','Photo','Brand','Model','Quantity',null,'Weight','Width*Length*Height','CBM'];
+ const merge=[{s:{r:2,c:6},e:{r:2,c:7}},{s:{r:3,c:1},e:{r:4,c:1}},{s:{r:3,c:7},e:{r:4,c:7}}];
+ const rows=[[],[null,'JAPS SEA'],h,[null,1,'Privacy glass with package-Black',null,'Apple','IPHONE 11',250,500,18,'60*45*33',.0891],[null,null,'Privacy glass with package-Black',null,'Apple','IPHONE 18 PRO',250],[null,2,'Privacy glass with package-White',null,'Apple','IPHONE 16',300,300],[null,'Total',null,null,null,null,800,800]];
+ const p=parse(file(rows,{merge}));assert.deepEqual(p.colors,['Black','White']);assert.deepEqual(p.boxes.map(b=>b.items.reduce((s,i)=>s+i.expected,0)),[500,300]);assert.equal(p.boxes[0].items[1].model,'IPHONE 18 PRO');
+ const bad=structuredClone(rows);bad[3][7]=499;assert.throws(()=>parse(file(bad,{merge})),/caja 1.*500.*499/);
+ const grand=structuredClone(rows);grand.at(-1)[6]=799;assert.throws(()=>parse(file(grand,{merge})),/totales generales/);
+ const unknown=structuredClone(rows);unknown[3][2]='Privacy glass';assert.throws(()=>parse(file(unknown,{merge})),/Material.*fila 4/);
+ assert.throws(()=>parse(file(rows,{merge:merge.slice(1)})),/sin encabezado.*fila 4/);
+});
+test('offset wide-colour headers preserve absolute merge coordinates and error row numbers',()=>{
+ const rows=[[],[null,'Packing'],[null,'CTN','MODEL','BLACK','Quantity','Total'],[null,1,'A',5,5,10],[null,null,'B',5,5], [null,'Total',null,10,10,10]];
+ const merge=[{s:{r:3,c:1},e:{r:4,c:1}},{s:{r:3,c:5},e:{r:4,c:5}}];
+ const p=parse(file(rows,{merge}));assert.equal(p.boxes.length,1);assert.deepEqual(p.boxes[0].items.map(i=>i.model),['A','B']);
+ const bad=structuredClone(rows);bad[4][4]=6;assert.throws(()=>parse(file(bad,{merge})),/fila 5/);
+});
 test('matrix expands exact colour columns, carries carton continuations and checks row/carton/grand totals',()=>{
  const p=parse(file([header,[1,'A',40,10,50,50,23,'73*49*39'],[2,'B',20,null,20,35],[null,'C',null,15,15],['TOTAL',null,null,null,85,85]]));
  assert.deepEqual(p.colors,['18 · Negro','NEW 3 · Gris claro']);assert.deepEqual(p.boxes.map(b=>b.number),['1','2']);assert.equal(p.boxes[1].items.length,2);assert.equal(p.boxes.flatMap(b=>b.items).reduce((s,i)=>s+i.expected,0),85);assert.equal(p.boxes[0].items[0].model,'A');
