@@ -27,6 +27,19 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('new order product search filters words regardless of accents and preserves the selected product',()=>{
+ const catalog=[{id:'1',name:'Cerámica Privacidad'},{id:'2',name:'Combo Case'},{id:'3',name:'Cerámica Mate'}];
+ const render=mount(base+'batch-intake.tsx','NewBatchForm',{products:catalog,busy:false,save:async()=>true,onSaved(){}});
+ const search=value=>{nodes(render()).find(n=>n.props?.type==='search').props.onChange({target:{value}})};
+ const options=()=>nodes(nodes(render()).find(n=>n.props?.name==='product')).filter(n=>n.type==='option').map(text);
+ search('PRIVACIDAD ceramica');assert.deepEqual(options(),['Selecciona…','Cerámica Privacidad']);
+ nodes(render()).find(n=>n.props?.name==='product').props.onChange({target:{value:'1'}});
+ search('combo');assert.deepEqual(options(),['Selecciona…','Cerámica Privacidad','Combo Case']);
+ assert.equal(nodes(render()).find(n=>n.props?.name==='product').props.value,'1');
+ search('inexistente');assert.match(text(render()),/Sin resultados/);assert.deepEqual(options(),['Selecciona…','Cerámica Privacidad']);
+ search('');assert.equal(options().length,4);
+ assert.equal(nodes(mount(base+'batch-intake.tsx','NewBatchForm',{products:catalog,busy:true,save:async()=>true,onSaved(){}})()).find(n=>n.type==='fieldset').props.disabled,true);
+});
 test('order badges distinguish uncounted, partial, counted and registered cartons in the current receipt',()=>{
  const Status=load(base+'batch-intake.tsx').BatchStatus;
  const render=change=>renderToStaticMarkup(React.createElement(Status,{batch:{...batch,...change}}));
