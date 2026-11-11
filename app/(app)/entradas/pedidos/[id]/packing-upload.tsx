@@ -42,7 +42,7 @@ export default function PackingUpload({ file, busy, attached, onChange, onInterp
             <div className="packingUploadSelected"><span className="packingUploadFileIcon"><FileIcon/></span><div className="packingUploadFileInfo"><strong title={file.name}>{file.name}</strong><span>{pdf ? 'PDF' : /\.xlsx$/i.test(file.name) ? 'Excel' : 'Foto'} · {file.size < 1024 * 1024 ? `${Math.max(1, Math.round(file.size / 1024))} KB` : `${(file.size / 1024 / 1024).toFixed(1)} MB`}</span></div>
                 <button type="button" className="packingUploadChange" disabled={busy} onClick={() => { setError(''); setChoosing(true); }}>Cambiar</button>
             </div>
-            <div className="packingUploadActions">{!pdf && <button type="button" className="packingUploadRead" disabled={busy} onClick={onInterpret}><FileIcon kind="sparkles"/>Leer con IA</button>}
+            <div className="packingUploadActions">{!pdf && <button type="button" className="packingUploadRead" disabled={busy} onClick={onInterpret}><FileIcon kind="sparkles"/>{/\.xlsx$/i.test(file.name)?'Leer Excel':'Leer con IA'}</button>}
                 <button type="button" className="packingUploadStore" disabled={busy || attached} onClick={onAttach}>{attached ? '✓ Original guardado' : pdf ? 'Guardar comprobante' : 'Guardar original'}</button>
             </div>
             <p className="packingUploadHint" role="status">{busy ? 'Procesando… No cierres esta pantalla.' : pdf ? 'El PDF se guarda como comprobante, sin lectura con IA.' : 'Revisarás los modelos y colores antes de confirmar.'}</p>

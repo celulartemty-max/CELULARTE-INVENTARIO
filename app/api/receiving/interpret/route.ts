@@ -4,7 +4,7 @@ import { withTransaction } from '@/lib/db';
 import { receivingAccess } from '@/lib/inventory/receiving';
 import { readReceivingFile } from '@/lib/inventory/receiving-files';
 import { packingResponseFormat, parsePackingReading } from '@/lib/inventory/packing-reading';
-import * as XLSX from 'xlsx';
+import { readPackingExcel } from '@/lib/inventory/packing-excel';
 export const maxDuration = 60;
 async function handlePOST(req: Request) {
     try {
@@ -12,43 +12,16 @@ async function handlePOST(req: Request) {
         await receivingAccess(u, true);
         if (Number(req.headers.get('content-length') || 0) > 2900000)
             throw new Error('Archivo demasiado grande. Máximo 2 MB.');
-        if (!process.env.OPENAI_API_KEY)
-            throw new Error('La lectura con IA no está configurada en este entorno.');
         const f = await req.formData();
         const file = f.get('file');
         if (!(file instanceof File))
             throw new Error('Selecciona un packing list.');
         const { data, mime } = await readReceivingFile(file);
+        if(mime.includes('spreadsheet'))return Response.json(readPackingExcel(data),{headers:{'Cache-Control':'no-store'}});
+        if (!process.env.OPENAI_API_KEY)
+            throw new Error('La lectura con IA no está configurada en este entorno.');
         const content: unknown[] = [];
-        if (mime.includes('spreadsheet')) {
-            // Bound inflated ZIP content before the spreadsheet parser allocates it.
-            let inflated = 0, entries = 0;
-            for (let i = 0; i + 46 <= data.length; i++)
-                if (data.readUInt32LE(i) === 0x02014b50) {
-                    inflated += data.readUInt32LE(i + 24);
-                    entries++;
-                    if (inflated > 20000000 || entries > 500)
-                        throw new Error('Excel demasiado grande al descomprimirse.');
-                    i += 45 + data.readUInt16LE(i + 28) + data.readUInt16LE(i + 30) + data.readUInt16LE(i + 32);
-                }
-            const w = XLSX.read(data, { type: 'buffer', sheetRows: 5001 });
-            let text = '';
-            for (const name of w.SheetNames) {
-                const s = w.Sheets[name];
-                const range = XLSX.utils.decode_range(s['!ref'] || 'A1');
-                if (range.e.r >= 5000 || range.e.c > 100)
-                    throw new Error('Excel demasiado extenso. Divídelo por pedido.');
-                const merged = (s['!merges'] || []).map(m => {
-                    const address = XLSX.utils.encode_cell(m.s);
-                    return { range: XLSX.utils.encode_range(m), value: s[address]?.w ?? s[address]?.v ?? '' };
-                });
-                text += `HOJA ${name}\nCELDAS COMBINADAS (el valor pertenece al rango completo, no son cajas nuevas): ${JSON.stringify(merged)}\n` + XLSX.utils.sheet_to_csv(s) + '\n';
-            }
-            if (text.length > 100000)
-                throw new Error('Documento demasiado grande para una sola lectura.');
-            content.push({ type: 'text', text });
-        }
-        else if (mime.startsWith('image/'))
+        if (mime.startsWith('image/'))
             content.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${data.toString('base64')}` } });
         else
             throw new Error('Para interpretar usa Excel o una imagen. El PDF se puede guardar como comprobante.');
