@@ -27,17 +27,21 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
-test('new order product search filters words regardless of accents and preserves the selected product',()=>{
+test('product combobox filters inline, selects on tap or keyboard and clears stale selections',()=>{
  const catalog=[{id:'1',name:'Cerámica Privacidad'},{id:'2',name:'Combo Case'},{id:'3',name:'Cerámica Mate'}];
  const render=mount(base+'batch-intake.tsx','NewBatchForm',{products:catalog,busy:false,save:async()=>true,onSaved(){}});
- const search=value=>{nodes(render()).find(n=>n.props?.type==='search').props.onChange({target:{value}})};
- const options=()=>nodes(nodes(render()).find(n=>n.props?.name==='product')).filter(n=>n.type==='option').map(text);
- search('PRIVACIDAD ceramica');assert.deepEqual(options(),['Selecciona…','Cerámica Privacidad']);
- nodes(render()).find(n=>n.props?.name==='product').props.onChange({target:{value:'1'}});
- search('combo');assert.deepEqual(options(),['Selecciona…','Cerámica Privacidad','Combo Case']);
+ const input=()=>nodes(render()).find(n=>n.props?.role==='combobox');
+ const search=value=>input().props.onChange({target:{value}});
+ const options=()=>nodes(render()).filter(n=>n.props?.role==='option');
+ assert.equal(input().props['aria-expanded'],false);assert.equal(options().length,0);
+ search('PRIVACIDAD ceramica');assert.deepEqual(options().map(text),['Cerámica Privacidad']);
+ options()[0].props.onClick();assert.equal(input().props.value,'Cerámica Privacidad');assert.equal(options().length,0);
  assert.equal(nodes(render()).find(n=>n.props?.name==='product').props.value,'1');
- search('inexistente');assert.match(text(render()),/Sin resultados/);assert.deepEqual(options(),['Selecciona…','Cerámica Privacidad']);
- search('');assert.equal(options().length,4);
+ search('combo');assert.deepEqual(options().map(text),['Combo Case']);assert.equal(nodes(render()).find(n=>n.props?.name==='product').props.value,'');
+ const key=key=>input().props.onKeyDown({key,preventDefault(){},stopPropagation(){}});
+ key('ArrowDown');key('Enter');assert.equal(input().props.value,'Combo Case');assert.equal(nodes(render()).find(n=>n.props?.name==='product').props.value,'2');
+ search('inexistente');assert.match(text(render()),/Sin resultados/);assert.equal(options().length,0);
+ search('');assert.equal(options().length,3);key('Escape');assert.equal(options().length,0);
  assert.equal(nodes(mount(base+'batch-intake.tsx','NewBatchForm',{products:catalog,busy:true,save:async()=>true,onSaved(){}})()).find(n=>n.type==='fieldset').props.disabled,true);
 });
 test('order badges distinguish uncounted, partial, counted and registered cartons in the current receipt',()=>{

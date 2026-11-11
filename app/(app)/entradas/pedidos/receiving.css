@@ -107,3 +107,9 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .receivingOrders button.receivingCloseFinish:disabled{opacity:.45;box-shadow:none;cursor:not-allowed}
 .receivingCloseFootnote{display:block;margin-top:12px;color:#8292a8;font-size:11px;line-height:1.6;text-align:center}
 @media(max-width:520px){.receivingCloseActions{flex-direction:column}.receivingCloseStats{gap:10px}.receivingCloseStats>div{padding:12px}.receivingCloseHeading h2{font-size:20px}}
+.receivingProductPicker{position:relative}
+.receivingProductOptions{position:absolute;top:100%;left:0;right:0;z-index:30;max-height:260px;overflow-y:auto;overscroll-behavior:contain;background:#fff;border:1px solid #dce4ef;border-radius:12px;box-shadow:0 12px 32px #182a4720;padding:5px;margin-top:4px}
+.receivingProductOptions [role=option]{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1.4;color:#24334d}
+.receivingProductOptions [role=option]:hover,.receivingProductOptions [role=option].active{background:#f0f5ff;color:#135cc5}
+.receivingProductOptions [aria-selected=true]{background:#edf4ff;font-weight:600;color:#135cc5}
+.receivingProductEmpty{padding:16px;color:#758299;font-size:14px}
