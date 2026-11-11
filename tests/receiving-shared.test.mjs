@@ -19,6 +19,7 @@ test('operative with ENTRADAS can count and save progress across branches; actio
 test('shared receipt view works without matching branch but does not expose freight, references or edit permissions to operatives',async()=>{
  const f=fixture();const view=await f.receivingView({id:id(9),role:'OPERATIVE'},session);assert.equal(view.canManageReceipt,false);assert.equal(view.cost,null);assert.equal(view.review,false);assert.equal(view.canRegisterSystem,false);assert.equal(f.scopes.length,0);
  assert.ok(f.queries.filter(q=>q.sql.includes('FROM receiving_items')).every(q=>!q.sql.includes('expected')));
+ assert.ok(f.queries.some(q=>q.sql.startsWith('SELECT o.id::text,o.reference,o.display_title')&&q.sql.includes('counted_here')&&q.sql.includes('registered_here')));
  const denied=fixture({module:false});await assert.rejects(denied.receivingView({id:id(9),role:'OPERATIVE'},session));assert.equal(denied.queries.length,0);
 });
 test('shared count cannot overwrite a completed carton or run without ENTRADAS',async()=>{

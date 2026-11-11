@@ -69,6 +69,15 @@ test('overview has one simple table and add button, no inline form or packing/co
  assert.match(html,/Agregar pedido/);assert.match(html,/Abrir pedido/);assert.match(html,/Faltan del pedido/);assert.match(html,/<b>18<\/b> <small>de 20<\/small>/);
  assert.doesNotMatch(html,/<form|<input|Packing list|Conteo|Recibidas acumuladas/);assert.equal((html.match(/Abrir pedido/g)||[]).length,1);
 });
+test('operative sees the same receipt order table and progress without add or freight controls',()=>{
+ const data={review:false,canRecount:false,canManageReceipt:false,session:{id:'session',reference:'Llegada',total_boxes:20,status:'DRAFT'},batches:[{...batch,counted_here:3,destination_name:'Treviño'}],orders:[],boxes:[],items:[],foreign:[],foreignBoxes:[],documents:[],cost:null,pending:[]};
+ const tree=mount(base+'receiving-editor.tsx','default',{data,products:[]})();
+ const list=nodes(tree).find(n=>n.type===BatchIntake||n.props?.batches===data.batches);
+ assert.ok(list);assert.equal(list.props.draft,false);
+ const html=renderToStaticMarkup(React.createElement(BatchIntake,list.props));
+ assert.match(html,/Pedidos de esta recepción/);assert.match(html,/Treviño/);assert.match(html,/3\/18 contadas/);assert.match(html,/Ver pedido/);
+ assert.doesNotMatch(html,/Agregar pedido|Recibir faltantes|Flete/);
+});
 test('add action opens a separate dialog, and opening a row targets that order',()=>{
  let opened;const render=mount(base+'batch-intake.tsx','default',{batches:[batch],pending:[],products,busy:false,draft:true,save:async()=>true,onOpen:id=>{opened=id}});
  let tree=render();nodes(tree).find(n=>n.type==='button'&&text(n)==='+ Agregar pedido').props.onClick();tree=render();
