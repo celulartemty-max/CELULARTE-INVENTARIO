@@ -1,4 +1,11 @@
 import 'server-only';
+const emptyReceiptSql=`s.status='DRAFT'
+ AND NOT EXISTS(SELECT 1 FROM receiving_cartons b WHERE b.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_foreign_cartons f WHERE f.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_documents d WHERE d.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_destination_arrivals a WHERE a.origin_session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM audit_events e WHERE e.action IN ('RECEIVING_BATCH_CREATED','RECEIVING_ORDER_REMOVED') AND e.new_value->>'sessionId'=s.id::text)`;
 import { requireSystemRegistration } from '@/lib/auth/special-permissions';
 import { sql, withTransaction } from '@/lib/db';
 import { assertBranchAccess, getAuthorizedBranchIds, hasModulePermission } from '@/lib/auth/authorization';
@@ -43,6 +50,14 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             throw new Error('Recepción no encontrada.');
         // Counting is shared across receiving teams; approvals and POS retain scope.
         if(!['count','saveCount','addItem'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
+        if(b.action==='deleteEmptyReceipt'){
+            if(u.role!=='MASTER')throw new Error('Solo el máster puede borrar recepciones.');
+            if(b.confirm!==true)throw new Error('Confirma que deseas borrar esta recepción vacía.');
+            const removed=await c.query(`DELETE FROM receiving_sessions s WHERE s.id=$1 AND ${emptyReceiptSql} RETURNING s.id`,[sessionId]);
+            if(!removed.rowCount)throw new Error('Solo se puede borrar una recepción vacía, sin pedidos, cajas, documentos ni registros previos.');
+            await audit(c,u,s.branch_id,'RECEIVING_EMPTY_RECEIPT_DELETED',{sessionId,previous:s,reason:'Recepción vacía creada por error'});
+            return {ok:true};
+        }
         if(b.action==='changeBoxProduct'){
             const {changeBoxProduct}=await import('./box-product-change');
             return changeBoxProduct(c,u,s,b);

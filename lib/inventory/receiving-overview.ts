@@ -1,4 +1,11 @@
 import {receiptPendingSql} from './receipt-pending';
+const emptyReceiptSql=`s.status='DRAFT'
+ AND NOT EXISTS(SELECT 1 FROM receiving_cartons b WHERE b.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_foreign_cartons f WHERE f.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_documents d WHERE d.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM receiving_destination_arrivals a WHERE a.origin_session_id=s.id)
+ AND NOT EXISTS(SELECT 1 FROM audit_events e WHERE e.action IN ('RECEIVING_BATCH_CREATED','RECEIVING_ORDER_REMOVED') AND e.new_value->>'sessionId'=s.id::text)`;
 import 'server-only';
 import { withTransaction } from '@/lib/db';
 import type { SessionUser } from '@/lib/auth/types';
@@ -11,7 +18,7 @@ export type ReceiptDestination = {
 export type ReceiptOverview = {
     id: string; reference: string; arrival_date: string; created_at?: string; pending_count?:boolean; total_boxes: number; status: string;
     origin: string; arrived: number; counted: number | null; can_open: boolean;
-    destinations: ReceiptDestination[];
+    destinations: ReceiptDestination[]; can_delete?:boolean;
 };
 
 export async function receivingOverview(u: SessionUser): Promise<ReceiptOverview[]> {
@@ -21,7 +28,7 @@ export async function receivingOverview(u: SessionUser): Promise<ReceiptOverview
         // Shared reception visibility does not include freight or grant POS actions.
         // EXISTS cannot multiply physical cartons.
         const receipts = (await c.query(`SELECT s.id::text,s.reference,s.arrival_date::text,s.created_at::text,s.total_boxes,s.status,(${receiptPendingSql}) pending_count,origin.name origin,
-            ($1::uuid[] IS NULL OR s.branch_id=ANY($1::uuid[])) can_open,
+            ($1::uuid[] IS NULL OR s.branch_id=ANY($1::uuid[])) can_open,(${emptyReceiptSql}) can_delete,
             count(b.id)::int + COALESCE((SELECT sum(f.carton_count) FROM receiving_foreign_cartons f WHERE f.session_id=s.id AND f.voided_at IS NULL),0)::int arrived,
             CASE WHEN $1::uuid[] IS NULL OR s.branch_id=ANY($1::uuid[]) THEN count(b.counted_at)::int ELSE NULL END counted
             FROM receiving_sessions s JOIN branches origin ON origin.id=s.branch_id
@@ -44,6 +51,6 @@ export async function receivingOverview(u: SessionUser): Promise<ReceiptOverview
             const group = byReceipt.get(destination.session_id) ?? [];
             group.push(destination); byReceipt.set(destination.session_id, group);
         }
-        return receipts.map(receipt => ({ ...receipt, destinations: byReceipt.get(receipt.id) ?? [] }));
+        return receipts.map(receipt => ({ ...receipt,can_delete:u.role==='MASTER'&&receipt.can_delete===true, destinations: byReceipt.get(receipt.id) ?? [] }));
     });
 }

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import DeleteEmptyReceipt from './delete-empty-receipt';
 import {receiptTitle} from '@/lib/inventory/receipt-title';
 import type { ReceiptOverview } from '@/lib/inventory/receiving-overview';
 
@@ -17,6 +18,7 @@ export default function ReceivingReceiptCard({ receipt: r }: { receipt: ReceiptO
         <div className="receivingSessionNumbers"><div><strong>{r.arrived} <small>/ {r.total_boxes}</small></strong><span>Cajas identificadas{!r.can_open && ' en origen'}</span></div><div><strong>{r.can_open ? r.counted ?? 0 : destinationCounted}</strong><span>{r.can_open ? 'Cajas propias contadas' : 'Cajas contadas en tu sucursal'}</span></div></div>
         <progress aria-label={`Avance de cajas de ${r.reference}`} max={r.total_boxes} value={r.arrived}/>
         <div className="receivingSessionFooter"><span>{Math.max(0, r.total_boxes - r.arrived)} por identificar</span>{r.can_open && <Link className="receivingReceiptOpen" href={`/entradas/pedidos/${r.id}`}>Abrir recepción →</Link>}</div>
+        {r.can_delete&&<DeleteEmptyReceipt id={r.id} title={receiptTitle(r.arrival_date,r.total_boxes)}/>}
         {r.destinations.length > 0 && <details className="receivingReceiptDestinations"><summary><span><b>Cajas por sucursal</b><small>{boxesForDestination} de estas {r.total_boxes} cajas {r.can_open ? 'son para otra sucursal' : 'son para tu sucursal'}</small></span><span className="receivingReceiptChevron" aria-hidden="true">⌄</span></summary>
             <div className="receivingReceiptDestinationList">{Array.from(grouped, ([name, orders]) => <section key={name} className="receivingReceiptDestination"><div className="receivingReceiptDestinationTitle"><h4>{name}</h4><span>{orders.reduce((n, o) => n + o.boxes, 0)} cajas</span></div>
                 {orders.map(o => <div key={o.order_id} className="receivingReceiptDestinationOrder"><div><b>{o.product}</b><small>{o.shipping} · {o.boxes} cajas de esta recepción</small><small>{o.arrived} recibidas en destino · {o.counted} contadas</small></div>{o.can_open ? <Link className="receivingReceiptDestinationOpen" href={`/entradas/pedidos/destino/${o.order_id}`}>Ver cajas →</Link> : <span className="receivingReceiptDestinationWait">Confirma su llegada en {o.destination}</span>}</div>)}
