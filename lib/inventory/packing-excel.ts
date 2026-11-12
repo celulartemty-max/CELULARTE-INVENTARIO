@@ -109,7 +109,9 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
   if(!current||(modelCol>=0&&!model))throw Error(`Falta caja o modelo en la fila ${r+1}.`);
   rowBoxes.set(r,current);
   let box=byBox.get(current);if(!box){box={number:current,items:[]};byBox.set(current,box);boxes.push(box);}
-  const materialColor=descriptionColors?label(merged(r,descriptionCol)).match(/[-–—]\s*(black|white|blue|red|pink|purple|green|yellow|orange|gold|silver|clear|transparent|grey|gray|brown|beige|navy|negro|blanco|azul|rojo|rosa|morado|verde|amarillo|naranja|dorado|plateado|transparente|gris|cafe)\s*$/i)?.[1]:undefined;
+  // Bilingual supplier labels may append Chinese shade names or qualifiers.
+  // Preserve the full suffix: GOLD金色 and GOLD沙漠色 must not collapse.
+  const materialColor=descriptionColors?label(merged(r,descriptionCol)).match(/[-–—]\s*((?:titanium gr[ae]y|dark cherry|teal|black|white|blue|red|pink|purple|green|yellow|orange|gold|silver|clear|transparent|grey|gray|brown|beige|navy|negro|blanco|azul|rojo|rosa|morado|verde|amarillo|naranja|dorado|plateado|transparente|gris|cafe)(?:\s*[\u3400-\u9fff]+(?:[（(][\u3400-\u9fff]+[）)])?)?)\s*$/i)?.[1]:undefined;
   if(descriptionColors&&!materialColor)throw Error(`No se pudo identificar el color al final de Material en la fila ${r+1}. Usa COLOR y CANTIDAD para indicarlo sin ambigüedad.`);
   const source=descriptionColors?[{name:materialColor!,c:qtyCol}]:colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
   let rowSum=0,found=false;

@@ -8,6 +8,15 @@ function load(path,mocks={}){const m={exports:{}};const code=ts.transpileModule(
 const parse=load('lib/inventory/packing-excel.ts').readPackingExcel;
 function file(rows,{merge=[],second=false}={}){const w=XLSX.utils.book_new(),s=XLSX.utils.aoa_to_sheet(rows);s['!merges']=merge;XLSX.utils.book_append_sheet(w,s,'PER AIR');if(second)XLSX.utils.book_append_sheet(w,XLSX.utils.aoa_to_sheet([['Other branch']]),'JAPS');return XLSX.write(w,{type:'buffer',bookType:'xlsx'});}
 const header=['CTN','MODEL','18 · Negro','NEW 3 · Gris claro','Quantity','CTN TOTAL','KG','CM'];
+test('bilingual Material colours preserve Chinese shade distinctions, compound names and qualifiers',()=>{
+ const shades=['BLACK黑色','SILVER银色','BLUE蓝色','PINK粉色','GOLD金色','GOLD沙漠色','TITANIUM GREY钛灰','TITANIUM GREY钛原','SILVER银色(白)','TEAL深青色','BLUE群青','DARK CHERRY深樱桃色','ORANGE橙色'];
+ const h=['Carton No','Material','Photo','Brand','Model','Quantity',null];
+ const merge=[{s:{r:0,c:5},e:{r:0,c:6}}];
+ const rows=[h,...shades.map((color,i)=>[1,'CD camera lens with package-'+color,null,'Apple','IP 16',50,i===0?shades.length*50:null]),['Total',null,null,null,null,shades.length*50,shades.length*50]];
+ const p=parse(file(rows,{merge}));assert.deepEqual(p.colors,shades);assert.equal(p.boxes[0].items.length,shades.length);
+ for(const bad of ['BLACK123','unknown','BLACK黑色 extra'])assert.throws(()=>parse(file([h,[1,'Lens-'+bad,null,'Apple','IP 16',50,50]],{merge})),/identificar el color/);
+ const duplicate=[h,[1,'Lens-BLACK黑色',null,'Apple','IP 16',50,100],[1,'Lens-BLACK黑色',null,'Apple','IP 16',50]];assert.throws(()=>parse(file(duplicate,{merge})),/realmente repetido/);
+});
 test('offset supplier table reads merged Quantity as detail/carton controls and Material suffix as colour',()=>{
  const h=[null,'Carton No.','Material','Photo','Brand','Model','Quantity',null,'Weight','Width*Length*Height','CBM'];
  const merge=[{s:{r:2,c:6},e:{r:2,c:7}},{s:{r:3,c:1},e:{r:4,c:1}},{s:{r:3,c:7},e:{r:4,c:7}}];
