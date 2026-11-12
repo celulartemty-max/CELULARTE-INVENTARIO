@@ -105,10 +105,10 @@ test('partial order asks for exact numbers, validates quantity and preserves a f
  await submit('1-17');assert.equal(calls.length,0);tree=render();assert.match(text(tree),/no coinciden/);
  await submit('1-12,15-20');assert.equal(calls.length,1);assert.equal(calls[0].received,18);assert.equal(calls[0].numbers,'1-12,15-20');tree=render();assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,'18');
 });
-test('foreign order without catalog product still supports manual label',async()=>{
+test('external shipping mark hides all product and supplier controls and saves without a product',async()=>{
  let payload;const render=mount(base+'batch-intake.tsx','NewBatchForm',{products,busy:false,save:async value=>{payload=value;return true},onSaved(){}});
- let tree=render();nodes(tree).find(n=>n.type==='select'&&!n.props.name).props.onChange({target:{value:'foreign'}});tree=render();assert.ok(nodes(tree).some(n=>n.props?.name==='productLabel'));
- nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'5'}});tree=render();await tree.props.onSubmit({preventDefault(){},currentTarget:{fields:{productLabel:'ANILLO CDMX',shipping:'AIR',marking:'CDMX'}}});
+ let tree=render();nodes(tree).find(n=>n.props?.name==='marking').props.onChange({target:{value:'GAL'}});tree=render();assert.ok(!nodes(tree).some(n=>n.props?.role==='combobox'||['product','productLabel','supplier'].includes(n.props?.name)));
+ nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'5'}});tree=render();await tree.props.onSubmit({preventDefault(){},currentTarget:{fields:{shipping:'AIR',marking:'GAL'}}});
  assert.ok(payload.isForeign);assert.equal(payload.productId,null);assert.equal(payload.received,5);
 });
 test('JAPS destination packing can be prepared at source without enabling source counting',()=>{

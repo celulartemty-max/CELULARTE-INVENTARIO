@@ -8,6 +8,12 @@ const source=readFileSync(new URL('../lib/inventory/receiving-validation.ts',imp
 const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
 const m={exports:{}};vm.runInNewContext('(function(require,module,exports){'+code+'})') (require,m,m.exports);
 const {packingSchema,countSchema,arrivalSchema,isReviewer,markingSchema,foreignCartonSchema,parseCartonNumbers,batchSchema}=m.exports;
+test('external cartons do not require product or content, PER/JAPS still require catalogue product',()=>{
+ const b={reference:'AJENAS',productId:null,isForeign:true,shipping:'SEA',marking:'GAL',total:5,received:5,numbers:'1-5'};
+ assert.equal(batchSchema.safeParse(b).success,true);
+ for(const marking of ['PER','JAPS'])assert.equal(batchSchema.safeParse({...b,marking}).success,false);
+ assert.equal(foreignCartonSchema.parse({quantity:5,shipping:'SEA',marking:'GAL'}).product,'Cajas ajenas');
+});
 const box=n=>({number:n,items:[{model:'A57',color:'NEGRO',expected:10}]});
 test('different cartons with identical contents remain independent',()=>assert.equal(packingSchema.parse({reference:'A',warnings:[],boxes:[box('1'),box('2')]}).boxes.length,2));
 test('duplicate carton number is rejected within an order',()=>assert.equal(packingSchema.safeParse({reference:'A',warnings:[],boxes:[box('1'),box('1')]}).success,false));

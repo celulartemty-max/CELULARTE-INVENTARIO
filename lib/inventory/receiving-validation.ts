@@ -22,13 +22,13 @@ export const batchSchema = z.object({
     shipping: z.enum(['SEA','AIR']), marking: markingSchema, isForeign: z.boolean(),
     total: z.number().int().min(1).max(1000), received: z.number().int().min(1).max(1000), numbers: z.string().trim().max(6000)
 }).superRefine((x,ctx) => {
-    if (!x.productId && (!x.isForeign || !x.productLabel)) ctx.addIssue({code:'custom',message:'Selecciona el producto; para ajenas puedes escribirlo manualmente.'});
+    if (!x.productId && (!x.isForeign || ['PER','JAPS'].includes(x.marking))) ctx.addIssue({code:'custom',message:'Selecciona el producto del catálogo para PER o JAPS.'});
     if (x.received > x.total) ctx.addIssue({code:'custom',message:'No pueden llegar más cajas que el total del pedido.'});
     try { if (parseCartonNumbers(x.numbers,x.total).length !== x.received) ctx.addIssue({code:'custom',message:'Los números de caja no coinciden con la cantidad recibida hoy.'}); }
     catch(e) { ctx.addIssue({code:'custom',message:e instanceof Error ? e.message : 'Números de caja no válidos.'}); }
 });
 export const foreignCartonSchema = z.object({
-    product: text.min(1), quantity: z.number().int().min(1).max(1000),
+    product: text.default('Cajas ajenas'), quantity: z.number().int().min(1).max(1000),
     shipping: z.enum(['SEA', 'AIR']), marking: markingSchema,
     notes: z.string().trim().max(2000).default('')
 });

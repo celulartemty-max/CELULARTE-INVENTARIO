@@ -84,7 +84,8 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const destinationId = destination ? (await c.query("SELECT id FROM branches WHERE name=$1 AND status='ACTIVE'",[destination])).rows[0]?.id : null;
             if(destination && !destinationId) throw new Error('Sucursal destino no disponible.');
             x.isForeign = !destinationId || destinationId !== s.branch_id;
-            if(!x.isForeign && !x.productId) throw new Error('Selecciona el producto del catálogo para esta sucursal.');
+            if(destinationId && !x.productId) throw new Error('Selecciona el producto del catálogo para PER o JAPS.');
+            if(!destinationId){x.productId=null;x.productLabel='Cajas ajenas';}
             if (x.productId && !(await c.query("SELECT 1 FROM products WHERE id=$1 AND status='ACTIVE'",[x.productId])).rowCount) throw new Error('Producto no válido.');
             const physical = await c.query('SELECT (SELECT count(*) FROM receiving_cartons WHERE session_id=$1)::int + COALESCE((SELECT sum(carton_count) FROM receiving_foreign_cartons WHERE session_id=$1 AND voided_at IS NULL),0)::int n',[sessionId]);
             if (physical.rows[0].n + x.received > s.total_boxes) throw new Error('Se excede el total físico de esta recepción. Solo se suman las recibidas hoy.');
