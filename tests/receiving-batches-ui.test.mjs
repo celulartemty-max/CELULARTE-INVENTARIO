@@ -93,17 +93,20 @@ test('mobile product name opens its order without horizontal scrolling, and stay
 test('complete order auto-fills received cartons and submits a valid range without requiring a reference',async()=>{
  let payload,saved=false;const render=mount(base+'batch-intake.tsx','NewBatchForm',{products,busy:false,save:async value=>{payload=value;return true},onSaved:()=>{saved=true}});
  let tree=render();nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'20'}});tree=render();
- assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,'20');assert.ok(!nodes(tree).some(n=>n.props?.name==='numbers'));assert.ok(!nodes(tree).find(n=>n.props?.name==='reference').props.required);
+ assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,20);assert.ok(!nodes(tree).some(n=>n.props?.name==='numbers'));assert.ok(!nodes(tree).find(n=>n.props?.name==='reference').props.required);
  await tree.props.onSubmit({preventDefault(){},currentTarget:{fields:{product:productId,shipping:'SEA',marking:'PER NICO'}}});
- assert.equal(payload.received,20);assert.equal(payload.total,20);assert.equal(payload.numbers,'1-20');assert.match(payload.reference,/Combo Case · PER NICO-/);assert.ok(saved);
+ assert.equal(payload.received,20);assert.equal(payload.total,20);assert.equal(payload.numbers,Array.from({length:20},(_,i)=>String(i+1)).join(','));assert.match(payload.reference,/Combo Case · PER NICO-/);assert.ok(saved);
 });
-test('partial order asks for exact numbers, validates quantity and preserves a failed form',async()=>{
+test('carton tiles update arrival count, toggle without duplicates, reject empty selection and preserve failed save',async()=>{
  const calls=[];const render=mount(base+'batch-intake.tsx','NewBatchForm',{products,busy:false,save:async value=>{calls.push(value);return false},onSaved:()=>assert.fail('must not close on failed save')});
- let tree=render();nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'20'}});tree=render();nodes(tree).find(n=>n.props?.name==='received').props.onChange({target:{value:'18'}});tree=render();
- assert.ok(nodes(tree).some(n=>n.props?.name==='numbers'&&n.props.required));
+ let tree=render();nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'20'}});tree=render();
+ const click=label=>{nodes(tree).find(n=>n.props?.['aria-label']===label).props.onClick();tree=render()};
+ click('Caja 13');click('Caja 14');assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,18);assert.ok(nodes(tree).find(n=>n.props?.name==='received').props.readOnly);
  const submit=numbers=>tree.props.onSubmit({preventDefault(){},currentTarget:{fields:{product:productId,shipping:'SEA',marking:'PER NICO',numbers}}});
- await submit('1-17');assert.equal(calls.length,0);tree=render();assert.match(text(tree),/no coinciden/);
- await submit('1-12,15-20');assert.equal(calls.length,1);assert.equal(calls[0].received,18);assert.equal(calls[0].numbers,'1-12,15-20');tree=render();assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,'18');
+ await submit('ignored');assert.equal(calls.length,1);assert.equal(calls[0].received,18);assert.equal(calls[0].numbers,'1,2,3,4,5,6,7,8,9,10,11,12,15,16,17,18,19,20');tree=render();assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,18);
+ click('Caja 13');click('Caja 13');assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,18);
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='Quitar todas').props.onClick();tree=render();await submit('');tree=render();assert.equal(calls.length,1);assert.match(text(tree),/Selecciona al menos una caja/);
+ nodes(tree).find(n=>n.props?.name==='total').props.onChange({target:{value:'3'}});tree=render();assert.equal(nodes(tree).filter(n=>n.props?.['aria-label']?.startsWith('Caja ')).length,3);assert.equal(nodes(tree).find(n=>n.props?.name==='received').props.value,3);
 });
 test('external shipping mark hides all product and supplier controls and saves without a product',async()=>{
  let payload;const render=mount(base+'batch-intake.tsx','NewBatchForm',{products,busy:false,save:async value=>{payload=value;return true},onSaved(){}});

@@ -25,8 +25,12 @@ export default function BatchIntake({batches,pending,products,busy,draft,save,on
  </section>;
 }
 export function NewBatchForm({products,busy,save,onSaved}:{products:{id:string;name:string}[];busy:boolean;save:Save;onSaved:()=>void}){
- const [isForeign,setIsForeign]=useState(false),[total,setTotal]=useState(''),[received,setReceived]=useState(''),[error,setError]=useState('');
- const generated=useRef('');const partial=Number(received)>0&&Number(received)<Number(total);
+ const [isForeign,setIsForeign]=useState(false),[total,setTotal]=useState(''),[error,setError]=useState('');
+ const generated=useRef('');
+ const [selectedBoxes,setSelectedBoxes]=useState<string[]>([]);
+ const validTotal=Number.isInteger(Number(total))&&Number(total)>0&&Number(total)<=1000?Number(total):0;
+ const arrived=selectedBoxes.filter(n=>Number(n)<=validTotal);
+ const selectBoxes=(values:string[])=>setSelectedBoxes(values);
  const [marking,setMarking]=useState('');const external=!!marking&&!['PER','JAPS'].includes(marking);
  const [search,setSearch]=useState(''),[selectedProduct,setSelectedProduct]=useState('');
  const [open,setOpen]=useState(false),[active,setActive]=useState(-1);const listId=useId();
@@ -36,7 +40,7 @@ export function NewBatchForm({products,busy,save,onSaved}:{products:{id:string;n
  const choose=(product:{id:string;name:string})=>{setSelectedProduct(product.id);setSearch(product.name);setOpen(false);setActive(-1)};
  return <form className="receivingCompactForm" onSubmit={async e=>{e.preventDefault();setError('');const f=new FormData(e.currentTarget);if(!generated.current)generated.current=crypto.randomUUID().slice(0,8);const product=products.find(p=>p.id===f.get('product'));const reference=String(f.get('reference')||'').trim()||String(product?.name||f.get('productLabel')||'Pedido').slice(0,80)+' · '+String(f.get('marking')).slice(0,60)+'-'+generated.current;
  if(!isForeign&&!products.some(p=>p.id===f.get('product'))){setError('Selecciona un producto de la lista.');return}
- const value={reference,productId:f.get('product')||null,productLabel:f.get('productLabel')||'',isForeign,shipping:f.get('shipping'),marking:f.get('marking'),total:Number(total),received:Number(received),numbers:partial?String(f.get('numbers')||''):'1-'+total};const parsed=batchSchema.safeParse(value);if(!parsed.success){setError(parsed.error.issues.map(i=>i.message).join(' '));return}if(await save({action:'batch',...parsed.data,supplier:String(f.get('supplier')||'')}))onSaved()}}>
+ const value={reference,productId:f.get('product')||null,productLabel:f.get('productLabel')||'',isForeign,shipping:f.get('shipping'),marking:f.get('marking'),total:Number(total),received:arrived.length,numbers:arrived.join(',')};const parsed=batchSchema.safeParse(value);if(!parsed.success){setError(arrived.length?parsed.error.issues.map(i=>i.message).join(' '):'Selecciona al menos una caja que llegó.');return}if(await save({action:'batch',...parsed.data,supplier:String(f.get('supplier')||'')}))onSaved()}}>
  <fieldset disabled={busy}>
  <label className="receivingField">Shipping Mark<select name="marking" required value={marking} onChange={e=>{setMarking(e.target.value);setIsForeign(!['PER','JAPS'].includes(e.target.value))}}><option value="" disabled>Selecciona…</option>{SHIPPING_MARKS.map(mark=><option key={mark}>{mark}</option>)}</select></label>
  {external?<p>Cajas ajenas · sin producto ni conteo.</p>:<div className="receivingProductPicker" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOpen(false)}}>
@@ -52,8 +56,8 @@ export function NewBatchForm({products,busy,save,onSaved}:{products:{id:string;n
  <label className="receivingField">Proveedor (opcional)<input name="supplier" maxLength={160} placeholder="Ej. LISA"/></label>
  <label className="receivingField">¿De quién son?<select value={isForeign?'foreign':'own'} onChange={e=>setIsForeign(e.target.value==='foreign')}><option value="own">De esta sucursal</option><option value="foreign">Ajenas · solo registro</option></select></label>
  </>}
- <div className="receivingFieldRow"><label className="receivingField">Cajas del pedido<input name="total" type="number" min={1} max={1000} step={1} required placeholder="20" value={total} onChange={e=>{const value=e.target.value;setTotal(value);if(received===''||received===total)setReceived(value)}}/><small>El 20 de “1/20”.</small></label><label className="receivingField">Llegaron hoy<input name="received" type="number" min={1} max={Number(total)||1000} step={1} required value={received} onChange={e=>setReceived(e.target.value)}/></label></div>
- {partial&&<label className="receivingField">¿Cuáles cajas llegaron?<input name="numbers" required maxLength={6000} placeholder="Ej. 1-18 o 1-12,15-20"/><small>Quedarán {Number(total)-Number(received)} pendientes.</small></label>}
+ <div className="receivingFieldRow"><label className="receivingField">Cajas del pedido<input name="total" type="number" min={1} max={1000} step={1} required placeholder="20" value={total} onChange={e=>{const value=e.target.value;setTotal(value);const n=Number(value);selectBoxes(Number.isInteger(n)&&n>0&&n<=1000?Array.from({length:n},(_,i)=>String(i+1)):[])}}/><small>El 20 de “1/20”.</small></label><label className="receivingField">Llegaron hoy<input name="received" type="number" readOnly value={arrived.length}/></label></div>
+ {validTotal>0&&<section aria-label="Seleccionar cajas recibidas"><h3>¿Cuáles cajas llegaron?</h3><p>Toca las cajas que llegaron.</p><div className="actions"><button type="button" disabled={busy} onClick={()=>selectBoxes(Array.from({length:validTotal},(_,i)=>String(i+1)))}>Seleccionar todas</button><button type="button" disabled={busy} onClick={()=>selectBoxes([])}>Quitar todas</button></div><div className="receivingArrivalGrid">{Array.from({length:validTotal},(_,i)=>String(i+1)).map(n=><button type="button" key={n} aria-label={`Caja ${n}`} aria-pressed={arrived.includes(n)} disabled={busy} onClick={()=>selectBoxes(arrived.includes(n)?arrived.filter(v=>v!==n):[...arrived,n].sort((a,b)=>Number(a)-Number(b)))}><span aria-hidden="true">📦</span>{n}{arrived.includes(n)&&<span aria-hidden="true">✓</span>}</button>)}</div><p role="status">{arrived.length} recibidas · {validTotal-arrived.length} pendientes</p></section>}
  <details><summary>Referencia del proveedor (opcional)</summary><label className="receivingField">Referencia<input name="reference" maxLength={160}/></label></details>
  {error&&<p className="receivingError" role="alert">{error}</p>}<button className="receivingSave" disabled={busy}>{busy?'Guardando…':'Guardar pedido'}</button>
  </fieldset></form>;

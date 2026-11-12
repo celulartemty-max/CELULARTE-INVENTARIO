@@ -114,3 +114,7 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .receivingProductOptions [aria-selected=true]{background:#edf4ff;font-weight:600;color:#135cc5}
 .receivingProductEmpty{padding:16px;color:#758299;font-size:14px}
 .receivingOrderTag{font-size:clamp(22px,4vw,32px);font-weight:800;color:#174b90;margin:12px 0 20px;overflow-wrap:anywhere}
+.receivingArrivalGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:8px;max-height:360px;overflow:auto;margin-top:14px;padding:3px}
+.receivingArrivalGrid button{min-height:70px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;border:1px solid #d7dfec;border-radius:12px;background:#fff;color:#52627b;font-size:16px;font-weight:700}
+.receivingArrivalGrid button[aria-pressed=true]{background:#e9f1ff;border-color:#2463cf;color:#174b90}
+.receivingArrivalGrid button:focus-visible{outline:3px solid #6ca5ff;outline-offset:1px}
