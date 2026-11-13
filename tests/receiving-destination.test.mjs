@@ -13,14 +13,16 @@ function moduleFrom(path,mocks={}) {
     vm.runInNewContext('(function(require,module,exports){'+code+'})',{Date,Set})(name=>name in mocks?mocks[name]:name==='./receipt-pending'?{receiptPendingSql:readFileSync(new URL('../lib/inventory/receipt-pending.ts',import.meta.url),'utf8').split('`')[1]}:require(name),mod,mod.exports);
     return mod.exports;
 }
-function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,counted=false,delegated=false}={}) {
+function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,counted=false,delegated=false,countBranch='Plaza del Audio',marking='JAPS',grant=null}={}) {
     const queries=[],audit=[]; let quantities;
-    const order={id:ORDER,branch_id:ORIGIN,destination_branch_id:DEST,reference:'JAPS-20'};
+    const order={id:ORDER,branch_id:ORIGIN,destination_branch_id:DEST,reference:'JAPS-20',marking};
     const box={id:BOX,session_id:physical?SESSION:null,branch_id:ORIGIN,carton_number:'1',counted_at:counted?'2026-10-27':null};
     const query=async(sql,args=[])=>{
         queries.push({sql,args});
         const result=rows=>({rows,rowCount:rows.length});
         if(sql.startsWith('SELECT * FROM receiving_orders'))return result([order]);
+        if(sql.startsWith('SELECT name FROM branches'))return result(countBranch?[{name:countBranch}]:[]);
+        if(sql.startsWith('SELECT status FROM receiving_count_requests'))return result(grant?[{status:grant}]:[]);
         if(sql.startsWith('SELECT 1 FROM receiving_count_delegations'))return result(delegated?[{ok:1}]:[]);
         if(sql.startsWith('SELECT b.id,b.session_id,s.branch_id'))return result(args[1].filter(v=>[BOX,BOX2].includes(v)).map(v=>({...box,id:v})));
         if(sql.startsWith('INSERT INTO receiving_destination_arrivals'))return result(args[1].map(v=>({carton_id:v})));
@@ -52,11 +54,16 @@ test('destination count attribution is returned only to the verified account, ne
   assert.match(q.sql,/CASE WHEN \$3::boolean AND b.counted_at IS NOT NULL THEN \(SELECT name FROM users WHERE id=b.counted_by\) ELSE NULL END counted_by_name/);assert.equal(q.args[2],allowed);
  }
 });
-test('shared receiving counts cross branch boundaries but finished cartons cannot be overwritten',async()=>{
+test('Audio can count its JAPS even in another origin receipt, but finished cartons cannot be overwritten',async()=>{
  const f=fixture({allowed:[ORIGIN],delegated:true});await f.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:1}]}));
  assert.equal(f.quantities()[0].quantity,1);
  const finished=fixture({allowed:[ORIGIN],counted:true});await assert.rejects(finished.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:2}]})),/terminado/);
  assert.ok(!finished.queries.some(q=>q.sql.startsWith('UPDATE')));
+});
+test('destination count requires matching primary branch or this users approved request; pending requests and MASTER alone are insufficient',async()=>{
+ for(const grant of [null,'PENDING','DENIED'])for(const a of ['count','saveCount','addItem','reopenBox']){const f=fixture({countBranch:'Treviño',grant});await assert.rejects(()=>f.destinationAction({...manager,role:'MASTER'},action(a,{lines:[{id:LINE,quantity:1}],model:'A',color:''})),/Solo Audio/);assert.ok(!f.queries.some(q=>/^(UPDATE|INSERT)/.test(q.sql)));}
+ const f=fixture({countBranch:'Treviño',grant:'APPROVED'});await f.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:1}]}));assert.equal(f.quantities()[0].quantity,1);
+ const own=fixture({marking:'PER',countBranch:'Treviño'});await own.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:0}]}));assert.equal(own.quantities()[0].quantity,0);
 });
 test('shared internal counting does not expand POS registration to foreign orders',()=>{
  const source=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');

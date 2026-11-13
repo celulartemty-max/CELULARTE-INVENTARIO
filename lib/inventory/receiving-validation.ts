@@ -1,4 +1,11 @@
 import { z } from 'zod';
+// Shared visibility does not grant cross-branch counting. Only the verified
+// owner account may count both marks; role/temporary viewing access is not enough.
+export function canCountReceivingMark(user:{id:string},mark:string,primaryBranchName:string|null){
+    return user.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'||
+        (mark==='PER'&&primaryBranchName==='Treviño')||
+        (mark==='JAPS'&&primaryBranchName==='Plaza del Audio');
+}
 const text = z.string().trim().max(160);
 export const markingSchema = text.min(1, 'Escribe la marca de la caja.');
 export function parseCartonNumbers(value: string, total: number): string[] {

@@ -10,6 +10,7 @@ import { packingSchema } from '@/lib/inventory/receiving-validation';
 import CountGrid from '../../[id]/count-grid';
 import CountComparison from '../../[id]/count-comparison';
 import CountAttribution from '../../[id]/count-attribution';
+import CountPermissionNotice from '../../[id]/count-permission-notice';
 import PackingReview from '../../[id]/packing-review';
 import ReceivingModal from '../../[id]/receiving-modal';
 import PackingUpload from '../../[id]/packing-upload';
@@ -79,6 +80,7 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
         });
     }
     return <>
+        <CountPermissionNotice key={order.id} orderId={order.id} mark={order.marking} allowed={data.canCount} state={data.countRequest}/>
         <header className="receivingHomeHero"><span className="receivingEyebrow">{order.destination}</span><h1>{order.product}</h1><h2 className="receivingOrderTag">{order.marking}{order.display_title?` · ${order.display_title}`:''}</h2><p>{order.shipping} · {order.total} cajas{order.supplier ? ` · ${order.supplier}` : ''}</p><small>{order.reference} · Origen: {order.origin}</small></header>
         {error && <p className="receivingError" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
         <section className="card pad"><h2>Llegada a {order.destination}</h2><p>{arrived.length} de {order.total} cajas recibidas aquí · {order.counted} contadas</p>
@@ -115,8 +117,9 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
         </section>}
         {data.review&&<CountComparison boxes={arrived} items={items}/>}
         {arrived.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
+            {data.canCount===false&&<p role="status" className="receivingMuted">Solo {order.marking==='JAPS'?'Audio (JAPS)':'Treviño (PER)'} puede contar estas cajas. Vista de consulta.</p>}
             <div className="receivingCartonSquares">{arrived.map(b => <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-pressed={shown === b.id} aria-label={`Caja ${b.carton_number}${b.counted_at ? ', terminada' : ''}`} onClick={() => { setVisited(v => [...new Set([...v, shown ?? '', b.id])]); setActiveBox(b.id); }}>{b.carton_number}{b.counted_at ? ' ✓' : ''}</button>)}</div>
-            {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} colorOrder={order.color_order} busy={busy} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
+            {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} colorOrder={order.color_order} busy={busy||data.canCount===false} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
         </section>}
         {addBox && <ReceivingModal title="Añadir modelo / color" busy={busy} onClose={() => setAddBox(null)}><form className="receivingCompactForm" onSubmit={async e => {
             e.preventDefault(); const f = new FormData(e.currentTarget);

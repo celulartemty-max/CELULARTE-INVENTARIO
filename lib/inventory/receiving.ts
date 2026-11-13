@@ -10,7 +10,7 @@ import { requireSystemRegistration } from '@/lib/auth/special-permissions';
 import { sql, withTransaction } from '@/lib/db';
 import { assertBranchAccess, getAuthorizedBranchIds, hasModulePermission } from '@/lib/auth/authorization';
 import type { SessionUser } from '@/lib/auth/types';
-import { arrivalSchema, countSchema, isReviewer, packingSchema, foreignCartonSchema, batchSchema, parseCartonNumbers } from './receiving-validation';
+import { arrivalSchema, countSchema, isReviewer, packingSchema, foreignCartonSchema, batchSchema, parseCartonNumbers,canCountReceivingMark } from './receiving-validation';
 import { z } from 'zod';
 import { shippingMarkSchema, destinationName } from './shipping-marks';
 import { resetPacking } from './packing-reset';
@@ -78,6 +78,13 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         }
         if (s.status !== 'DRAFT')
             throw new Error('La recepción ya está cerrada.');
+        if(['count','saveCount','addItem','reopenBox'].includes(String(b.action))){
+            const scope=(await c.query(`SELECT o.marking,(SELECT name FROM branches WHERE id=$3::uuid AND status='ACTIVE') count_branch,
+                EXISTS(SELECT 1 FROM receiving_count_requests r WHERE r.order_id=o.id AND r.user_id=$4::uuid AND r.status='APPROVED') count_granted
+                FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id
+                WHERE b.id=$1 AND b.session_id=$2 AND o.voided_at IS NULL FOR UPDATE OF o`,[id.parse(b.boxId),sessionId,u.primaryBranchId??null,u.id])).rows[0];
+            if(!scope||(!scope.count_granted&&!canCountReceivingMark(u,scope.marking,scope.count_branch??null)))throw new Error('Solo Audio puede contar JAPS y solo Treviño puede contar PER. Solicita permiso para este pedido.');
+        }
         if(b.action==='setOrderTitle'){
             if(u.role!=='MASTER')throw new Error('Solo el máster puede editar el título.');
             const orderId=id.parse(b.orderId),title=z.string().trim().max(80).parse(b.title??'');
@@ -290,11 +297,13 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const session = rows[0];
     if (!session)
         throw new Error('No encontrada');
+    const countBranch=u.primaryBranchId?(await sql`SELECT name FROM branches WHERE id=${u.primaryBranchId}::uuid AND status='ACTIVE'`)[0]?.name:null;
+    const countRequests=await sql`SELECT r.order_id::text,r.status FROM receiving_count_requests r WHERE r.user_id=${u.id}::uuid AND EXISTS(SELECT 1 FROM receiving_cartons b WHERE b.order_id=r.order_id AND b.session_id=${sessionId}::uuid)`;
     // ENTRADAS grants shared receipt visibility; freight remains MASTER-only below.
     const review = isReviewer(u.role);
     const authorizedBranches=await getAuthorizedBranchIds(u);
     const canManageReceipt=authorizedBranches===null||authorizedBranches.includes(String(session.branch_id));
-    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.display_title,o.shipping,o.color_order,COALESCE(b.marking,o.marking) marking,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product,b.counted_at::text,b.notes,CASE WHEN ${u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'}::boolean AND b.counted_at IS NOT NULL THEN (SELECT name FROM users WHERE id=b.counted_by) ELSE NULL END counted_by_name FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY o.reference,b.carton_number`;
+    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.display_title,o.marking count_mark,o.shipping,o.color_order,COALESCE(b.marking,o.marking) marking,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product,b.counted_at::text,b.notes,CASE WHEN ${u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'}::boolean AND b.counted_at IS NOT NULL THEN (SELECT name FROM users WHERE id=b.counted_by) ELSE NULL END counted_by_name FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY o.reference,b.carton_number`;
     const foreignBoxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND o.is_foreign AND NOT COALESCE((o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio'))),false) ORDER BY o.reference,b.carton_number`;
     const foreign = await sql `SELECT id::text,product,carton_count,shipping,marking,notes FROM receiving_foreign_cartons WHERE session_id=${sessionId}::uuid AND voided_at IS NULL ORDER BY created_at,id`;
     // Expected values never enter the operative response, including server component props.
@@ -314,5 +323,8 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const canRegisterSystem=await hasModulePermission(u,'REGISTRO_SISTEMA');
     const registrationRows=canRegisterSystem ? (await (await import('./system-registration')).registrationPending(u)).filter(r=>r.kind==='RECEIVING_ORDER'&&boxes.some(b=>b.order_id===r.id)) : [];
     const registeredBoxes=await sql `SELECT r.carton_id::text FROM receiving_origin_registrations r WHERE r.session_id=${sessionId}::uuid`;
+    const countAllowed=(orderId:unknown,mark:unknown)=>canCountReceivingMark(u,String(mark),countBranch??null)||countRequests.some(r=>r.order_id===orderId&&r.status==='APPROVED');
+    for(const box of boxes){box.can_count=countAllowed(box.order_id,box.count_mark);delete box.count_mark;}
+    for(const batch of batches){batch.can_count=countAllowed(batch.id,batch.marking);batch.count_request=countRequests.find(r=>r.order_id===batch.id)?.status??null;}
     return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canManageReceipt, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)) };
 }

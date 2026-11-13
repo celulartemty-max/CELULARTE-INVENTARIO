@@ -27,6 +27,14 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('other-branch notice preserves viewing and offers request, pending status grants no controls',()=>{
+ const Notice=load(base+'count-permission-notice.tsx').default;
+ const render=props=>renderToStaticMarkup(React.createElement(Notice,{orderId:'order',mark:'PER',allowed:false,...props}));
+ const trevino=render({});assert.match(trevino,/pertenece a Treviño/);assert.match(trevino,/Solicitar permiso para contar/);
+ assert.match(render({mark:'JAPS'}),/pertenece a Plaza del Audio/);
+ const pending=render({state:'PENDING'});assert.match(pending,/Pendiente de aprobación/);assert.doesNotMatch(pending,/Solicitar permiso para contar<\/button/);
+ assert.equal(render({allowed:true}),'');
+});
 test('private count attribution shows the finisher and Monterrey time only after completion',()=>{
  const Attribution=load(base+'count-attribution.tsx').default;
  const render=props=>renderToStaticMarkup(React.createElement(Attribution,props));

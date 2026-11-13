@@ -113,7 +113,7 @@ test('source reconteo preserves quantities and audits them; only MASTER can reop
         const queries=[],previous=[{id:ITEM,counted:12},{id:id(20),counted:0},{id:id(21),counted:null}];
         const c={query:async(sql,args=[])=>{
             queries.push({sql,args});
-            const rows=sql.startsWith('SELECT * FROM receiving_sessions')?[{id:SESSION,branch_id:BRANCH,status:options.closed?'CLOSED':'DRAFT'}]:sql.startsWith('SELECT l.id,l.counted')?previous:sql.startsWith('UPDATE receiving_cartons')&&!options.missing?[{id:BOX}]:[];
+            const rows=sql.startsWith('SELECT o.marking,')?[{marking:'PER',count_granted:true}]:sql.startsWith('SELECT * FROM receiving_sessions')?[{id:SESSION,branch_id:BRANCH,status:options.closed?'CLOSED':'DRAFT'}]:sql.startsWith('SELECT l.id,l.counted')?previous:sql.startsWith('UPDATE receiving_cartons')&&!options.missing?[{id:BOX}]:[];
             return {rows,rowCount:rows.length};
         }};
         const f=load('lib/inventory/receiving.ts',{'server-only':{},'@/lib/db':{withTransaction:fn=>fn(c)},'@/lib/auth/special-permissions':{},'@/lib/auth/authorization':{hasModulePermission:async()=>true,assertBranchAccess:async()=>{}},'./receiving-validation':load('lib/inventory/receiving-validation.ts'),'./shipping-marks':{},'./packing-reset':{},'./packing-column-order':{},'./receiving-order-removal':{}});

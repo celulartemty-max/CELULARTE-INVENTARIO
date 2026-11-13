@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function Page({searchParams=Promise.resolve({})}:{searchParams?:Promise<{status?:string;new?:string}>}) {
     const u = await requireUser();
     await receivingAccess(u);
+    const permissionPending=u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'?(await sql`SELECT count(*)::int n FROM receiving_count_requests r JOIN receiving_orders o ON o.id=r.order_id WHERE r.status='PENDING' AND o.voided_at IS NULL`)[0]?.n??0:null;
     const ids = await getAuthorizedBranchIds(u);
     const all = await sql `SELECT id::text,name FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio') ORDER BY name`;
     const branches = all.filter(b => ids === null || ids.includes(String(b.id))) as {
@@ -22,6 +23,7 @@ export default async function Page({searchParams=Promise.resolve({})}:{searchPar
     const cutoff=new Date().getTime()-30*86400000;
     const rows=allRows.filter(r=>filter==='open'?(r.can_open&&r.pending_count===true)||(!r.can_open&&r.destinations.some(d=>d.can_open&&d.counted<d.boxes)):filter==='closed'?((r.can_open&&['CLOSED','POS_REGISTERED','ARCHIVED'].includes(r.status))||(!r.can_open&&r.destinations.some(d=>d.can_open&&d.counted===d.boxes)))&&new Date(r.created_at||r.arrival_date).getTime()>=cutoff:true);
     return <main className="receivingOrders receivingHome"><header className="receivingHomeHero"><span className="receivingEyebrow">ENTRADA DE MERCANCÍA</span><h1>{newReceipt?'Nueva recepción':filter==='open'?'Recepciones en proceso':'Recepciones'}</h1><p>Registra la llegada y lleva el avance de tus cajas.</p></header>{newReceipt ? (branches.length>0 ? <ReceivingNew branches={branches} canFreight={u.role==='MASTER'} expanded/> : <p role="status">Tu usuario no tiene una sucursal habilitada para crear recepciones. Solicita al administrador que revise tu asignación.</p>) : <Link className="receivingHistory" href="/entradas/nueva">+ Nueva recepción</Link>}
+    {permissionPending!==null&&<Link className="receivingHistory" href="/entradas/permisos-conteo">Permisos de conteo · {permissionPending} pendientes →</Link>}
     {!newReceipt&&<><div className="receivingListHeader"><h2>Todas las recepciones</h2><span className="receivingMuted">{rows.length} {rows.length === 1 ? 'registro' : 'registros'}</span></div>
     <section className="receivingSessionList" aria-label="Recepciones">{rows.map(r => <ReceivingReceiptCard key={r.id} receipt={r}/>)}{!rows.length&&<div className="receivingEmpty card pad">📦 Aún no hay recepciones.</div>}</section><Link className="receivingHistory" href="/entradas">Ver recepciones anteriores →</Link></>}</main>;
 }

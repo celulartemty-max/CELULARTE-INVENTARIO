@@ -3,7 +3,7 @@ import {useId,useRef,useState} from 'react';
 import {batchSchema} from '@/lib/inventory/receiving-validation';
 import ReceivingModal from './receiving-modal';
 import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
-export type Batch = {packing_here?:number;is_mixed?:boolean;display_title?:string;id:string;reference:string;product:string;shipping:string;marking:string;supplier?:string;is_foreign:boolean;destination_name?:string;total:number;received_here:number;received_total:number;remaining:number;counted_here?:number;registered_here?:number};
+export type Batch = {can_count?:boolean;count_request?:string|null;packing_here?:number;is_mixed?:boolean;display_title?:string;id:string;reference:string;product:string;shipping:string;marking:string;supplier?:string;is_foreign:boolean;destination_name?:string;total:number;received_here:number;received_total:number;remaining:number;counted_here?:number;registered_here?:number};
 export function BatchStatus({batch:b}:{batch:Batch}){
  if(b.is_foreign&&!['Treviño','Plaza del Audio'].includes(b.destination_name??''))return <span className="receivingBatchStatus neutral">Solo registro</span>;
  const total=b.received_here,counted=b.counted_here??0,registered=b.registered_here??0;
