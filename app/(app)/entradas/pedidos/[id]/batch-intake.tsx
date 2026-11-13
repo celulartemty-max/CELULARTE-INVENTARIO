@@ -1,6 +1,6 @@
 'use client';
 import {useId,useRef,useState} from 'react';
-import {parseCartonNumbers,batchSchema} from '@/lib/inventory/receiving-validation';
+import {batchSchema} from '@/lib/inventory/receiving-validation';
 import ReceivingModal from './receiving-modal';
 import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
 export type Batch = {display_title?:string;id:string;reference:string;product:string;shipping:string;marking:string;supplier?:string;is_foreign:boolean;destination_name?:string;total:number;received_here:number;received_total:number;remaining:number;counted_here?:number;registered_here?:number};
@@ -63,7 +63,12 @@ export function NewBatchForm({products,busy,save,onSaved}:{products:{id:string;n
  </fieldset></form>;
 }
 export function ExistingArrival({batch,boxes,busy,save}:{batch:Batch;boxes:PendingCarton[];busy:boolean;save:Save}){
- const [error,setError]=useState(''),[selected,setSelected]=useState<string[]>([]),[numbers,setNumbers]=useState('');
- let count=0;try{count=parseCartonNumbers(numbers,batch.total).length}catch{}
- return <div><p><b>{batch.product}</b> · {batch.remaining} cajas pendientes</p><details><summary>Ver números pendientes</summary><p>{boxes.map(b=>b.carton_number).join(', ')}</p></details><form className="receivingCompactForm" onSubmit={async e=>{e.preventDefault();setError('');try{const values=parseCartonNumbers(numbers,batch.total);const ids=values.map(n=>{const matches=boxes.filter(b=>b.carton_number===n||new RegExp('^0*'+n+'\\s*/\\s*'+batch.total+'$').test(b.carton_number));if(matches.length!==1)throw Error('La caja '+n+' ya llegó o no está pendiente.');return matches[0].id});await save({action:'arrive',boxIds:ids})}catch(e){setError(e instanceof Error?e.message:'Revisa los números.')}}}><fieldset disabled={busy}><label className="receivingField">Cajas que llegaron<input value={numbers} required maxLength={6000} onChange={e=>setNumbers(e.target.value)} placeholder="Ej. 13-14"/></label><button type="button" className="receivingSecondary" onClick={()=>setNumbers(boxes.map(b=>b.carton_number).join(','))}>Llegaron todas las pendientes</button>{count>0&&<p>{count} cajas se agregarán a esta recepción.</p>}{error&&<p role="alert" className="receivingError">{error}</p>}<button className="receivingSave" disabled={busy}>Registrar llegada</button></fieldset></form><details><summary>Formato de numeración especial</summary>{boxes.map(b=><label className="receivingPending" key={b.id}><input type="checkbox" disabled={busy} checked={selected.includes(b.id)} onChange={e=>setSelected(v=>e.target.checked?[...v,b.id]:v.filter(id=>id!==b.id))}/>{b.carton_number}</label>)}<button disabled={busy||!selected.length} onClick={()=>save({action:'arrive',boxIds:selected})}>Registrar {selected.length} seleccionadas</button></details></div>;
+ const [error,setError]=useState(''),[selected,setSelected]=useState<string[]>([]);
+ const selectedIds=boxes.filter(b=>selected.includes(b.id)).map(b=>b.id);
+ return <form className="receivingCompactForm" onSubmit={async e=>{e.preventDefault();setError('');if(busy)return;if(!selectedIds.length){setError('Selecciona las cajas que llegaron.');return}try{if(await save({action:'arrive',boxIds:selectedIds}))setSelected([]);}catch(e){setError(e instanceof Error?e.message:'No se pudo registrar la llegada.');}}}>
+ <fieldset disabled={busy}><p><b>{batch.product}</b> · {boxes.length} cajas pendientes</p><h3>¿Cuáles cajas llegaron?</h3>
+ <div className="actions"><button type="button" disabled={busy||!boxes.length} onClick={()=>setSelected(boxes.map(b=>b.id))}>Seleccionar todas</button><button type="button" disabled={busy||!selectedIds.length} onClick={()=>setSelected([])}>Quitar todas</button></div>
+ <div className="receivingArrivalGrid" aria-label="Cajas pendientes">{boxes.map(b=><button type="button" key={b.id} aria-label={`Caja ${b.carton_number}`} aria-pressed={selectedIds.includes(b.id)} disabled={busy} onClick={()=>setSelected(v=>v.includes(b.id)?v.filter(id=>id!==b.id):[...v,b.id])}><span aria-hidden="true">📦</span>{b.carton_number}{selectedIds.includes(b.id)&&<span aria-hidden="true">✓</span>}</button>)}</div>
+ <p role="status">{selectedIds.length} recibidas · {boxes.length-selectedIds.length} seguirán pendientes</p>
+ {error&&<p role="alert" className="receivingError">{error}</p>}<button type="submit" className="receivingSave" disabled={busy||!selectedIds.length}>Registrar llegada</button></fieldset></form>;
 }

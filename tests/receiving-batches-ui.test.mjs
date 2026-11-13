@@ -27,6 +27,22 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('receiving missing cartons uses the same tiles, exact existing IDs and leaves unselected cartons pending',async()=>{
+ const calls=[];let success=false;
+ const boxes=['11','14','015/21'].map((n,i)=>({id:'pending-'+i,carton_number:n,order_id:'A'}));
+ const props={batch:{...batch,total:21,remaining:3},boxes,busy:false,save:async value=>{calls.push(JSON.parse(JSON.stringify(value)));return success}};
+ const render=mount(base+'batch-intake.tsx','ExistingArrival',props);let tree=render();
+ assert.ok(!nodes(tree).some(n=>n.type==='input'||n.type==='details'));assert.equal(nodes(tree).filter(n=>n.props?.['aria-pressed']!==undefined).length,3);
+ const click=label=>{nodes(tree).find(n=>n.props?.['aria-label']===label).props.onClick();tree=render()};
+ const submit=async()=>{await tree.props.onSubmit({preventDefault(){}});tree=render()};
+ await submit();assert.equal(calls.length,0);
+ click('Caja 14');assert.match(text(tree),/1 recibidas · 2 seguirán pendientes/);await submit();assert.deepEqual(calls[0],{action:'arrive',boxIds:['pending-1']});assert.equal(nodes(tree).find(n=>n.props?.['aria-label']==='Caja 14').props['aria-pressed'],true);
+ click('Caja 14');click('Caja 14');assert.match(text(tree),/1 recibidas/);
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='Seleccionar todas').props.onClick();tree=render();assert.match(text(tree),/3 recibidas · 0 seguirán pendientes/);
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='Quitar todas').props.onClick();tree=render();assert.match(text(tree),/0 recibidas · 3 seguirán pendientes/);
+ click('Caja 015/21');success=true;await submit();assert.deepEqual(calls.at(-1).boxIds,['pending-2']);assert.match(text(tree),/0 recibidas/);
+ props.busy=true;tree=render();assert.ok(nodes(tree).filter(n=>n.type==='button').every(n=>n.props.disabled));await submit();assert.equal(calls.length,2);
+});
 test('product combobox filters inline, selects on tap or keyboard and clears stale selections',()=>{
  const catalog=[{id:'1',name:'Cerámica Privacidad'},{id:'2',name:'Combo Case'},{id:'3',name:'Cerámica Mate'}];
  const render=mount(base+'batch-intake.tsx','NewBatchForm',{products:catalog,busy:false,save:async()=>true,onSaved(){}});
