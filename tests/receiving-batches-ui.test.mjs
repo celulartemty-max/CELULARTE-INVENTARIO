@@ -81,6 +81,17 @@ test('order badges distinguish uncounted, partial, counted and registered carton
  const partial=render({counted_here:18,registered_here:7});assert.match(partial,/✓ Contadas/);assert.match(partial,/7\/18 registradas/);assert.doesNotMatch(partial,/✓ Registrado en sistema/);
  assert.doesNotMatch(render({counted_here:0,received_here:0,registered_here:0}),/✓ Contadas|✓ Registrado/);
 });
+test('packing readiness is visible to everyone and requires contents for every received carton',()=>{
+ const Status=load(base+'batch-intake.tsx').BatchStatus;
+ const render=change=>renderToStaticMarkup(React.createElement(Status,{batch:{...batch,...change}}));
+ assert.match(render({packing_here:0}),/Falta packing/);assert.doesNotMatch(render({packing_here:0}),/Listo para contar/);
+ assert.match(render({packing_here:7}),/Packing parcial · 7\/18 cajas/);assert.doesNotMatch(render({packing_here:7}),/Listo para contar/);
+ assert.match(render({packing_here:18}),/✓ Packing cargado · Listo para contar/);
+ assert.match(render({packing_here:18,counted_here:4}),/✓ Packing cargado/);assert.match(render({packing_here:18,counted_here:4}),/4\/18 contadas/);
+ assert.doesNotMatch(render({received_here:0,packing_here:0}),/Listo para contar/);
+ assert.doesNotMatch(render({is_foreign:true,destination_name:'Otra',packing_here:0}),/Falta packing/);
+ assert.match(render({is_foreign:true,destination_name:'Plaza del Audio',packing_here:18}),/Listo para contar/);
+});
 test('foreign external orders need no count; internal orders show only destination progress',()=>{
  const Status=load(base+'batch-intake.tsx').BatchStatus;
  const render=change=>renderToStaticMarkup(React.createElement(Status,{batch:{...batch,is_foreign:true,...change}}));

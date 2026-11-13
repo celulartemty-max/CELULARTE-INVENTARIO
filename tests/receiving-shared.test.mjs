@@ -29,6 +29,7 @@ test('shared receipt view works without matching branch but does not expose frei
  const f=fixture();const view=await f.receivingView({id:id(9),role:'OPERATIVE'},session);assert.equal(view.canManageReceipt,false);assert.equal(view.cost,null);assert.equal(view.review,false);assert.equal(view.canRegisterSystem,false);assert.equal(f.scopes.length,0);
  assert.ok(f.queries.filter(q=>q.sql.includes('FROM receiving_items')).every(q=>!q.sql.includes('expected')));
  assert.ok(f.queries.some(q=>q.sql.startsWith('SELECT o.id::text,o.reference,o.display_title')&&q.sql.includes('counted_here')&&q.sql.includes('registered_here')));
+ const batches=f.queries.find(q=>q.sql.startsWith('SELECT o.id::text,o.reference,o.display_title'));assert.match(batches.sql,/EXISTS\(SELECT 1 FROM receiving_items content WHERE content.carton_id=b.id\)\)::int packing_here/);assert.ok(!batches.sql.includes('expected'));assert.ok(!batches.sql.includes('receiving_documents'));
  const denied=fixture({module:false});await assert.rejects(denied.receivingView({id:id(9),role:'OPERATIVE'},session));assert.equal(denied.queries.length,0);
 });
 test('shared count cannot overwrite a completed carton or run without ENTRADAS',async()=>{
