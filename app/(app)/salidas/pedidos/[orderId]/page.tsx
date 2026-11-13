@@ -25,7 +25,6 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
   {!order.shipped_at&&review.canReview&&!rows.some(r=>r.branch==='Treviño')&&<section className="card fullOrderBranch"><div className="fullOrderBranchTop"><h2>Treviño</h2><strong>0 <span>pzas</span></strong></div><Link href={'/salidas/pedidos/'+orderId+'/trevino'}>Abrir salida →</Link></section>}
   {!order.shipped_at&&review.canReview&&<ShippingAction orderId={orderId}/>}
   {order.shipped_at&&<p>Enviado por {order.shipped_by_name||'Usuario'} · {new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'short',timeStyle:'short'}).format(new Date(order.shipped_at))}</p>}
-  <p><Link href="/salidas/devoluciones-full">Regresos a Plaza →</Link></p>
   <details className="fullOrderDetails"><summary>Ver detalles</summary>
    {review.summary.sent>0&&<p>Plaza envió {review.summary.sent} · Correctas {review.summary.accepted} · Separadas para devolver {review.summary.rejected}</p>}
    {user.role==='MASTER'&&<AdjustTarget orderId={orderId} expected={expected}/>}

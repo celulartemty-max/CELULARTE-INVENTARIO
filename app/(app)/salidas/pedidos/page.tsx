@@ -11,6 +11,7 @@ export default async function Page({searchParams}:{searchParams:Promise<{page?:s
  return <div className="fullWorkspace fullOrderList">
   <Link className="fullListBack" href="/salidas">← Salidas</Link>
   <h1>Gestión de Pedidos</h1>
+  <Link className="fullListReturns" href="/salidas/devoluciones-full">Regresos a Plaza →</Link>
   <nav className="fullListTabs" aria-label="Estado de los pedidos">
    <Link href="/salidas/pedidos" aria-current={!history?'page':undefined}>Pendientes</Link>
    <Link href="/salidas/pedidos?view=history" aria-current={history?'page':undefined}>Enviados</Link>
