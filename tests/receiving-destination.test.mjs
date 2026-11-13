@@ -46,6 +46,12 @@ function fixture({allowed=[DEST],permission=true,confirmed=true,physical=true,co
     return {...mod,queries,audit,quantities:()=>quantities};
 }
 const action=(action,extra={})=>({action,orderId:ORDER,boxId:BOX,...extra});
+test('destination count attribution is returned only to the verified account, never all masters',async()=>{
+ for(const [user,allowed] of [[{id:'6373f0fc-68dc-405c-a26e-00e6594031ca',role:'MASTER'},true],[{id:id(9),email:'alejandrop921@gmail.com',role:'MASTER'},false],[manager,false]]){
+  const f=fixture();await f.destinationView(user,ORDER);const q=f.queries.find(q=>q.sql.startsWith('SELECT b.id::text,b.carton_number,b.session_id::text'));
+  assert.match(q.sql,/CASE WHEN \$3::boolean AND b.counted_at IS NOT NULL THEN \(SELECT name FROM users WHERE id=b.counted_by\) ELSE NULL END counted_by_name/);assert.equal(q.args[2],allowed);
+ }
+});
 test('shared receiving counts cross branch boundaries but finished cartons cannot be overwritten',async()=>{
  const f=fixture({allowed:[ORIGIN],delegated:true});await f.destinationAction(manager,action('count',{lines:[{id:LINE,quantity:1}]}));
  assert.equal(f.quantities()[0].quantity,1);

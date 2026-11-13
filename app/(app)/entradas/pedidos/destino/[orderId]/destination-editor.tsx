@@ -9,6 +9,7 @@ import type { DestinationView, DestinationBox, DestinationItem } from '@/lib/inv
 import { packingSchema } from '@/lib/inventory/receiving-validation';
 import CountGrid from '../../[id]/count-grid';
 import CountComparison from '../../[id]/count-comparison';
+import CountAttribution from '../../[id]/count-attribution';
 import PackingReview from '../../[id]/packing-review';
 import ReceivingModal from '../../[id]/receiving-modal';
 import PackingUpload from '../../[id]/packing-upload';
@@ -134,6 +135,7 @@ function DestinationCount({ box, items, busy, review, canRecount, save, onAdd, c
         await save({ action: finish ? 'count' : 'saveCount', boxId: box.id, lines, notes: fields.get('notes') });
     }
     return <form ref={formRef} className="receivingCompactForm" onSubmit={e => { e.preventDefault(); void submit(true); }}><h3>Caja {box.carton_number}{box.counted_at ? ' · Conteo terminado ✓' : ''}</h3>
+        <CountAttribution name={box.counted_by_name} at={box.counted_at}/>
         <CountGrid items={items} colorOrder={colorOrder} disabled={busy || Boolean(box.counted_at)} showReference={review && Boolean(box.counted_at)} onAdd={box.counted_at ? undefined : onAdd} onAddCombination={(model,color)=>{void save({action:'addItem',boxId:box.id,model,color})}}/>
         {!items.length && <p>Agrega un packing list o utiliza “Añadir modelo” para empezar.</p>}
         <label className="receivingField">Observaciones<textarea name="notes" maxLength={2000} defaultValue={box.notes} disabled={busy || Boolean(box.counted_at)}/></label>

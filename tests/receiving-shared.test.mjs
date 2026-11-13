@@ -35,6 +35,12 @@ test('shared receipt view works without matching branch but does not expose frei
 test('shared count cannot overwrite a completed carton or run without ENTRADAS',async()=>{
  for(const options of [{module:false},{finished:true}]){const f=fixture(options);await assert.rejects(f.receivingAction({id:id(9),role:'OPERATIVE'},{action:'count',sessionId:session,boxId:box,lines:[{id:line,quantity:12}]}));assert.ok(!f.queries.some(q=>q.sql.startsWith('UPDATE')));}
 });
+test('count attribution is gated by the verified account ID, not MASTER role or a supplied email',async()=>{
+ for(const [user,allowed] of [[{id:'6373f0fc-68dc-405c-a26e-00e6594031ca',role:'MASTER'},true],[{id:id(9),email:'Alejandrop921@gmail.com',role:'MASTER'},false],[{id:id(10),role:'OPERATIVE'},false]]){
+  const f=fixture();await f.receivingView(user,session);const q=f.queries.find(q=>q.sql.startsWith('SELECT b.id::text,b.carton_number,b.order_id'));
+  assert.match(q.sql,/CASE WHEN \?::boolean AND b.counted_at IS NOT NULL THEN \(SELECT name FROM users WHERE id=b.counted_by\) ELSE NULL END counted_by_name/);assert.equal(q.args[0],allowed);
+ }
+});
 test('cross-branch sharing does not grant closing, arrival, packing or POS permissions',async()=>{
  for(const action of ['close','arrive','packing','pos']){const f=fixture();await assert.rejects(f.receivingAction({id:id(9),role:'OPERATIVE'},{action,sessionId:session}));assert.ok(!f.queries.some(q=>/^(UPDATE|INSERT)/.test(q.sql)));}
 });

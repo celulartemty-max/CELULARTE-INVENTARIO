@@ -11,7 +11,7 @@ import { savePackingColorOrder, appendPackingColor } from './packing-column-orde
 const uuid = z.string().uuid();
 type Client = Parameters<Parameters<typeof withTransaction>[0]>[0];
 export type DestinationOrder = { is_mixed?: boolean; display_title?: string; id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number; color_order?: string[] };
-export type DestinationBox = { id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
+export type DestinationBox = { counted_by_name?:string|null; id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
 export type DestinationItem = { product_id?:string|null;product_label?:string; id: string; carton_id: string; model: string; color: string; counted: number | null; expected: number | null };
 export type DestinationView = { order: DestinationOrder; boxes: DestinationBox[]; items: DestinationItem[]; documents: { id: string; filename: string; previous?: boolean }[]; review: boolean; canRecount: boolean };
 
@@ -52,10 +52,11 @@ export async function destinationView(u: SessionUser, orderId: string): Promise<
             FROM receiving_orders o JOIN branches dest ON dest.id=o.destination_branch_id JOIN branches origin ON origin.id=o.branch_id
             JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE o.id=$1 GROUP BY o.id,p.name,dest.name,origin.name`, [o.id])).rows[0];
-        const boxes = (await c.query(`SELECT b.id::text,b.carton_number,b.session_id::text,origin.name origin,a.received_at::text,b.counted_at::text,b.notes
+        const boxes = (await c.query(`SELECT b.id::text,b.carton_number,b.session_id::text,origin.name origin,a.received_at::text,b.counted_at::text,b.notes,
+            CASE WHEN $3::boolean AND b.counted_at IS NOT NULL THEN (SELECT name FROM users WHERE id=b.counted_by) ELSE NULL END counted_by_name
             FROM receiving_cartons b LEFT JOIN receiving_sessions s ON s.id=b.session_id LEFT JOIN branches origin ON origin.id=s.branch_id
             LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id AND a.branch_id=$2 WHERE b.order_id=$1
-            ORDER BY CASE WHEN b.carton_number ~ '^[0-9]+$' THEN b.carton_number::numeric END,b.carton_number,b.id`, [o.id, o.destination_branch_id])).rows;
+            ORDER BY CASE WHEN b.carton_number ~ '^[0-9]+$' THEN b.carton_number::numeric END,b.carton_number,b.id`, [o.id, o.destination_branch_id,u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'])).rows;
         const review = isReviewer(u.role);
         const items = (await c.query(`SELECT l.id::text,l.carton_id::text,l.product_id::text,l.product_label,l.model,l.color,l.counted,
             CASE WHEN $3::boolean AND b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected

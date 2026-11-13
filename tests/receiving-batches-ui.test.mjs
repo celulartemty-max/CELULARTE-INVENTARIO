@@ -27,6 +27,12 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('private count attribution shows the finisher and Monterrey time only after completion',()=>{
+ const Attribution=load(base+'count-attribution.tsx').default;
+ const render=props=>renderToStaticMarkup(React.createElement(Attribution,props));
+ assert.equal(render({name:null,at:'2026-11-13T04:00:00Z'}),'');assert.equal(render({name:'Operador',at:null}),'');
+ const html=render({name:'Operador',at:'2026-11-13T04:00:00Z'});assert.match(html,/Contada por <b>Operador/);assert.match(html,/dateTime="2026-11-13T04:00:00.000Z"/);assert.match(html,/12 nov 2026/);assert.match(html,/10:00/);
+});
 test('mixed count shows separate products with independent line IDs and no blind reference leak',()=>{
  const CountGrid=load(base+'count-grid.tsx').default;
  const items=[{id:'clear-line',product_id:'clear',product_label:'CLEAR',model:'SAM S24',color:'',counted:null,expected:50},{id:'privacy-line',product_id:'privacy',product_label:'PRIVACY',model:'SAM S24',color:'',counted:0,expected:150}];
