@@ -19,10 +19,10 @@ export function parseCartonNumbers(value: string, total: number): string[] {
 }
 export const batchSchema = z.object({
     reference: text.min(1), productId: z.string().uuid().nullable(), productLabel: text.default(''),
-    shipping: z.enum(['SEA','AIR']), marking: markingSchema, isForeign: z.boolean(),
+    shipping: z.enum(['SEA','AIR']), marking: markingSchema, isForeign: z.boolean(),isMixed:z.boolean().optional(),
     total: z.number().int().min(1).max(1000), received: z.number().int().min(1).max(1000), numbers: z.string().trim().max(6000)
 }).superRefine((x,ctx) => {
-    if (!x.productId && (!x.isForeign || ['PER','JAPS'].includes(x.marking))) ctx.addIssue({code:'custom',message:'Selecciona el producto del catálogo para PER o JAPS.'});
+    if (!x.productId && !x.isMixed && (!x.isForeign || ['PER','JAPS'].includes(x.marking))) ctx.addIssue({code:'custom',message:'Selecciona el producto del catálogo para PER o JAPS.'});
     if (x.received > x.total) ctx.addIssue({code:'custom',message:'No pueden llegar más cajas que el total del pedido.'});
     try { if (parseCartonNumbers(x.numbers,x.total).length !== x.received) ctx.addIssue({code:'custom',message:'Los números de caja no coinciden con la cantidad recibida hoy.'}); }
     catch(e) { ctx.addIssue({code:'custom',message:e instanceof Error ? e.message : 'Números de caja no válidos.'}); }
@@ -36,7 +36,7 @@ export const packingSchema = z.object({
     colors: z.array(text).max(500).optional(),
     reference: text, warnings: z.array(z.string().max(500)).max(100),
     boxes: z.array(z.object({ number: text.min(1), items: z.array(z.object({
-            model: text, color: text, expected: z.number().int().min(0).max(1000000).nullable()
+            model: text, color: text, expected: z.number().int().min(0).max(1000000).nullable(),productId:z.string().uuid().optional(),productLabel:text.optional()
         })).min(1).max(500) })).min(1).max(1000)
 }).superRefine((p, ctx) => {
     const boxes = new Set<string>();
@@ -46,7 +46,7 @@ export const packingSchema = z.object({
         boxes.add(b.number);
         const items = new Set<string>();
         b.items.forEach((l, j) => {
-            const key = JSON.stringify([l.model.toUpperCase(), l.color.toUpperCase()]);
+            const key = JSON.stringify([l.productId||l.productLabel?.toUpperCase()||'',l.model.toUpperCase(), l.color.toUpperCase()]);
             if (items.has(key))
                 ctx.addIssue({ code: 'custom', message: 'Modelo/color repetido en la misma caja', path: ['boxes', i, 'items', j] });
             items.add(key);

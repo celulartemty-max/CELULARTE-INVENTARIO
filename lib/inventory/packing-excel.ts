@@ -73,9 +73,11 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  }
  const wideColors=headers.map((v,c)=>({name:label(v).replace(/\s*\/\s*(quantity|qty|cantidad|数量)\s*$/i,''),c})).filter(x=>!roles[x.c]&&x.name);
  const descriptionColors=colorCol<0&&descriptionCol>=0&&qtyCol>=0&&!wideColors.length;
+ const materialLabels=descriptionCol>=0?[...new Set(rows.slice(header+1).filter(row=>!empty(row[modelCol])).map(row=>label(row[descriptionCol])).filter(Boolean))]:[];
+ const materialProducts=descriptionColors&&materialLabels.length>1&&materialLabels.every(value=>!/-|–|—/.test(value));
  if(colorCol>=0&&(qtyCol<0||wideColors.length))throw Error('La tabla COLOR/CANTIDAD tiene columnas sin identificar. Revisa sus encabezados.');
  if(colorCol<0&&!descriptionColors&&(!wideColors.length||(qtyCol<0&&totalCol<0&&boxTotalCol<0)))throw Error('Faltan colores o una columna Quantity/Total para validar el Excel.');
- const colors:string[]=[],boxes:{number:string;items:{model:string;color:string;expected:number}[]}[]=[],byBox=new Map<string,typeof boxes[number]>(),pairs=new Set<string>(),declared=new Map<string,number>();
+ const colors:string[]=[],boxes:{number:string;items:{model:string;color:string;expected:number;productLabel?:string}[]}[]=[],byBox=new Map<string,typeof boxes[number]>(),pairs=new Set<string>(),declared=new Map<string,number>();
  if(colorCol<0){for(const c of wideColors){if(colors.some(v=>key(v)===key(c.name)))throw Error('Hay columnas de color repetidas en el Excel.');colors.push(c.name);}}
  const merged=(r:number,c:number)=>{const cell=rows[r]?.[c];if(!empty(cell))return cell;const m=(sheet['!merges']??[]).find(m=>m.s.c===c&&m.e.c===c&&m.s.r<=r&&m.e.r>=r);return m?rows[m.s.r]?.[c]:cell;};
  let current='',overall:number|undefined,ended=false,total=0,ignoredDescriptions=0;const rowBoxes=new Map<number,string>();
@@ -112,15 +114,17 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
   // Bilingual supplier labels may append Chinese shade names or qualifiers.
   // Preserve the full suffix: GOLD金色 and GOLD沙漠色 must not collapse.
   const materialColor=descriptionColors?label(merged(r,descriptionCol)).match(/[-–—]\s*((?:titanium gr[ae]y|dark cherry|teal|black|white|blue|red|pink|purple|green|yellow|orange|gold|silver|clear|transparent|grey|gray|brown|beige|navy|negro|blanco|azul|rojo|rosa|morado|verde|amarillo|naranja|dorado|plateado|transparente|gris|cafe)(?:\s*[\u3400-\u9fff]+(?:[（(][\u3400-\u9fff]+[）)])?)?)\s*$/i)?.[1]:undefined;
-  if(descriptionColors&&!materialColor)throw Error(`No se pudo identificar el color al final de Material en la fila ${r+1}. Usa COLOR y CANTIDAD para indicarlo sin ambigüedad.`);
-  const source=descriptionColors?[{name:materialColor!,c:qtyCol}]:colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
+  const productLabel=materialProducts?label(merged(r,descriptionCol)):undefined;
+  if(materialProducts&&!productLabel)throw Error(`Falta el producto de Material en la fila ${r+1}.`);
+  if(descriptionColors&&!materialProducts&&!materialColor)throw Error(`No se pudo identificar el color al final de Material en la fila ${r+1}. Usa COLOR y CANTIDAD para indicarlo sin ambigüedad.`);
+  const source=materialProducts?[{name:'',c:qtyCol}]:descriptionColors?[{name:materialColor!,c:qtyCol}]:colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
   let rowSum=0,found=false;
   for(const color of source){
    if(empty(row[color.c]))continue;
-   if(!color.name)throw Error(`Falta color en la fila ${r+1}.`);
-   const n=quantity(row[color.c],`fila ${r+1}, ${color.name}`),pair=JSON.stringify([current,key(model),key(color.name)]);
+   if(!color.name&&!materialProducts)throw Error(`Falta color en la fila ${r+1}.`);
+   const n=quantity(row[color.c],`fila ${r+1}, ${color.name}`),pair=JSON.stringify([current,key(productLabel),key(model),key(color.name)]);
    if(pairs.has(pair))throw Error(`Modelo/color realmente repetido en la caja ${current}, fila ${r+1}. Revisa las filas de origen; no se sumaron ni eliminaron cantidades.`);
-   pairs.add(pair);found=true;rowSum+=n;box.items.push({model,color:color.name,expected:n});
+   pairs.add(pair);found=true;rowSum+=n;box.items.push({model,color:color.name,expected:n,...(productLabel?{productLabel}:{})});
    if(!colors.some(v=>key(v)===key(color.name)))colors.push(color.name);
   }
   if(!found)throw Error(`La fila ${r+1} no tiene cantidades de colores.`);

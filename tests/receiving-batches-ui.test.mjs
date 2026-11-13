@@ -27,6 +27,17 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('mixed count shows separate products with independent line IDs and no blind reference leak',()=>{
+ const CountGrid=load(base+'count-grid.tsx').default;
+ const items=[{id:'clear-line',product_id:'clear',product_label:'CLEAR',model:'SAM S24',color:'',counted:null,expected:50},{id:'privacy-line',product_id:'privacy',product_label:'PRIVACY',model:'SAM S24',color:'',counted:0,expected:150}];
+ const html=renderToStaticMarkup(React.createElement(CountGrid,{items,disabled:false,showReference:false}));assert.match(html,/<h4>CLEAR/);assert.match(html,/<h4>PRIVACY/);assert.match(html,/name="clear-line"/);assert.match(html,/name="privacy-line"/);assert.doesNotMatch(html,/Esperado:|150/);
+});
+test('mixed order skips a single product selection but preserves physical carton selection',async()=>{
+ const calls=[];const render=mount(base+'batch-intake.tsx','NewBatchForm',{products,busy:false,save:async body=>{calls.push(body);return true},onSaved(){}});let tree=render();
+ const checkbox=nodes(tree).find(n=>n.type==='input'&&n.props.type==='checkbox');assert.ok(checkbox);checkbox.props.onChange({target:{checked:true}});tree=render();
+ const total=nodes(tree).find(n=>n.type==='input'&&n.props.name==='total');total.props.onChange({target:{value:'36'}});tree=render();
+ await tree.props.onSubmit({preventDefault(){},currentTarget:{fields:{shipping:'SEA',marking:'JAPS',total:'36',reference:'MIXED-36'}}});assert.equal(calls.length,1);assert.equal(calls[0].isMixed,true);assert.equal(calls[0].productId,null);assert.equal(calls[0].received,36);assert.equal(calls[0].total,36);
+});
 test('receiving missing cartons uses the same tiles, exact existing IDs and leaves unselected cartons pending',async()=>{
  const calls=[];let success=false;
  const boxes=['11','14','015/21'].map((n,i)=>({id:'pending-'+i,carton_number:n,order_id:'A'}));
@@ -242,7 +253,7 @@ test('canceling the picker preserves the selected file and invalid files never r
  let tree=render();nodes(tree).find(n=>n.type==='button'&&text(n)==='Cambiar').props.onClick();tree=render();
  const pick=file=>nodes(tree).find(n=>n.props?.['aria-label']==='Seleccionar archivo').props.onChange({target:{files:file?[file]:[],value:''}});
  pick();assert.equal(calls,0);
- pick({name:'grande.xlsx',size:3*1024*1024});tree=render();assert.match(text(tree),/hasta 2 MB/);
+ pick({name:'grande.xlsx',size:21*1024*1024});tree=render();assert.match(text(tree),/hasta 20 MB/);
  pick({name:'foto.heic',size:200});tree=render();assert.match(text(tree),/Usa Excel .xlsx/);assert.equal(calls,0);
 });
 test('PDF offers storage only; saved original and busy actions cannot be submitted twice',()=>{

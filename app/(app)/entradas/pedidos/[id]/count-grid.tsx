@@ -1,9 +1,13 @@
 'use client';
 import { orderedPackingColors } from '@/lib/inventory/packing-column-order';
 
-type CountItem = { id: string; model: string; color: string; counted: number | null; expected?: number | null };
+type CountItem = { id: string; model: string; color: string; counted: number | null; expected?: number | null;product_id?:string|null;product_label?:string };
 
 export default function CountGrid({ items, disabled, showReference, onAdd, onAddCombination, colorOrder }: { items: CountItem[]; disabled: boolean; showReference: boolean; onAdd?: () => void; onAddCombination?: (model: string, color: string) => void; colorOrder?: string[] }) {
+    if(items.some(i=>i.product_id||i.product_label)){
+        const keys=[...new Set(items.map(i=>i.product_id||i.product_label||''))];
+        return <div>{keys.map(key=>{const lines=items.filter(i=>(i.product_id||i.product_label||'')===key);return <section key={key}><h4>{lines[0]?.product_label||'Producto del catálogo'}</h4><CountGrid items={lines.map(({product_id,product_label,...line})=>line)} disabled={disabled} showReference={showReference} colorOrder={colorOrder}/></section>})}</div>;
+    }
     const models = Array.from(new Set(items.map(item => item.model)));
     const colors = orderedPackingColors(items.map(item => item.color), colorOrder);
     return <div className="packingSheetScroll" role="region" aria-label="Tabla de conteo por modelo y color" tabIndex={0}>

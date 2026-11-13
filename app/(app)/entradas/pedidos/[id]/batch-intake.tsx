@@ -3,7 +3,7 @@ import {useId,useRef,useState} from 'react';
 import {batchSchema} from '@/lib/inventory/receiving-validation';
 import ReceivingModal from './receiving-modal';
 import {SHIPPING_MARKS} from '@/lib/inventory/shipping-marks';
-export type Batch = {display_title?:string;id:string;reference:string;product:string;shipping:string;marking:string;supplier?:string;is_foreign:boolean;destination_name?:string;total:number;received_here:number;received_total:number;remaining:number;counted_here?:number;registered_here?:number};
+export type Batch = {is_mixed?:boolean;display_title?:string;id:string;reference:string;product:string;shipping:string;marking:string;supplier?:string;is_foreign:boolean;destination_name?:string;total:number;received_here:number;received_total:number;remaining:number;counted_here?:number;registered_here?:number};
 export function BatchStatus({batch:b}:{batch:Batch}){
  if(b.is_foreign&&!['Treviño','Plaza del Audio'].includes(b.destination_name??''))return <span className="receivingBatchStatus neutral">Solo registro</span>;
  const total=b.received_here,counted=b.counted_here??0,registered=b.registered_here??0;
@@ -32,6 +32,7 @@ export function NewBatchForm({products,busy,save,onSaved}:{products:{id:string;n
  const arrived=selectedBoxes.filter(n=>Number(n)<=validTotal);
  const selectBoxes=(values:string[])=>setSelectedBoxes(values);
  const [marking,setMarking]=useState('');const external=!!marking&&!['PER','JAPS'].includes(marking);
+ const [mixed,setMixed]=useState(false);
  const [search,setSearch]=useState(''),[selectedProduct,setSelectedProduct]=useState('');
  const [open,setOpen]=useState(false),[active,setActive]=useState(-1);const listId=useId();
  const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
@@ -39,11 +40,12 @@ export function NewBatchForm({products,busy,save,onSaved}:{products:{id:string;n
  const matches=products.filter(p=>terms.every(term=>normalize(p.name).includes(term)));
  const choose=(product:{id:string;name:string})=>{setSelectedProduct(product.id);setSearch(product.name);setOpen(false);setActive(-1)};
  return <form className="receivingCompactForm" onSubmit={async e=>{e.preventDefault();setError('');const f=new FormData(e.currentTarget);if(!generated.current)generated.current=crypto.randomUUID().slice(0,8);const product=products.find(p=>p.id===f.get('product'));const reference=String(f.get('reference')||'').trim()||String(product?.name||f.get('productLabel')||'Pedido').slice(0,80)+' · '+String(f.get('marking')).slice(0,60)+'-'+generated.current;
- if(!isForeign&&!products.some(p=>p.id===f.get('product'))){setError('Selecciona un producto de la lista.');return}
- const value={reference,productId:f.get('product')||null,productLabel:f.get('productLabel')||'',isForeign,shipping:f.get('shipping'),marking:f.get('marking'),total:Number(total),received:arrived.length,numbers:arrived.join(',')};const parsed=batchSchema.safeParse(value);if(!parsed.success){setError(arrived.length?parsed.error.issues.map(i=>i.message).join(' '):'Selecciona al menos una caja que llegó.');return}if(await save({action:'batch',...parsed.data,supplier:String(f.get('supplier')||'')}))onSaved()}}>
+ if(!isForeign&&!mixed&&!products.some(p=>p.id===f.get('product'))){setError('Selecciona un producto de la lista.');return}
+ const value={reference,productId:mixed?null:f.get('product')||null,productLabel:mixed?'Pedido mixto':f.get('productLabel')||'',isForeign,isMixed:mixed&&!external,shipping:f.get('shipping'),marking:f.get('marking'),total:Number(total),received:arrived.length,numbers:arrived.join(',')};const parsed=batchSchema.safeParse(value);if(!parsed.success){setError(arrived.length?parsed.error.issues.map(i=>i.message).join(' '):'Selecciona al menos una caja que llegó.');return}if(await save({action:'batch',...parsed.data,supplier:String(f.get('supplier')||'')}))onSaved()}}>
  <fieldset disabled={busy}>
  <label className="receivingField">Shipping Mark<select name="marking" required value={marking} onChange={e=>{setMarking(e.target.value);setIsForeign(!['PER','JAPS'].includes(e.target.value))}}><option value="" disabled>Selecciona…</option>{SHIPPING_MARKS.map(mark=><option key={mark}>{mark}</option>)}</select></label>
- {external?<p>Cajas ajenas · sin producto ni conteo.</p>:<div className="receivingProductPicker" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOpen(false)}}>
+ {!external&&<label><input type="checkbox" checked={mixed} onChange={e=>setMixed(e.target.checked)}/> Pedido mixto · varios productos</label>}
+ {external?<p>Cajas ajenas · sin producto ni conteo.</p>:mixed?<p>Asigna los productos al revisar el packing. Cada caja se contará una sola vez.</p>:<div className="receivingProductPicker" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setOpen(false)}}>
  <label className="receivingField">Producto<input role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={open&&active>=0?`${listId}-${active}`:undefined} required={!isForeign} placeholder="Buscar producto…" value={search} autoComplete="off" onFocus={()=>setOpen(true)} onChange={e=>{setSearch(e.target.value);setSelectedProduct('');setActive(-1);setOpen(true)}} onKeyDown={e=>{
  if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();setOpen(true);setActive(i=>matches.length?(e.key==='ArrowDown'?Math.min(i+1,matches.length-1):Math.max(i-1,0)):-1)}
  else if(e.key==='Enter'&&open){e.preventDefault();if(active>=0&&matches[active])choose(matches[active]);else if(matches.length===1)choose(matches[0])}

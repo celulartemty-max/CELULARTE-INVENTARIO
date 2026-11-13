@@ -1,4 +1,5 @@
 'use client';
+import {preparePackingUpload} from '@/lib/inventory/packing-upload-file';
 
 import PackingColorField from '../../packing-color-field';
 import { useRef, useState, useTransition } from 'react';
@@ -16,7 +17,7 @@ import PackingReset from '../../[id]/packing-reset';
 type Packing = z.infer<typeof packingSchema>;
 type Save = (body: Record<string, unknown>) => Promise<boolean>;
 
-export default function DestinationEditor({ data }: { data: DestinationView }) {
+export default function DestinationEditor({ data,products=[] }: { data: DestinationView;products?:{id:string;name:string}[] }) {
     const router = useRouter();
     const [working, setWorking] = useState(false);
     const [refreshing, startTransition] = useTransition();
@@ -55,7 +56,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
     async function interpret() {
         if (!file) return;
         await run(async () => {
-            const form = new FormData(); form.set('file', file);
+            const form = new FormData(); form.set('file', await preparePackingUpload(file));
             if(sheetChoice.file===file&&sheetChoice.names.length>1&&!sheetChoice.selected)throw new Error('Selecciona la hoja del pedido.');
             if(sheetChoice.file===file&&sheetChoice.selected)form.set('sheet',sheetChoice.selected);
             const r = await fetch('/api/receiving/interpret', { method: 'POST', body: form });
@@ -94,7 +95,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
             {file&&sheetChoice.file===file&&sheetChoice.names.length>1&&<label className="receivingField">Hoja del pedido<select disabled={busy} value={sheetChoice.selected} onChange={e=>{setSheetChoice({...sheetChoice,selected:e.target.value});setPacking(null)}}><option value="">Selecciona una hoja…</option>{sheetChoice.names.map(name=><option key={name}>{name}</option>)}</select><small>Solo se leerá la hoja elegida.</small></label>}
             <PackingUpload file={file} busy={busy} attached={Boolean(file && attachedFile === file)} onChange={next => { setFile(next); setAttachedFile(null); setPacking(null); }} onInterpret={interpret} onAttach={() => run(async () => {
                     if (!file) return;
-                    const form = new FormData(); form.set('file', file!); form.set('orderId', order.id); form.set('destination', 'true');
+                    const form = new FormData(); form.set('file', await preparePackingUpload(file!)); form.set('orderId', order.id); form.set('destination', 'true');
                     const r = await fetch('/api/receiving/documents', { method: 'POST', body: form }); const result = await r.json();
                     if (!r.ok) throw new Error(result.error); setAttachedFile(file); setNotice('Archivo adjuntado al pedido.'); startTransition(() => router.refresh());
                 })}/>
@@ -105,7 +106,7 @@ export default function DestinationEditor({ data }: { data: DestinationView }) {
             {packing && <><p>Referencia leída: <b>{packing.reference || 'No identificada'}</b>. Verifica que corresponda a <b>{order.reference}</b>.</p>
                 {excluded > 0 && <p role="status">Se excluyeron {excluded} cajas: aún no recibidas aquí o con contenido ya cargado. No se modificarán.</p>}
                 {packing.warnings.map((w, i) => <p key={i} className="receivingMuted">{w}</p>)}
-                <PackingReview packing={packing} busy={busy} onChange={setPacking}/>
+                <PackingReview packing={packing} busy={busy} onChange={setPacking} products={products} mixed={Boolean(order.is_mixed)}/>
                 <button className="receivingSave" disabled={busy} onClick={async () => {
                     if (!confirm('¿Revisaste los modelos, colores y números de caja de este pedido?')) return;
                     if (await save({ action: 'packing', packing: { ...packing, reference: order.reference } })) setPacking(null);

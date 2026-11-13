@@ -34,7 +34,7 @@ export async function GET(req: Request) {
             if(!data.items.some(l=>l.carton_id===box.id))s.addRow({order:box.reference,box:box.carton_number,product:box.product,shipping:box.shipping,marking:box.marking});
             for (const item of data.items.filter(l => l.carton_id === box.id)) {
                 const expected = 'expected' in item ? item.expected : null;
-                const row = s.addRow({ order: box.reference, box: box.carton_number, product: box.product, shipping: box.shipping, marking: box.marking, model: item.model, color: item.color, counted: item.counted, expected: box.counted_at ? expected : null });
+                const row = s.addRow({ order: box.reference, box: box.carton_number, product: item.product_label||box.product, shipping: box.shipping, marking: box.marking, model: item.model, color: item.color, counted: item.counted, expected: box.counted_at ? expected : null });
                 if (box.counted_at && expected !== null)
                     row.getCell('diff').value = { formula: `H${row.number}-I${row.number}` };
             }
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
         s.getRow(1).font = { bold: true };
         s.views = [{ state: 'frozen', ySplit: 1 }];
         s.autoFilter = 'A1:J1';
-        addPackingCountSheet(w,data.boxes.map(box=>({id:String(box.id),reference:String(box.reference),product:String(box.product),carton_number:String(box.carton_number),color_order:Array.isArray(box.color_order)?box.color_order.map(String):[]})),data.items.map(item=>({carton_id:String(item.carton_id),model:String(item.model),color:String(item.color),counted:item.counted===null?null:Number(item.counted)})));
+        addPackingCountSheet(w,data.boxes.map(box=>({id:String(box.id),reference:String(box.reference),product:String(box.product),carton_number:String(box.carton_number),color_order:Array.isArray(box.color_order)?box.color_order.map(String):[]})),data.items.map(item=>({carton_id:String(item.carton_id),model:String(item.model),color:String(item.color),product_id:item.product_id?String(item.product_id):undefined,product_label:item.product_label?String(item.product_label):undefined,counted:item.counted===null?null:Number(item.counted)})));
         return new Response(new Uint8Array(await w.xlsx.writeBuffer()), { headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="Recepcion-detalle-cajas.xlsx"', 'Cache-Control': 'private, no-store' } });
     }
     catch {

@@ -12,6 +12,7 @@ export async function changeBoxProduct(c:PoolClient,u:SessionUser,s:{id:string;b
  if(new Set(x.boxIds).size!==x.boxIds.length)throw Error('Hay cajas repetidas.');
  const order=(await c.query('SELECT * FROM receiving_orders WHERE id=$1 AND branch_id=$2 AND voided_at IS NULL FOR UPDATE',[x.orderId,s.branch_id])).rows[0];
  if(!order||order.is_foreign)throw Error('Selecciona un pedido propio de esta recepción.');
+ if(order.is_mixed)throw Error('Los productos de un pedido mixto se asignan por línea del packing, no por caja completa.');
  if(order.product_id===x.productId)throw Error('Elige un producto diferente.');
  const product=(await c.query("SELECT id,name FROM products WHERE id=$1 AND status='ACTIVE'",[x.productId])).rows[0];
  if(!product)throw Error('Producto no disponible.');

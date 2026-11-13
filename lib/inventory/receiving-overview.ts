@@ -37,7 +37,7 @@ export async function receivingOverview(u: SessionUser): Promise<ReceiptOverview
                 SELECT 1 FROM receiving_cartons own_box JOIN receiving_orders own_order ON own_order.id=own_box.order_id
                 WHERE own_box.session_id=s.id AND own_order.destination_branch_id<>s.branch_id AND own_order.destination_branch_id=ANY($1::uuid[]))
             GROUP BY s.id,origin.name ORDER BY s.created_at DESC,s.id`, [ids])).rows as Omit<ReceiptOverview, 'destinations'>[];
-        const destinations = (await c.query(`SELECT b.session_id::text,o.id::text order_id,COALESCE(p.name,o.product_label,'Sin producto') product,
+        const destinations = (await c.query(`SELECT b.session_id::text,o.id::text order_id,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label,'Sin producto') product,
             o.marking,o.shipping,dest.name destination,count(b.id)::int boxes,count(a.carton_id)::int arrived,
             count(b.counted_at) FILTER(WHERE a.carton_id IS NOT NULL)::int counted,
             ($1::uuid[] IS NULL OR o.destination_branch_id=ANY($1::uuid[])) can_open

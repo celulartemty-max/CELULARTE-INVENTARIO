@@ -20,8 +20,8 @@ export function boxGrid(box: PackingBox, colorOrder: string[] = []) {
     return { models, colors, cells };
 }
 
-export default function PackingReview({ packing, busy, onChange }: {
-    packing: Packing; busy: boolean; onChange: (packing: Packing) => void;
+export default function PackingReview({ packing, busy, onChange,products=[],mixed=false }: {
+    packing: Packing; busy: boolean; onChange: (packing: Packing) => void;products?:{id:string;name:string}[];mixed?:boolean;
 }) {
     const [selected, setSelected] = useState(0);
     const [reviewed, setReviewed] = useState<number[]>([]);
@@ -72,6 +72,11 @@ export default function PackingReview({ packing, busy, onChange }: {
     }
 
     return <fieldset className="packingReview" disabled={busy}>
+        {[...new Set(packing.boxes.flatMap(b=>b.items.map(l=>l.productLabel||'')).filter(Boolean))].map(label=>{
+            const lines=packing.boxes.flatMap(b=>b.items).filter(l=>l.productLabel===label);
+            return <label key={label} className="receivingField">{label} · {lines.reduce((s,l)=>s+(l.expected??0),0)} piezas
+            <select required aria-label={`Producto para ${label}`} value={lines[0]?.productId||''} onChange={e=>onChange({...packing,boxes:packing.boxes.map(b=>({...b,items:b.items.map(l=>l.productLabel===label?{...l,productId:e.target.value||undefined}:l)}))})}><option value="">Selecciona el producto del catálogo…</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>;
+        })}
         <div className="packingReviewTop">
             <div><h3>Revisión por caja</h3><p>{packing.boxes.length} cajas · {reviewed.length} revisadas · {packing.boxes.length - reviewed.length} pendientes</p></div>
             <label className="packingPendingFilter"><input type="checkbox" checked={pendingOnly} onChange={event => setPendingOnly(event.target.checked)} />Solo pendientes de revisar</label>
@@ -95,7 +100,7 @@ export default function PackingReview({ packing, busy, onChange }: {
                         const lines = grid.cells.get(JSON.stringify([model, color])) ?? [];
                         return <td key={color} className={lines.some(i => box.items[i].expected === null) ? 'packingUnclear' : ''}>
                             {lines.length ? lines.map((lineIndex, duplicate) => <div className="packingCell" key={lineIndex}>
-                                {lines.length > 1 && <small>Duplicado {duplicate + 1}: corrige en “Ajustar”</small>}
+                                {box.items[lineIndex].productLabel?<small><b>{box.items[lineIndex].productLabel}</b></small>:lines.length > 1 && <small>Duplicado {duplicate + 1}: corrige en “Ajustar”</small>}
                                 <input type="number" inputMode="numeric" min={0} max={1000000} step={1} placeholder="Revisar" aria-label={`Caja ${box.number}, ${model || 'sin modelo'}, ${color || 'sin color'}${lines.length > 1 ? `, línea ${duplicate + 1}` : ''}`} value={box.items[lineIndex].expected ?? ''}
                                     onChange={event => changeBox({ ...box, items: box.items.map((item, i) => i === lineIndex ? { ...item, expected: event.target.value === '' ? null : Number(event.target.value) } : item) })} />
                             </div>) : <button type="button" className="packingAbsent" aria-label={`Agregar ${model || 'sin modelo'}, ${color || 'sin color'} a caja ${box.number}`} title="Agregar esta combinación" disabled={box.items.length >= 500} onClick={() => addLine(model, color)}>—</button>}
@@ -113,6 +118,7 @@ export default function PackingReview({ packing, busy, onChange }: {
             <details className="packingAdjust"><summary>Ajustar modelos, colores o número de caja</summary>
                 <label className="receivingField">Número de caja<input required maxLength={160} value={box.number} onChange={event => changeBox({ ...box, number: event.target.value })} /></label>
                 <div className="packingLineAdjustments">{box.items.map((item, lineIndex) => <div className="packingAdjustLine" key={lineIndex}>
+                    {(mixed||packing.boxes.some(b=>b.items.some(l=>l.productLabel||l.productId)))&&<select aria-label={`Producto de línea ${lineIndex+1}`} required value={item.productId||''} onChange={event=>changeBox({...box,items:box.items.map((value,i)=>i===lineIndex?{...value,productId:event.target.value||undefined,productLabel:products.find(p=>p.id===event.target.value)?.name||value.productLabel}:value)})}><option value="">Selecciona producto…</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>}
                     <input aria-label={`Modelo de línea ${lineIndex + 1}`} placeholder="Modelo" maxLength={160} value={item.model} onChange={event => changeBox({ ...box, items: box.items.map((value, i) => i === lineIndex ? { ...value, model: event.target.value } : value) })} />
                     <input aria-label={`Color de línea ${lineIndex + 1}`} placeholder="Color (opcional)" maxLength={160} value={item.color} onChange={event => changeBox({ ...box, items: box.items.map((value, i) => i === lineIndex ? { ...value, color: event.target.value } : value) })} />
                     <button type="button" className="receivingSecondary" disabled={box.items.length === 1} onClick={() => removeLine(lineIndex)}>Quitar línea {lineIndex + 1}</button>

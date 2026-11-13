@@ -8,6 +8,13 @@ function load(path,mocks={}){const m={exports:{}};const code=ts.transpileModule(
 const parse=load('lib/inventory/packing-excel.ts').readPackingExcel;
 function file(rows,{merge=[],second=false}={}){const w=XLSX.utils.book_new(),s=XLSX.utils.aoa_to_sheet(rows);s['!merges']=merge;XLSX.utils.book_append_sheet(w,s,'PER AIR');if(second)XLSX.utils.book_append_sheet(w,XLSX.utils.aoa_to_sheet([['Other branch']]),'JAPS');return XLSX.write(w,{type:'buffer',bookType:'xlsx'});}
 const header=['CTN','MODEL','18 · Negro','NEW 3 · Gris claro','Quantity','CTN TOTAL','KG','CM'];
+test('mixed products share one physical carton without collapsing identical model and colour',()=>{
+ const h=['Carton No','Material','Photo','Brand','Model','Quantity',null];
+ const rows=[h,[19,'CLEAR PREMIUM GLASS(CELULARTE)',null,'Apple','IP 16',50,200],[null,'PRIVACY PREMIUM GLASS(CELULARTE)',null,'Apple','IP 16',150],['Total',null,null,null,null,200,200]];
+ const merge=[{s:{r:0,c:5},e:{r:0,c:6}},{s:{r:1,c:0},e:{r:2,c:0}},{s:{r:1,c:6},e:{r:2,c:6}}];
+ const p=parse(file(rows,{merge}));assert.equal(p.boxes.length,1);assert.equal(p.boxes[0].items.length,2);assert.deepEqual(p.boxes[0].items.map(l=>l.expected),[50,150]);assert.ok(p.boxes[0].items.every(l=>l.productLabel&&l.color===''));
+ const duplicate=structuredClone(rows);duplicate[2][1]=duplicate[1][1];assert.throws(()=>parse(file(duplicate,{merge})),/repetido|identificar el color/);
+});
 test('bilingual Material colours preserve Chinese shade distinctions, compound names and qualifiers',()=>{
  const shades=['BLACK黑色','SILVER银色','BLUE蓝色','PINK粉色','GOLD金色','GOLD沙漠色','TITANIUM GREY钛灰','TITANIUM GREY钛原','SILVER银色(白)','TEAL深青色','BLUE群青','DARK CHERRY深樱桃色','ORANGE橙色'];
  const h=['Carton No','Material','Photo','Brand','Model','Quantity',null];

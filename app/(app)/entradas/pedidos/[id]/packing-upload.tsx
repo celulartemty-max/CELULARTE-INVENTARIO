@@ -31,7 +31,7 @@ export default function PackingUpload({ file, busy, attached, onChange, onInterp
     function select(next: File | undefined) {
         // Canceling the native picker must not clear a file already selected.
         if (!next) return;
-        if (!next.size || next.size > 2 * 1024 * 1024) { setError('Elige un archivo de hasta 2 MB que no esté vacío.'); return; }
+        if (!next.size || next.size > (/\.xlsx$/i.test(next.name)?20:2) * 1024 * 1024) { setError('Elige Excel hasta 20 MB, o foto/PDF hasta 2 MB.'); return; }
         if (!/\.(xlsx|png|jpe?g|pdf)$/i.test(next.name)) { setError('Usa Excel .xlsx, una foto JPG/PNG o un PDF.'); return; }
         setError(''); onChange(next); setChoosing(false);
     }
@@ -47,7 +47,7 @@ export default function PackingUpload({ file, busy, attached, onChange, onInterp
             </div>
             <p className="packingUploadHint" role="status">{busy ? 'Procesando… No cierres esta pantalla.' : pdf ? 'El PDF se guarda como comprobante, sin lectura con IA.' : 'Revisarás los modelos y colores antes de confirmar.'}</p>
         </>}
-        <small id={helpId} className="packingUploadFormats">Excel .xlsx, JPG, PNG o PDF · Máximo 2 MB</small>
+        <small id={helpId} className="packingUploadFormats">Excel hasta 20 MB · JPG, PNG o PDF hasta 2 MB. Excel pesado: copia de lectura sin fotos.</small>
         {error && !choosing && <p className="receivingError" role="alert">{error}</p>}
         {choosing && <ReceivingModal title="Agregar archivo" busy={busy} onClose={() => { setChoosing(false); setError(''); }}>
             <p className="packingUploadModalHint">¿De dónde lo agregamos?</p>

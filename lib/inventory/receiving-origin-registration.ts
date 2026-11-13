@@ -6,9 +6,9 @@ import {requireSystemRegistration} from '@/lib/auth/special-permissions';
 import {assertBranchAccess} from '@/lib/auth/authorization';
 import type {SessionUser} from '@/lib/auth/types';
 
-export const originOrderLinesSql=`SELECT o.product_id,b.id carton_id,COALESCE(p.name,o.product_label) product,b.carton_number box,l.id line_id,l.model,l.color,l.counted quantity,b.counted_at::text counted_at
+export const originOrderLinesSql=`SELECT COALESCE(l.product_id,o.product_id) product_id,b.id carton_id,COALESCE(p.name,NULLIF(l.product_label,''),o.product_label) product,b.carton_number box,l.id line_id,l.model,l.color,l.counted quantity,b.counted_at::text counted_at
  FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN receiving_sessions s ON s.id=b.session_id
- LEFT JOIN products p ON p.id=o.product_id JOIN receiving_items l ON l.carton_id=b.id
+ JOIN receiving_items l ON l.carton_id=b.id LEFT JOIN products p ON p.id=COALESCE(l.product_id,o.product_id)
  WHERE o.id=$1 AND NOT o.is_foreign AND o.voided_at IS NULL AND s.status='DRAFT'
  AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id)
  ORDER BY b.id,l.id`;
