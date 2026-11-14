@@ -121,6 +121,20 @@ test('overview has one simple table and add button, no inline form or packing/co
  assert.match(html,/Agregar pedido/);assert.match(html,/Abrir pedido/);assert.match(html,/Faltan del pedido/);assert.match(html,/<b>18<\/b> <small>de 20<\/small>/);
  assert.doesNotMatch(html,/<form|<input|Packing list|Conteo|Recibidas acumuladas/);assert.equal((html.match(/Abrir pedido/g)||[]).length,1);
 });
+test('receipt rows show their own finished packing and count totals without mixing orders or hiding netted differences',()=>{
+ const comparisonData={boxes:[{id:'a',order_id:'A',counted_at:'now'},{id:'b',order_id:'B',counted_at:'now'}],items:[{carton_id:'a',model:'SAM A',color:'BLACK',expected:100,counted:80},{carton_id:'a',model:'SAM B',color:'BLACK',expected:100,counted:120},{carton_id:'b',model:'OTHER',color:'PINK',expected:9000,counted:8000}]};
+ const html=renderToStaticMarkup(React.createElement(BatchIntake,{batches:[{...batch,total:1,received_here:1,counted_here:1}],pending:[],products,busy:false,draft:false,save:async()=>true,onOpen(){},comparisonData}));
+ assert.match(html,/receivingComparisonCompact/);assert.match(html,/Packing <b>200<\/b>/);assert.match(html,/Contadas <b>200<\/b>/);assert.match(html,/Diferencia neta <b>0<\/b>/);assert.match(html,/Faltan 20/);assert.match(html,/Sobran 20/);assert.match(html,/El total cuadra, pero hay diferencias/);assert.doesNotMatch(html,/9,000|8,000|<details>|Ver diferencias por modelo/);
+ const incomplete={...comparisonData,boxes:[{id:'a',order_id:'A',counted_at:null}]};
+ const pending=renderToStaticMarkup(React.createElement(BatchIntake,{batches:[batch],pending:[],products,busy:false,draft:false,save:async()=>true,onOpen(){},comparisonData:incomplete}));assert.doesNotMatch(pending,/receivingComparisonCompact/);
+});
+test('reviewer receipt overview receives comparison data while operative overview never does',()=>{
+ for(const review of [true,false]){
+  const data={review,canRecount:false,canManageReceipt:false,session:{id:'session',reference:'Llegada',total_boxes:1,status:'DRAFT'},batches:[batch],orders:[],boxes:[{id:'a',order_id:'A',counted_at:'now'}],items:[{carton_id:'a',model:'A',color:'',expected:100,counted:80}],foreign:[],foreignBoxes:[],documents:[],cost:null,pending:[]};
+  const tree=mount(base+'receiving-editor.tsx','default',{data,products:[]})();const list=nodes(tree).find(n=>n.props?.batches===data.batches);assert.ok(list);assert.equal(!!list.props.comparisonData,review);
+  const html=renderToStaticMarkup(React.createElement(BatchIntake,list.props));assert.equal(html.includes('receivingComparisonCompact'),review);
+ }
+});
 test('operative sees the same receipt order table and progress without add or freight controls',()=>{
  const data={review:false,canRecount:false,canManageReceipt:false,session:{id:'session',reference:'Llegada',total_boxes:20,status:'DRAFT'},batches:[{...batch,counted_here:3,destination_name:'Treviño'}],orders:[],boxes:[],items:[],foreign:[],foreignBoxes:[],documents:[],cost:null,pending:[]};
  const tree=mount(base+'receiving-editor.tsx','default',{data,products:[]})();
