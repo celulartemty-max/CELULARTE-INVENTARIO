@@ -5,6 +5,19 @@ import {createRequire} from 'node:module';
 import vm from 'node:vm';
 const require=createRequire(import.meta.url),ts=require('typescript');
 const order='00000000-0000-4000-8000-000000000001',person='00000000-0000-4000-8000-000000000002',branch='00000000-0000-4000-8000-000000000003';
+test('receipt home renders a prominent count-permissions link only for its verified owner',async()=>{
+ const {renderToStaticMarkup}=require('react-dom/server');
+ for(const [id,visible] of [['6373f0fc-68dc-405c-a26e-00e6594031ca',true],[person,false]]){
+  const mod={exports:{}},mocks={'next/link':({children,...props})=>require('react').createElement('a',props,children),'@/lib/auth/authorization':{requireUser:async()=>({id,role:'MASTER'}),getAuthorizedBranchIds:async()=>null},'@/lib/db':{sql:async(strings)=>strings.join('').includes('receiving_count_requests')?[{n:3}]:[]},'@/lib/inventory/receiving':{receivingAccess:async()=>{}},'@/lib/inventory/receiving-overview':{receivingOverview:async()=>[]},'./receiving-new':()=>null,'./receiving-receipt-card':()=>null,'./receiving.css':{}};
+  const code=ts.transpileModule(readFileSync(new URL('../app/(app)/entradas/pedidos/page.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
+  vm.runInThisContext('(function(require,module,exports){'+code+'})')(n=>n in mocks?mocks[n]:require(n),mod,mod.exports);
+  const html=renderToStaticMarkup(await mod.exports.default({}));
+  assert.equal(html.includes('class="receivingCountPermissions"'),visible);
+  assert.equal(html.includes('href="/entradas/permisos-conteo"'),visible);
+  if(visible){assert.match(html,/3 pendientes/);assert.match(html,/receivingCountPermissionsBadge/);}
+ }
+ const css=readFileSync(new URL('../app/(app)/entradas/pedidos/receiving.css',import.meta.url),'utf8');assert.match(css,/\.receivingHome \.receivingCountPermissions\{[^}]*min-height:48px/);assert.match(css,/\.receivingCountPermissions:focus-visible/);
+});
 function fixture({access=true,open=true,changed=true}={}){
  const queries=[];const query=async(sql,args=[])=>{queries.push({sql,args});const rows=sql.startsWith('SELECT o.id,o.marking')?[{id:order,marking:'PER',branch_id:branch}]:sql.startsWith('SELECT 1 FROM receiving_cartons')?(open?[{ok:1}]:[]):sql.startsWith('INSERT INTO receiving_count_requests')?(changed?[{order_id:order}]:[]):sql.startsWith('UPDATE receiving_count_requests')?[{status:args[2]}]:[];return {rows,rowCount:rows.length}};
  const m={exports:{}};const mocks={'server-only':{},'@/lib/db':{withTransaction:fn=>fn({query}),sql:async(strings,...args)=>(await query(strings.join('?'),args)).rows},'./receiving':{receivingAccess:async()=>{if(!access)throw Error('Sin permiso')}}};
