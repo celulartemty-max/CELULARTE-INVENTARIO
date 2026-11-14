@@ -28,6 +28,15 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('owner gets a direct destination button on receipt rows independently of count permission history',()=>{
+ const props={batches:[{...batch,marking:'JAPS',count_request:null,destination_name:'Plaza del Audio',counted_here:18}],pending:[],products,busy:false,draft:false,save:async()=>true,onOpen(){}};
+ for(const canChangeDestination of [false,true]){const html=renderToStaticMarkup(React.createElement(BatchIntake,{...props,canChangeDestination}));assert.equal(html.includes('Cambiar destino del pedido: Plaza del Audio'),canChangeDestination);assert.equal(html.includes('>Destino</button>'),canChangeDestination);}
+});
+test('direct destination saves only the actual destination, no fake request or change to counting permission',async()=>{
+ const calls=[];decisionFetch=async(url,options)=>{calls.push(JSON.parse(options.body));return{ok:true,json:async()=>({ok:true,destination:'Treviño'})}};
+ const render=mount(base+'order-destination.tsx','default',{orderId:'order',destination:'Plaza del Audio'});let tree=render();nodes(tree).find(n=>n.type==='button').props.onClick();tree=render();nodes(tree).find(n=>n.type==='select').props.onChange({target:{value:'Treviño'}});tree=render();await nodes(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});assert.deepEqual(calls,[{action:'destination',orderId:'order',destination:'Treviño'}]);assert.ok(!nodes(render()).some(n=>n.type==='form'));
+ decisionFetch=async()=>({ok:false,json:async()=>({error:'Ya registrada'})});const fail=mount(base+'order-destination.tsx','default',{orderId:'order',destination:'Plaza del Audio'});nodes(fail()).find(n=>n.type==='button').props.onClick();await nodes(fail()).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});assert.match(text(fail()),/Ya registrada/);assert.ok(nodes(fail()).some(n=>n.type==='form'));
+});
 test('after authorization owner is prompted for destination, which saves separately and never approves on a failed request',async()=>{
  const calls=[];decisionFetch=async(url,options)=>{calls.push(JSON.parse(options.body));return{ok:true,json:async()=>({ok:true,destination:'Treviño'})}};
  const render=mount('app/(app)/entradas/permisos-conteo/decisions.tsx','default',{orderId:'order',userId:'person',approved:false,destination:'Plaza del Audio'});

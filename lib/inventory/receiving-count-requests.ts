@@ -28,10 +28,11 @@ export async function countRequestAction(u:SessionUser,raw:unknown){
    if(changed.rowCount)await c.query(`INSERT INTO audit_events(user_id,branch_id,action,new_value) VALUES($1,$2,'RECEIVING_COUNT_PERMISSION_REQUESTED',$3::jsonb)`,[u.id,o.branch_id,JSON.stringify({orderId:o.id,requesterId:u.id})]);
    return {ok:true};
   }
-  if(!b.userId)throw Error('Selecciona la solicitud.');
   if(b.action==='destination'){
    if(!b.destination)throw Error('Selecciona Plaza del Audio o Treviño.');
-   if(!(await c.query(`SELECT 1 FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2 AND status='APPROVED'`,[o.id,b.userId])).rowCount)throw Error('Primero autoriza la solicitud de conteo.');
+   // The owner may route any order directly, even if no count request existed.
+   // Request-linked edits still verify that exact approval; never grant counting.
+   if(b.userId&&!(await c.query(`SELECT 1 FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2 AND status='APPROVED'`,[o.id,b.userId])).rowCount)throw Error('Primero autoriza la solicitud de conteo.');
    const destination=(await c.query(`SELECT id,name FROM branches WHERE name=$1 AND status='ACTIVE'`,[b.destination])).rows[0];
    if(!destination)throw Error('Sucursal destino no disponible.');
    if(destination.id===o.destination_branch_id)return {ok:true,destination:destination.name};
@@ -41,9 +42,10 @@ export async function countRequestAction(u:SessionUser,raw:unknown){
    if(destination.id===o.branch_id&&!o.product_id&&!o.is_mixed)throw Error('El pedido necesita un producto del catálogo.');
    const isForeign=destination.id!==o.branch_id;
    await c.query(`UPDATE receiving_orders SET destination_branch_id=$2,is_foreign=$3 WHERE id=$1`,[o.id,destination.id,isForeign]);
-   await c.query(`INSERT INTO audit_events(user_id,branch_id,action,previous_value,new_value) VALUES($1,$2,'RECEIVING_DESTINATION_CHANGED',$3::jsonb,$4::jsonb)`,[u.id,o.branch_id,JSON.stringify({orderId:o.id,destinationBranchId:o.destination_branch_id,isForeign:o.is_foreign,marking:o.marking}),JSON.stringify({orderId:o.id,requesterId:b.userId,destinationBranchId:destination.id,destination:destination.name,isForeign,marking:o.marking,countsPreserved:true})]);
+   await c.query(`INSERT INTO audit_events(user_id,branch_id,action,previous_value,new_value) VALUES($1,$2,'RECEIVING_DESTINATION_CHANGED',$3::jsonb,$4::jsonb)`,[u.id,o.branch_id,JSON.stringify({orderId:o.id,destinationBranchId:o.destination_branch_id,isForeign:o.is_foreign,marking:o.marking}),JSON.stringify({orderId:o.id,requesterId:b.userId??null,source:b.userId?'COUNT_PERMISSION':'ORDER',destinationBranchId:destination.id,destination:destination.name,isForeign,marking:o.marking,countsPreserved:true})]);
    return {ok:true,destination:destination.name};
   }
+  if(!b.userId)throw Error('Selecciona la solicitud.');
   const changed=await c.query(`UPDATE receiving_count_requests SET status=$3,decided_by=$4,decided_at=now() WHERE order_id=$1 AND user_id=$2 AND status IN ('PENDING','APPROVED') RETURNING status`,[o.id,b.userId,b.action==='approve'?'APPROVED':'DENIED',u.id]);
   if(!changed.rowCount)throw Error('La solicitud ya cambió. Actualiza la página.');
   await c.query(`INSERT INTO audit_events(user_id,branch_id,action,new_value) VALUES($1,$2,'RECEIVING_COUNT_PERMISSION_DECIDED',$3::jsonb)`,[u.id,o.branch_id,JSON.stringify({orderId:o.id,requesterId:b.userId,status:changed.rows[0].status})]);

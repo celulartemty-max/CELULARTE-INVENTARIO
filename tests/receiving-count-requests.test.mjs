@@ -42,6 +42,15 @@ test('approved request lets owner choose actual destination without modifying ma
  assert.ok(f.queries.findIndex(q=>q.sql.startsWith('SELECT s.id FROM receiving_sessions'))<f.queries.findIndex(q=>q.sql.startsWith('SELECT o.id,o.marking')));
  const same=fixture();await same.countRequestAction({id:same.countRequestOwner},{action:'destination',orderId:order,userId:person,destination:'Plaza del Audio'});assert.ok(!same.queries.some(q=>/^(UPDATE|INSERT)/.test(q.sql)));
 });
+test('owner can route an already counted order directly without creating a fictitious count request',async()=>{
+ const f=fixture({approved:false,open:false});await f.countRequestAction({id:f.countRequestOwner},{action:'destination',orderId:order,destination:'Treviño'});
+ const update=f.queries.find(q=>q.sql.startsWith('UPDATE receiving_orders'));assert.deepEqual(update.args,[order,branch,false]);
+ assert.ok(!f.queries.some(q=>q.sql.includes('FROM receiving_count_requests')||q.sql.startsWith('INSERT INTO receiving_count_requests')||q.sql.startsWith('UPDATE receiving_count_requests')));
+ const audit=f.queries.find(q=>q.sql.includes('RECEIVING_DESTINATION_CHANGED'));assert.equal(JSON.parse(audit.args[3]).source,'ORDER');assert.equal(JSON.parse(audit.args[3]).requesterId,null);assert.equal(JSON.parse(audit.args[3]).marking,'JAPS');
+ for(const opts of [{registered:true},{closed:true},{arrived:true}]){const f=fixture(opts);await assert.rejects(()=>f.countRequestAction({id:f.countRequestOwner},{action:'destination',orderId:order,destination:'Treviño'}));assert.ok(!f.queries.some(q=>/^(UPDATE|INSERT|DELETE)/.test(q.sql)));}
+ const unauthorized=fixture();await assert.rejects(()=>unauthorized.countRequestAction({id:person,role:'MASTER'},{action:'destination',orderId:order,destination:'Treviño'}),/Solo la cuenta/);assert.equal(unauthorized.queries.length,0);
+ const source=readFileSync(new URL('../lib/inventory/receiving.ts',import.meta.url),'utf8');assert.match(source,/canChangeDestination:u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'/);
+});
 test('destination selection is blocked before approval, after registration, closed receipt or confirmed other-branch arrival',async()=>{
  for(const opts of [{approved:false},{registered:true},{closed:true},{arrived:true}]){
   const f=fixture(opts);await assert.rejects(()=>f.countRequestAction({id:f.countRequestOwner},{action:'destination',orderId:order,userId:person,destination:'Treviño'}));assert.ok(!f.queries.some(q=>/^(UPDATE|INSERT|DELETE)/.test(q.sql)));

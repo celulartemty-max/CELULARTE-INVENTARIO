@@ -334,5 +334,5 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const countAllowed=(orderId:unknown,mark:unknown)=>canCountReceivingMark(u,String(mark),countBranch??null)||countRequests.some(r=>r.order_id===orderId&&r.status==='APPROVED');
     for(const box of boxes){box.can_count=countAllowed(box.order_id,box.count_mark);delete box.count_mark;}
     for(const batch of batches){batch.can_count=countAllowed(batch.id,batch.marking);batch.count_request=countRequests.find(r=>r.order_id===batch.id)?.status??null;}
-    return { session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canManageReceipt, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)) };
+    return { canChangeDestination:u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca', session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canManageReceipt, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)) };
 }
