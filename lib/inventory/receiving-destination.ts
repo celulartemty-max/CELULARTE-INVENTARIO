@@ -62,7 +62,15 @@ export async function destinationView(u: SessionUser, orderId: string): Promise<
             ORDER BY CASE WHEN b.carton_number ~ '^[0-9]+$' THEN b.carton_number::numeric END,b.carton_number,b.id`, [o.id, o.destination_branch_id,u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'])).rows;
         const review = isReviewer(u.role);
         const items = (await c.query(`SELECT l.id::text,l.carton_id::text,l.product_id::text,l.product_label,l.model,l.color,l.counted,
-            CASE WHEN $3::boolean AND b.counted_at IS NOT NULL THEN l.expected ELSE NULL END expected
+            CASE WHEN $3::boolean AND b.counted_at IS NOT NULL THEN COALESCE(l.expected,CASE WHEN EXISTS(
+ SELECT 1 FROM audit_events inserted JOIN audit_events added ON added.created_at=inserted.created_at AND added.user_id=inserted.user_id
+ AND added.action IN ('RECEIVING_UNLISTED_ITEM','RECEIVING_DESTINATION_UNLISTED')
+ AND added.new_value->>'boxId'=l.carton_id::text AND added.new_value->>'model'=l.model AND added.new_value->>'color'=l.color
+ WHERE inserted.entity_type='receiving_items' AND inserted.entity_id=l.id AND inserted.action='ROW_INSERT'
+ AND inserted.new_value->>'carton_id'=l.carton_id::text AND inserted.new_value->>'model'=l.model AND inserted.new_value->>'color'=l.color
+ AND inserted.new_value->>'expected' IS NULL
+ AND NOT EXISTS(SELECT 1 FROM audit_events changed WHERE changed.entity_type='receiving_items' AND changed.entity_id=l.id AND changed.action='ROW_UPDATE' AND changed.previous_value->'expected' IS DISTINCT FROM changed.new_value->'expected')
+ ) THEN 0 ELSE NULL END) ELSE NULL END expected
             FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE b.order_id=$1 AND a.branch_id=$2 ORDER BY l.model,l.color,l.id`, [o.id, o.destination_branch_id, review])).rows;
         const documents = review && boxes.some(b => b.received_at) ? (await c.query(`SELECT d.id::text,d.filename,EXISTS(SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_PACKING_RESET' AND a.new_value->>'orderId'=d.order_id::text AND (a.new_value->'documentIds') ? d.id::text) previous FROM receiving_documents d WHERE d.order_id=$1 ORDER BY d.created_at,d.id`, [o.id])).rows : [];
@@ -144,7 +152,7 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
             if (!model && !color) throw new Error('Indica el modelo o color.');
             if ((await c.query('SELECT count(*)::int n FROM receiving_items WHERE carton_id=$1', [boxId])).rows[0].n >= 500) throw new Error('Máximo 500 combinaciones por caja.');
             await appendPackingColor(c,o.id,color);
-            await c.query('INSERT INTO receiving_items(carton_id,model,color) VALUES($1,$2,$3)', [boxId, model, color]);
+            await c.query('INSERT INTO receiving_items(carton_id,model,color,expected) VALUES($1,$2,$3,0)', [boxId, model, color]);
             await audit(c, u, branch, 'RECEIVING_DESTINATION_UNLISTED', { orderId: o.id, boxId, model, color });
             return { ok: true };
         }

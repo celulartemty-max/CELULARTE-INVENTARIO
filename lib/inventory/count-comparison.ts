@@ -16,5 +16,5 @@ export function countComparison(boxes:ComparisonBox[],items:ComparisonItem[]){
  }
  const rows=Array.from(groups.values()).map(r=>({...r,difference:r.unknown?null:r.counted-r.expected})).sort((a,b)=>a.model.localeCompare(b.model,'es',{numeric:true})||a.color.localeCompare(b.color,'es'));
  const missing=rows.reduce((sum,r)=>sum+Math.max(0,-(r.difference??0)),0),extra=rows.reduce((sum,r)=>sum+Math.max(0,r.difference??0),0);
- return {counted,expected:unknown?null:expected,difference:unknown?null:counted-expected,unknown,missing,extra,rows:rows.filter(r=>r.difference!==0)};
+ return {counted,knownExpected:expected,expected:unknown?null:expected,difference:unknown?null:counted-expected,unknown,missing,extra,rows:rows.filter(r=>r.difference!==0)};
 }
