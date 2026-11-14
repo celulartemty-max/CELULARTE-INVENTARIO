@@ -80,7 +80,7 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
         });
     }
     return <>
-        <CountPermissionNotice key={order.id} orderId={order.id} mark={order.marking} allowed={data.canCount} state={data.countRequest}/>
+        <CountPermissionNotice key={order.id} orderId={order.id} mark={order.marking} destinationName={order.destination} allowed={data.canCount} state={data.countRequest}/>
         <header className="receivingHomeHero"><span className="receivingEyebrow">{order.destination}</span><h1>{order.product}</h1><h2 className="receivingOrderTag">{order.marking}{order.display_title?` · ${order.display_title}`:''}</h2><p>{order.shipping} · {order.total} cajas{order.supplier ? ` · ${order.supplier}` : ''}</p><small>{order.reference} · Origen: {order.origin}</small></header>
         {error && <p className="receivingError" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
         <section className="card pad"><h2>Llegada a {order.destination}</h2><p>{arrived.length} de {order.total} cajas recibidas aquí · {order.counted} contadas</p>

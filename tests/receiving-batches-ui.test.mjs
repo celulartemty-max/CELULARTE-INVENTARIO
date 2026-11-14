@@ -7,12 +7,13 @@ import vm from 'node:vm';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 const requireModule=createRequire(import.meta.url),ts=requireModule('typescript');
+let decisionFetch=async()=>{throw Error('Unexpected request')};
 function load(path,react=React){
  const mod={exports:{}},source=readFileSync(new URL('../'+path,import.meta.url),'utf8');
  const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
  const req=name=>name.endsWith('/registration-queue')?{default:()=>null}:name==='react'?react:name==='next/navigation'?{useRouter:()=>({refresh(){}})}:name==='next/link'?{default:p=>React.createElement('a',p,p.children)}:name.startsWith('@/lib/inventory/')?load(name.replace('@/','')+'.ts',react):name.startsWith('.')?load(posix.join(posix.dirname(path),name+'.tsx'),react):requireModule(name);
  class FixtureFormData {constructor(form){this.fields=form.fields}get(key){return this.fields[key]??null}}
- vm.runInNewContext('(function(require,module,exports){'+code+'})',{FormData:FixtureFormData,crypto:{randomUUID:()=> '01234567-1234-4000-8000-000000000001'},window:{scrollTo(){}},confirm:()=>true})(req,mod,mod.exports);
+ vm.runInNewContext('(function(require,module,exports){'+code+'})',{FormData:FixtureFormData,crypto:{randomUUID:()=> '01234567-1234-4000-8000-000000000001'},window:{scrollTo(){}},confirm:()=>true,fetch:(...args)=>decisionFetch(...args)})(req,mod,mod.exports);
  return mod.exports;
 }
 function mount(path,name,props){
@@ -27,6 +28,15 @@ const base='app/(app)/entradas/pedidos/[id]/';
 const BatchIntake=load(base+'batch-intake.tsx').default;
 const productId='00000000-0000-4000-8000-000000000001',products=[{id:productId,name:'Combo Case'}];
 const batch={id:'A',reference:'PED-20',product:'Combo Case',shipping:'SEA',marking:'PER NICO',is_foreign:false,total:20,received_here:18,received_total:18,remaining:2};
+test('after authorization owner is prompted for destination, which saves separately and never approves on a failed request',async()=>{
+ const calls=[];decisionFetch=async(url,options)=>{calls.push(JSON.parse(options.body));return{ok:true,json:async()=>({ok:true,destination:'Treviño'})}};
+ const render=mount('app/(app)/entradas/permisos-conteo/decisions.tsx','default',{orderId:'order',userId:'person',approved:false,destination:'Plaza del Audio'});
+ let tree=render();assert.ok(!nodes(tree).some(n=>n.type==='select'));await nodes(tree).find(n=>n.type==='button'&&text(n)==='Autorizar conteo').props.onClick();
+ tree=render();let select=nodes(tree).find(n=>n.type==='select');assert.ok(select);assert.equal(select.props.value,'Plaza del Audio');assert.match(text(tree),/todo el pedido/);select.props.onChange({target:{value:'Treviño'}});tree=render();await nodes(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});
+ await new Promise(resolve=>setTimeout(resolve,0));assert.deepEqual(calls,[{action:'approve',orderId:'order',userId:'person'},{action:'destination',orderId:'order',userId:'person',destination:'Treviño'}]);
+ tree=render();assert.match(text(tree),/Destino guardado: Treviño/);
+ decisionFetch=async()=>({ok:false,json:async()=>({error:'Sin permiso'})});const failed=mount('app/(app)/entradas/permisos-conteo/decisions.tsx','default',{orderId:'order',userId:'person',approved:false});await nodes(failed()).find(n=>n.type==='button'&&text(n)==='Autorizar conteo').props.onClick();assert.ok(!nodes(failed()).some(n=>n.type==='select'));assert.match(text(failed()),/Sin permiso/);
+});
 test('other-branch notice preserves viewing and offers request, pending status grants no controls',()=>{
  const Notice=load(base+'count-permission-notice.tsx').default;
  const render=props=>renderToStaticMarkup(React.createElement(Notice,{orderId:'order',mark:'PER',allowed:false,...props}));
