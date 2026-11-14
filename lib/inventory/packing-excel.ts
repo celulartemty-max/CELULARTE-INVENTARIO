@@ -75,6 +75,13 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  const descriptionColors=colorCol<0&&descriptionCol>=0&&qtyCol>=0&&!wideColors.length;
  const materialLabels=descriptionCol>=0?[...new Set(rows.slice(header+1).filter(row=>!empty(row[modelCol])).map(row=>label(row[descriptionCol])).filter(Boolean))]:[];
  const materialProducts=descriptionColors&&materialLabels.length>1&&materialLabels.every(value=>!/-|–|—/.test(value));
+ // A homogeneous product description can legitimately omit colour entirely.
+ // Do not invent BLACK/CLEAR, turn this into a mixed order, or accept a broken
+ // colour suffix. Explicit colour tables and varied Material labels stay strict.
+ const materialNoColor=descriptionColors&&materialLabels.length===1
+  && /\b(?:glass|lens|mica|protector|privacy|case|cover|holder|socket)\b/i.test(materialLabels[0])
+  && !/[-–—\u3400-\u9fff]/.test(materialLabels[0])
+  && !/\b(?:black|white|blue|red|pink|purple|green|yellow|orange|gold|silver|clear|transparent|grey|gray|brown|beige|navy|negro|blanco|azul|rojo|rosa|morado|verde|amarillo|naranja|dorado|plateado|transparente|gris|cafe)\s*$/i.test(materialLabels[0]);
  if(colorCol>=0&&(qtyCol<0||wideColors.length))throw Error('La tabla COLOR/CANTIDAD tiene columnas sin identificar. Revisa sus encabezados.');
  if(colorCol<0&&!descriptionColors&&(!wideColors.length||(qtyCol<0&&totalCol<0&&boxTotalCol<0)))throw Error('Faltan colores o una columna Quantity/Total para validar el Excel.');
  const colors:string[]=[],boxes:{number:string;items:{model:string;color:string;expected:number;productLabel?:string}[]}[]=[],byBox=new Map<string,typeof boxes[number]>(),pairs=new Set<string>(),declared=new Map<string,number>();
@@ -116,12 +123,12 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
   const materialColor=descriptionColors?label(merged(r,descriptionCol)).match(/[-–—]\s*((?:titanium gr[ae]y|dark cherry|teal|black|white|blue|red|pink|purple|green|yellow|orange|gold|silver|clear|transparent|grey|gray|brown|beige|navy|negro|blanco|azul|rojo|rosa|morado|verde|amarillo|naranja|dorado|plateado|transparente|gris|cafe)(?:\s*[\u3400-\u9fff]+(?:[（(][\u3400-\u9fff]+[）)])?)?)\s*$/i)?.[1]:undefined;
   const productLabel=materialProducts?label(merged(r,descriptionCol)):undefined;
   if(materialProducts&&!productLabel)throw Error(`Falta el producto de Material en la fila ${r+1}.`);
-  if(descriptionColors&&!materialProducts&&!materialColor)throw Error(`No se pudo identificar el color al final de Material en la fila ${r+1}. Usa COLOR y CANTIDAD para indicarlo sin ambigüedad.`);
-  const source=materialProducts?[{name:'',c:qtyCol}]:descriptionColors?[{name:materialColor!,c:qtyCol}]:colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
+  if(descriptionColors&&!materialProducts&&!materialNoColor&&!materialColor)throw Error(`No se pudo identificar el color al final de Material en la fila ${r+1}. Usa COLOR y CANTIDAD para indicarlo sin ambigüedad.`);
+  const source=materialProducts||materialNoColor?[{name:'',c:qtyCol}]:descriptionColors?[{name:materialColor!,c:qtyCol}]:colorCol>=0?[{name:label(row[colorCol]),c:qtyCol}]:wideColors;
   let rowSum=0,found=false;
   for(const color of source){
    if(empty(row[color.c]))continue;
-   if(!color.name&&!materialProducts)throw Error(`Falta color en la fila ${r+1}.`);
+   if(!color.name&&!materialProducts&&!materialNoColor)throw Error(`Falta color en la fila ${r+1}.`);
    const n=quantity(row[color.c],`fila ${r+1}, ${color.name}`),pair=JSON.stringify([current,key(productLabel),key(model),key(color.name)]);
    if(pairs.has(pair))throw Error(`Modelo/color realmente repetido en la caja ${current}, fila ${r+1}. Revisa las filas de origen; no se sumaron ni eliminaron cantidades.`);
    pairs.add(pair);found=true;rowSum+=n;box.items.push({model,color:color.name,expected:n,...(productLabel?{productLabel}:{})});
@@ -135,5 +142,5 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  for(const m of sheet['!merges']??[])if(m.s.c===boxTotalCol&&m.e.c===boxTotalCol&&m.e.r>m.s.r){const covered=new Set<string>();for(let r=m.s.r;r<=m.e.r;r++){const box=rowBoxes.get(r);if(box)covered.add(box)}if(covered.size>1)throw Error(`Hoja ${name}: un total combinado abarca distintas cajas, filas ${m.s.r+1}-${m.e.r+1}.`);}
  for(const box of boxes)if(declared.has(box.number)&&box.items.reduce((s,l)=>s+l.expected,0)!==declared.get(box.number))throw Error(`Hoja ${name}, caja ${box.number}: piezas suman ${box.items.reduce((s,l)=>s+l.expected,0)}; total de caja indica ${declared.get(box.number)}.`);
  if(overall!==undefined&&overall!==total)throw Error(`Hoja ${name}: piezas suman ${total}; total general indica ${overall}.`);
- return packingSchema.parse({reference:name,colors,warnings:[...(ignoredDescriptions?[`Se omitieron ${ignoredDescriptions} referencias sin cantidades después del total general.`]:[]),...(noteColumns.size?[`Se omitieron notas de texto fuera de la tabla, columnas ${[...noteColumns].map(c=>XLSX.utils.encode_col(c)).join(', ')}.`]:[])],boxes});
+ return packingSchema.parse({reference:name,colors,warnings:[...(materialNoColor?['Material describe un solo producto sin indicar color. Se conservaron los modelos y cantidades con color vacío, sin inventar colores.']:[]),...(ignoredDescriptions?[`Se omitieron ${ignoredDescriptions} referencias sin cantidades después del total general.`]:[]),...(noteColumns.size?[`Se omitieron notas de texto fuera de la tabla, columnas ${[...noteColumns].map(c=>XLSX.utils.encode_col(c)).join(', ')}.`]:[])],boxes});
 }

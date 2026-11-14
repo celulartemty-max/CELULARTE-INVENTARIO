@@ -8,6 +8,16 @@ function load(path,mocks={}){const m={exports:{}};const code=ts.transpileModule(
 const parse=load('lib/inventory/packing-excel.ts').readPackingExcel;
 function file(rows,{merge=[],second=false}={}){const w=XLSX.utils.book_new(),s=XLSX.utils.aoa_to_sheet(rows);s['!merges']=merge;XLSX.utils.book_append_sheet(w,s,'PER AIR');if(second)XLSX.utils.book_append_sheet(w,XLSX.utils.aoa_to_sheet([['Other branch']]),'JAPS');return XLSX.write(w,{type:'buffer',bookType:'xlsx'});}
 const header=['CTN','MODEL','18 · Negro','NEW 3 · Gris claro','Quantity','CTN TOTAL','KG','CM'];
+test('single-product Material description without colour imports nine cartons and exact quantities without forcing a mixed order',()=>{
+ const h=[null,'Carton No.','Material','Photo','Brand','Model','Quantity',null,'Weight','Width*Length*Height','CBM'];
+ const models=[['IPHONE 13/13 PRO',200,'IPHONE 14',250],['IPHONE 18 PRO MAX',450],['IPHONE 18 PRO MAX',250,'IPHONE 11',100,'IPHONE 12/12 PRO',100],['IPHONE 15',200,'IPHONE 16',200,'IPHONE 17 PRO MAX',50],['IPHONE 17 PRO MAX',450],['IPHONE 14 PRO',200,'IPHONE 17',200,'IPHONE 15 PRO',50],['IPHONE 13 PRO MAX/14 PLUS',150,'IPHONE 14 PRO MAX',100,'IPHONE 16 PRO MAX',200],['IPHONE 15 PRO MAX',100,'IPHONE 15 PRO',50,'IPHONE 18 PRO',200,'IPHONE 18 FOLD',100],['IPHONE 17 PRO',100,'IPHONE 16 PRO',100]];
+ const rows=[[],[null,'JAPS AIR'],h],merge=[{s:{r:2,c:6},e:{r:2,c:7}}];
+ models.forEach((entries,i)=>{const start=rows.length,sum=entries.filter((_,n)=>n%2).reduce((s,n)=>s+n,0);for(let n=0;n<entries.length;n+=2)rows.push([null,n===0?i+1:null,'3in 1 Matte Privacy with package',null,'Apple',entries[n],entries[n+1],n===0?sum:null]);if(entries.length>2)merge.push({s:{r:start,c:1},e:{r:rows.length-1,c:1}},{s:{r:start,c:7},e:{r:rows.length-1,c:7}})});
+ rows.push([null,'Total',null,null,null,null,3800,3800]);
+ const p=parse(file(rows,{merge}));assert.equal(p.boxes.length,9);assert.deepEqual(p.boxes.map(b=>b.items.reduce((s,l)=>s+l.expected,0)),[450,450,450,450,450,450,450,450,200]);assert.equal(p.boxes.flatMap(b=>b.items).length,22);assert.ok(p.boxes.flatMap(b=>b.items).every(l=>l.color===''&&!l.productLabel));assert.deepEqual(p.colors,['']);assert.match(p.warnings.join(' '),/sin indicar color/);assert.equal(p.boxes[7].items[3].model,'IPHONE 18 FOLD');
+ const wrong=structuredClone(rows);wrong.at(-1)[6]=3799;assert.throws(()=>parse(file(wrong,{merge})),/totales generales|total general/);
+ for(const value of ['Lens-BLACK123','Lens-unknown','Privacy glass Black','Privacy glass 黑色']){const bad=rows.map((row,r)=>row.map((v,c)=>r>2&&c===2&&v?value:v));assert.throws(()=>parse(file(bad,{merge})),/identificar el color/);}
+});
 test('mixed products share one physical carton without collapsing identical model and colour',()=>{
  const h=['Carton No','Material','Photo','Brand','Model','Quantity',null];
  const rows=[h,[19,'CLEAR PREMIUM GLASS(CELULARTE)',null,'Apple','IP 16',50,200],[null,'PRIVACY PREMIUM GLASS(CELULARTE)',null,'Apple','IP 16',150],['Total',null,null,null,null,200,200]];
