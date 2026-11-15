@@ -50,6 +50,13 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             throw new Error('Recepción no encontrada.');
         // Counting is shared across receiving teams; approvals and POS retain scope.
         if(!['count','saveCount','addItem'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
+        if(b.action==='freight'){
+            if(u.role!=='MASTER')throw new Error('Solo Máster puede editar el monto del flete.');
+            const value=z.object({cost:z.number().finite().min(0).max(999999999).refine(n=>Math.abs(n*100-Math.round(n*100))<0.00001,'Usa máximo dos decimales.'),currency:z.enum(['MXN','USD','CNY'])}).parse(b);
+            await c.query('UPDATE receiving_sessions SET cost=$2,currency=$3 WHERE id=$1',[sessionId,value.cost,value.currency]);
+            await audit(c,u,s.branch_id,'RECEIVING_FREIGHT_UPDATED',{sessionId,previous:{cost:s.cost,currency:s.currency},...value});
+            return {ok:true};
+        }
         if(b.action==='deleteEmptyReceipt'){
             if(u.role!=='MASTER')throw new Error('Solo el máster puede borrar recepciones.');
             if(b.confirm!==true)throw new Error('Confirma que deseas borrar esta recepción vacía.');
