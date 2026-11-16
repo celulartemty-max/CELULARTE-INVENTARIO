@@ -1,6 +1,7 @@
 "use client";
 import{useRef,useState}from'react';
 import{useRouter}from'next/navigation';
+import Link from 'next/link';
 export type BranchOption={id:string;name:string};
 export default function NewExit({branches,canCreateFull=false}:{branches:BranchOption[];canCreateFull?:boolean}){
  const[busy,setBusy]=useState(false),[channel,setChannel]=useState('MERCADO_LIBRE'),[exitType,setExitType]=useState('FULL'),[error,setError]=useState(''),router=useRouter(),lock=useRef(false);
@@ -19,7 +20,7 @@ export default function NewExit({branches,canCreateFull=false}:{branches:BranchO
   {!isFull&&<label>Sucursal<select name="branch" required disabled={busy}>{branches.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
   <label>Canal<select name="channel" required value={channel} disabled={busy} onChange={e=>setChannel(e.target.value)}><option value="MERCADO_LIBRE">MercadoLibre</option><option value="TIKTOK">TikTok</option><option value="OTHER">Otro</option></select></label>
   {channel==='OTHER'?<label>Motivo<input name="reason" required disabled={busy} placeholder="Escribe el motivo de la salida" autoComplete="off"/></label>:<label>Tipo<select name="exitType" required value={exitType} disabled={busy} onChange={e=>setExitType(e.target.value)}><option value="FULL">Full</option><option value="INDEPENDENT_SALE">Venta independiente</option></select></label>}
-  {isFull&&(canCreateFull?<><label>Número de pedido / envío de Mercado Libre<input name="reference" maxLength={80} required disabled={busy}/></label><label>Título<input name="title" maxLength={160} required disabled={busy}/></label><label>Total de piezas (opcional)<input name="expected" type="number" min={1} max={10000000} step={1} inputMode="numeric" disabled={busy}/></label><fieldset disabled={busy}><legend>Sucursales que aportan producto</legend>{branches.map(b=><label key={b.id}><input type="checkbox" name="branch" value={b.id}/>{b.name}</label>)}</fieldset></>:<p>Solo MASTER inicia pedidos FULL. Consulta los pendientes en <a href="/salidas/pedidos">Gestión de Pedidos</a>.</p>)}
+  {isFull&&(canCreateFull?<><label>Número de pedido / envío de Mercado Libre<input name="reference" maxLength={80} required disabled={busy}/></label><label>Título<input name="title" maxLength={160} required disabled={busy}/></label><label>Total de piezas (opcional)<input name="expected" type="number" min={1} max={10000000} step={1} inputMode="numeric" disabled={busy}/></label><fieldset disabled={busy}><legend>Sucursales que aportan producto</legend>{branches.map(b=><label key={b.id}><input type="checkbox" name="branch" value={b.id}/>{b.name}</label>)}</fieldset></>:<p>Solo MASTER inicia pedidos FULL. Consulta los pendientes en <Link href="/salidas/pedidos">Gestión de Pedidos</Link>.</p>)}
   {error&&<p role="alert">{error}</p>}
   <button disabled={busy||(isFull&&!canCreateFull)}>{busy?'Creando…':isFull?'Crear pedido FULL':'Crear salida'}</button>
  </form>
