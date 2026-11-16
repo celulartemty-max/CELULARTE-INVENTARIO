@@ -4,7 +4,7 @@ const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0'),user={id:id(1)
 const box={id:id(4),order_id:id(5),carton_number:'1',counted_at:null};
 function fixture({rows=[box],partial=false,arrived=false,registered=false,foreign=0,existing=[]}={}){
  const calls=[],c={query:async(sql,args)=>{calls.push({sql,args});if(sql.startsWith('SELECT * FROM receiving_cartons WHERE session_id'))return{rows};if(sql.includes(' partial,'))return{rows:[{partial,arrived,registered}]};if(sql.startsWith('SELECT * FROM receiving_orders'))return{rows:[{id:id(5)}]};if(sql.startsWith('SELECT * FROM receiving_cartons WHERE order_id'))return{rows:existing};if(sql.includes('sum(carton_count)'))return{rows:[{n:foreign}]};return{rows:[],rowCount:1}}};
- const loadedModule={exports:{}};vm.runInNewContext('(function(require,loadedModule,exports){'+ts.transpileModule(read('lib/inventory/receipt-edit.ts'),{compilerOptions:{loadedModule:ts.ModuleKind.CommonJS}}).outputText+'})',{Error})(n=>n==='server-only'?{}:require(n),loadedModule,loadedModule.exports);
+ const loadedModule={exports:{}};vm.runInNewContext('(function(require,loadedModule,exports){'+ts.transpileModule(read('lib/inventory/receipt-edit.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText+'})',{Error})(n=>n==='server-only'?{}:require(n),loadedModule,loadedModule.exports);
  return{calls,run:(body={},u=user,s=session)=>loadedModule.exports.editReceipt(c,u,s,{total:2,reason:'Captura equivocada',...body})};
 }
 test('receipt edits reject every non-master and closed/registered receipts before reads or writes',async()=>{
