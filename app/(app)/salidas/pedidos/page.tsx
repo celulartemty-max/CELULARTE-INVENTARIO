@@ -18,7 +18,7 @@ export default async function Page({searchParams}:{searchParams:Promise<{page?:s
   </nav>
   {!groups.size&&<p>No hay pedidos en esta vista.</p>}
   <div className="fullListRows">{[...groups].map(([id,parts])=>{
-   const total=parts.reduce((n,p)=>n+(p.status==='CANCELLED'?0:p.pieces),0);
+   const total=parts[0].final_total??parts.reduce((n,p)=>n+(p.status==='CANCELLED'?0:p.pieces),0);
    return <Link className="fullListRow" href={'/salidas/pedidos/'+id} key={id}>
     <div className="fullListInfo"><small>FULL #{parts[0].reference}</small><h2>{parts[0].title}</h2><div className="fullListMeta"><span>{fullOrderStatus(parts)}</span><small>{parts.map(p=>p.branch==='Plaza del Audio'?'Plaza':p.branch).join(' + ')}</small></div></div>
     <strong className="fullListCount">{total.toLocaleString('es-MX')} <small>pzas</small></strong><span className="fullListArrow" aria-hidden="true">›</span>

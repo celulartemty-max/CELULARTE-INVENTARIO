@@ -10,7 +10,7 @@ export const fullOrderSchema = z.object({
  expectedPieces:z.number().int().min(1).max(10000000).nullable(),
  branchIds:z.array(z.string().uuid()).min(1).max(2).refine(ids=>new Set(ids).size===ids.length),
 }).strict();
-export type FullExit = { id:string; order_id:string; reference:string; title:string; expected_pieces:number|null; created_at:string; branch_id:string; branch:string; movement_id:string; folio:string; status:string; pieces:number; pos_registered_at:string|null; registered_by:string|null; shipped_at:string|null; shipped_by_name:string|null; waived_at:string|null };
+export type FullExit = { id:string; order_id:string; reference:string; title:string; expected_pieces:number|null; final_total?:number|null; final_pending?:boolean; created_at:string; branch_id:string; branch:string; movement_id:string; folio:string; status:string; pieces:number; pos_registered_at:string|null; registered_by:string|null; shipped_at:string|null; shipped_by_name:string|null; waived_at:string|null };
 export async function requireFullAccess(user:SessionUser) {
  if(!await hasModulePermission(user,'SALIDAS'))throw Error('Sin permiso de Salidas.');
 }
@@ -42,6 +42,7 @@ export async function fullOrderRows(user:SessionUser,id?:string,page=0,history=f
  const ids=await getAuthorizedBranchIds(user);
  if(ids?.length===0)return [];
  return withTransaction(async c=>(await c.query<FullExit>(`SELECT o.id::text,o.id::text order_id,o.reference,o.title,o.expected_pieces,o.created_at::text,
+ (SELECT total FROM full_final_counts WHERE order_id=o.id) final_total,EXISTS(SELECT 1 FROM full_final_count_lines WHERE order_id=o.id AND final_quantity-plaza_quantity<>registered_delta) final_pending,
  x.branch_id::text,b.name branch,m.id::text movement_id,m.folio,m.status::text,m.pos_registered_at::text,u.name registered_by,o.shipped_at::text,sender.name shipped_by_name,x.waived_at::text,
  COALESCE((SELECT sum(l.quantity) FROM exit_lines l WHERE l.movement_id=m.id),0)::int pieces
  FROM full_orders o JOIN full_order_exits x ON x.order_id=o.id JOIN inventory_movements m ON m.id=x.movement_id AND m.branch_id=x.branch_id
@@ -58,6 +59,7 @@ export async function fullOrderProducts(user:SessionUser,id:string) {
 export function fullOrderStatus(rows:FullExit[]) {
  if(!rows.length)return 'Pendiente';
  if(rows[0].shipped_at)return 'Enviado';
+ if(rows[0].final_total!=null)return rows[0].final_pending?'Pendiente de registro':'Conteo final guardado';
  if(rows.every(r=>r.waived_at))return 'Sin aportación';
  rows=rows.filter(r=>!r.waived_at);
  if(rows.some(r=>r.status==='CANCELLED'))return 'Revisar salida cancelada';

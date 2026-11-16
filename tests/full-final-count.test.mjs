@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import vm from 'node:vm';
+const require=createRequire(import.meta.url),ts=require('typescript'),read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+function fixture({permitted=true,registration=true,allowed=true,shipped=false,legacy=false,reviewed=false,previous=null,status='POS_REGISTERED'}={}){
+ const queries=[],plaza=[{movement_id:id(6),status,waived_at:null,current_version:1,lines:[{product_id:id(3),quantity:534}]}];
+ const c={query:async(sql,args)=>{queries.push({sql,args});let rows=[];
+ if(sql.startsWith('SELECT id::text FROM branches'))rows=[{id:id(2)}];
+ else if(sql.startsWith('SELECT shipped_at'))rows=[{shipped_at:shipped?'now':null}];
+ else if(sql.startsWith('SELECT order_id::text'))rows=previous?[previous]:[];
+ else if(sql.startsWith('SELECT l.product_id::text'))rows=previous?.lines??[];
+ else if(sql.startsWith('SELECT x.movement_id'))rows=plaza;
+ else if(sql.startsWith('SELECT 1 FROM full_order_exits'))rows=legacy?[{}]:[];
+ else if(sql.startsWith('SELECT 1 FROM full_exit_reviews'))rows=reviewed?[{}]:[];
+ else if(sql.startsWith('SELECT id FROM products'))rows=args[0].map(id=>({id}));
+ else if(sql.startsWith('SELECT id FROM full_orders'))rows=[{id:id(1)}];
+ else if(!/^(INSERT|UPDATE)/.test(sql))throw Error('Unexpected SQL '+sql);
+ return {rows,rowCount:rows.length};}};
+ const mocks={'server-only':{},'@/lib/db':{withTransaction:fn=>fn(c)},'@/lib/auth/authorization':{assertBranchAccess:async()=>{if(!allowed)throw Error('BRANCH');},getAuthorizedBranchIds:async()=>[id(2)]},'@/lib/auth/special-permissions':{requireSystemRegistration:async()=>{if(!registration)throw Error('REGISTER');}},'./full-orders':{requireFullAccess:async()=>{if(!permitted)throw Error('MODULE');}},'./full-workflow-request':{runFullWorkflow:async(u,r,a,d,fn)=>fn(c)}};
+ const m={exports:{}};vm.runInNewContext('(function(require,module,exports){'+ts.transpileModule(read('lib/inventory/full-final-count.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText+'})',{Map,Set,JSON,Error})(n=>mocks[n]??require(n),m,m.exports);
+ return {...m.exports,queries,plaza,user:{id:id(9),role:'OPERATIVE'}};
+}
+const payload={orderId:id(1),previousRevision:0,lines:[{productId:id(3),quantity:628}],reason:'Conteo físico'};
+const line=(final=628,registered=0)=>({product_id:id(3),product:'Silicon',final_quantity:final,plaza_quantity:534,registered_delta:registered});
+test('628 final minus 534 Plaza produces pending exit 94, not 628',async()=>{const f=fixture();await f.saveFinalCount(f.user,payload,id(8));const q=f.queries.find(q=>q.sql.startsWith('INSERT INTO full_final_count_lines'));assert.deepEqual(Array.from(q.args),[id(1),id(3),628,534]);assert.equal(f.finalAdjustment([line()],'origin')[0].quantity,94);assert.equal(f.finalAdjustment([line()],'destination').length,0);assert.ok(!f.queries.some(q=>/^(UPDATE|INSERT INTO|DELETE FROM) (inventory_movements|exit_lines|pos_registration_events)/.test(q.sql)));assert.ok(f.queries.some(q=>q.sql.includes('FULL_FINAL_COUNT_SAVED')));});
+test('negative, zero and subsequent corrections use only the remaining signed delta by style',()=>{const f=fixture();assert.equal(f.finalAdjustment([line(500)],'destination')[0].quantity,34);assert.equal(f.finalAdjustment([line(534)],'origin').length,0);assert.equal(f.finalAdjustment([line(534)],'destination').length,0);assert.equal(f.finalAdjustment([line(640,94)],'origin')[0].quantity,12);assert.equal(f.finalAdjustment([line(620,94)],'destination')[0].quantity,8);assert.equal(f.finalAdjustment([line(500,94)],'destination')[0].quantity,128);assert.equal(f.finalAdjustment([line(628,94)],'origin').length,0);const mixed=[line(),{...line(500),product_id:id(4)}];assert.equal(f.finalAdjustment(mixed,'origin')[0].quantity,94);assert.equal(f.finalAdjustment(mixed,'destination')[0].quantity,34);});
+test('saving rejects stale revision, legacy Treviño exit, old reviews, unfinished Plaza, closed FULL and missing permissions',async()=>{for(const opts of [{allowed:false},{permitted:false},{shipped:true},{legacy:true},{reviewed:true},{status:'DRAFT'},{previous:{revision:2,plaza_snapshot:[],lines:[]}}]){const f=fixture(opts);await assert.rejects(f.saveFinalCount(f.user,payload,id(8)));assert.ok(!f.queries.some(q=>/^(INSERT|UPDATE)/.test(q.sql)));}});
+test('rejects duplicate styles, negatives, decimals, zero total and missing reason',async()=>{const f=fixture();for(const p of [{...payload,lines:[...payload.lines,...payload.lines]},{...payload,lines:[{productId:id(3),quantity:-1}]},{...payload,lines:[{productId:id(3),quantity:0.5}]},{...payload,lines:[{productId:id(3),quantity:0}]},{...payload,reason:''}])await assert.rejects(f.saveFinalCount(f.user,p,id(8)));});
+test('registration snapshot guards stale confirmations and preserves signed prior registration',async()=>{const state={order_id:id(1),branch_id:id(2),revision:1,total:628,plaza_snapshot:[{movement_id:id(6),status:'POS_REGISTERED',waived_at:null,current_version:1,lines:[{product_id:id(3),quantity:534}]}],lines:[line()]};const f=fixture({previous:state});const d=await f.finalRegistrationDetail(f.user,id(1),'origin');assert.equal(d.lines[0].quantity,94);await assert.rejects(f.confirmFinalRegistration(f.user,id(1),'origin','0'.repeat(64)),/cambió/);assert.ok(!f.queries.some(q=>q.sql.startsWith('UPDATE')));await f.confirmFinalRegistration(f.user,id(1),'origin',d.revision);assert.ok(f.queries.some(q=>q.sql.startsWith('UPDATE full_final_count_lines')));assert.ok(f.queries.some(q=>q.sql.includes('FULL_ADJUSTMENT_REGISTERED')));const stale=fixture({previous:{...state,plaza_snapshot:[]}});await assert.rejects(stale.finalRegistrationDetail(stale.user,id(1),'origin'));const denied=fixture({previous:state,registration:false});await assert.rejects(denied.confirmFinalRegistration(denied.user,id(1),'origin',d.revision));assert.equal(denied.queries.length,0);});
+test('new page exposes calculated adjustment and registration, not a second Treviño capture',()=>{const p=read('app/(app)/salidas/pedidos/[orderId]/page.tsx');assert.match(p,/Ajuste calculado de Treviño/);assert.match(p,/Registrar en sistema/);assert.doesNotMatch(p,/Abrir salida/);assert.match(read('lib/inventory/full-shipping-lock.ts'),/final_managed/);assert.match(read('lib/inventory/system-registration.ts'),/FULL_ADJUSTMENT/);});

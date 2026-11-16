@@ -78,7 +78,7 @@ test('FULL detail uses compact branch cards and keeps audit and help inside coll
  const start=detail.indexOf('<details className="fullOrderDetails">');assert.ok(start>0);
  assert.ok(detail.indexOf('Folio:')>start);assert.ok(detail.indexOf('no hay sincronización automática')>start);
  assert.doesNotMatch(detail,/<details[^>]*\bopen[ =>]/);
- for(const token of ['fullOrderTotal','fullOrderBranch','Abrir salida →','Ver detalles'])assert.ok(detail.includes(token));
+ for(const token of ['fullOrderTotal','fullOrderBranch','Modificar cantidad','Ver detalles'])assert.ok(detail.includes(token));
  const css=read('app/(app)/salidas/full-orders.css');assert.match(css,/font-size:26px/);assert.match(css,/min-height:44px/);
 });
 test('exit capture has a compact FULL heading and collapses the long folio',()=>{

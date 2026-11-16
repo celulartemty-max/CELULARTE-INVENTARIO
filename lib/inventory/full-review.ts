@@ -79,7 +79,7 @@ export async function contributeToFull(u:SessionUser,raw:unknown,requestId:strin
   await audit(c,u,trevino,exits.rows[0].movement_id,'FULL_TREVINO_CONTRIBUTION',data);
  });
 }
-export type ReviewLine={id:string;product:string;quantity:number};
+export type ReviewLine={id:string;product_id?:string;product:string;quantity:number};
 export async function fullReviewData(u:SessionUser,orderId:string){
  await requireFullAccess(u);uuid.parse(orderId);const ids=await getAuthorizedBranchIds(u);
  return withTransaction(async c=>{
@@ -88,7 +88,7 @@ export async function fullReviewData(u:SessionUser,orderId:string){
   if(!b.rows.some(b=>ids===null||ids.includes(b.id)))throw Error('Sin acceso a sucursal.');
   const order=await c.query<{shipped_at:string|null}>('SELECT shipped_at FROM full_orders WHERE id=$1',[orderId]);
   const shipment=canReview?await c.query<{id:string;current_version:number;status:string;reviewed:boolean}>(`SELECT m.id::text,m.current_version,m.status::text,EXISTS(SELECT 1 FROM full_exit_reviews r WHERE r.movement_id=m.id) reviewed FROM full_order_exits x JOIN inventory_movements m ON m.id=x.movement_id JOIN branches b ON b.id=x.branch_id WHERE x.order_id=$1 AND b.name='Plaza del Audio' AND m.status::text<>'CANCELLED'`,[orderId]):{rows:[]};
-  const s=shipment.rows[0];const lines=s?await c.query<ReviewLine>(`SELECT l.id::text,p.name product,l.quantity FROM exit_lines l JOIN products p ON p.id=l.product_id WHERE l.movement_id=$1 ORDER BY l.created_at`,[s.id]):{rows:[]};
+  const s=shipment.rows[0];const lines=s?await c.query<ReviewLine>(`SELECT l.id::text,l.product_id::text,p.name product,l.quantity FROM exit_lines l JOIN products p ON p.id=l.product_id WHERE l.movement_id=$1 ORDER BY l.created_at`,[s.id]):{rows:[]};
   const summary=await c.query<{sent:number;accepted:number;rejected:number}>(`SELECT COALESCE(sum(l.sent),0)::int sent,COALESCE(sum(l.accepted),0)::int accepted,COALESCE(sum(l.sent-l.accepted),0)::int rejected FROM full_exit_reviews r JOIN full_review_lines l ON l.review_id=r.id WHERE r.order_id=$1 AND ($2::uuid[] IS NULL OR r.source_branch_id=ANY($2::uuid[]) OR r.holding_branch_id=ANY($2::uuid[]))`,[orderId,ids]);
   const products=canReview?await c.query<{id:string;name:string}>("SELECT id::text,name FROM products WHERE status::text='ACTIVE' ORDER BY name"):{rows:[]};
   return{canReview,shippedAt:order.rows[0]?.shipped_at??null,shipment:s??null,lines:lines.rows,summary:summary.rows[0],products:products.rows};

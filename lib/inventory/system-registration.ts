@@ -11,13 +11,20 @@ import { registerExitPos } from './exits';
 import { registerReturnPos } from './returns';
 import { registerTransferPos } from './transfers';
 
-export const registrationSchema = z.object({ id: z.string().uuid(), kind: z.enum(['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION','EXIT','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER','TRANSFER','CLIENT_SALE']), side: z.enum(['origin','destination']).nullable().default(null), revision:z.string().regex(/^[a-f0-9]{64}$/).optional() });
+export const registrationSchema = z.object({ id: z.string().uuid(), kind: z.enum(['FULL_ADJUSTMENT','RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION','EXIT','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER','TRANSFER','CLIENT_SALE']), side: z.enum(['origin','destination']).nullable().default(null), revision:z.string().regex(/^[a-f0-9]{64}$/).optional() });
 export type RegistrationKey = z.infer<typeof registrationSchema>;
 export type RegistrationPending = RegistrationKey & { reference: string; branch_id: string; branch: string; created_at: string; correction: boolean; created_by_name?: string | null };
 
 // One row per registration responsibility. A transfer can legitimately have two
 // pending sides, never two confirmations for the same side.
 export const pendingSql = `WITH pending AS (
+    SELECT f.order_id id,'FULL_ADJUSTMENT'::text kind,s.side,'FULL #'||o.reference reference,f.branch_id,f.updated_at created_at,
+      EXISTS(SELECT 1 FROM audit_events a WHERE a.action='FULL_ADJUSTMENT_REGISTERED' AND a.new_value->>'orderId'=f.order_id::text) correction
+    FROM full_final_counts f JOIN full_orders o ON o.id=f.order_id
+    CROSS JOIN (VALUES('origin'::text),('destination'::text)) s(side)
+    WHERE EXISTS(SELECT 1 FROM full_final_count_lines l WHERE l.order_id=f.order_id AND
+      CASE WHEN s.side='origin' THEN l.final_quantity-l.plaza_quantity-l.registered_delta ELSE l.registered_delta-l.final_quantity+l.plaza_quantity END>0)
+    UNION ALL
     SELECT s.id,'RECEIVING'::text kind,NULL::text side,s.reference,s.branch_id,s.created_at,false correction
     FROM receiving_sessions s WHERE s.status='CLOSED' AND EXISTS(SELECT 1 FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.session_id=s.id AND NOT o.is_foreign AND NOT EXISTS(SELECT 1 FROM receiving_origin_registrations r WHERE r.carton_id=b.id))
     UNION ALL
@@ -52,7 +59,8 @@ export const pendingSql = `WITH pending AS (
   LEFT JOIN inventory_movements source_m ON source_m.id=p.id AND p.kind NOT IN ('RECEIVING','DESTINATION','RECEIVING_ORDER')
   LEFT JOIN receiving_sessions source_s ON source_s.id=p.id AND p.kind='RECEIVING'
   LEFT JOIN receiving_orders source_o ON source_o.id=p.id AND (p.kind='DESTINATION' OR p.kind='RECEIVING_ORDER')
-  LEFT JOIN users creator ON creator.id=COALESCE(source_m.created_by,source_s.created_by,source_o.created_by)
+  LEFT JOIN full_final_counts source_f ON source_f.order_id=p.id AND p.kind='FULL_ADJUSTMENT'
+  LEFT JOIN users creator ON creator.id=COALESCE(source_f.created_by,COALESCE(source_m.created_by,source_s.created_by,source_o.created_by))
   WHERE ($1::uuid[] IS NULL OR p.branch_id=ANY($1::uuid[])) ORDER BY p.created_at,p.id,p.side LIMIT 500`;
 
 export async function registrationPending(user: SessionUser): Promise<RegistrationPending[]> {
@@ -64,13 +72,14 @@ export async function registrationHistory(user: SessionUser) {
     await requireSystemRegistration(user);
     const branches = await getAuthorizedBranchIds(user);
     return withTransaction(async c => (await c.query(`SELECT a.id::text,a.action,a.created_at::text,u.name actor,b.name branch,
-        COALESCE(m.folio,s.reference,o.reference,'Registro') reference
+        COALESCE(m.folio,s.reference,o.reference,'FULL #'||f.reference,'Registro') reference
         FROM audit_events a JOIN users u ON u.id=a.user_id LEFT JOIN branches b ON b.id=a.branch_id
         LEFT JOIN inventory_movements m ON m.id=a.movement_id
         LEFT JOIN receiving_sessions s ON s.id=CASE WHEN a.action='RECEIVING_POS_REGISTERED' THEN (a.new_value->>'sessionId')::uuid END
         LEFT JOIN receiving_orders o ON o.id=CASE WHEN a.action IN ('RECEIVING_DESTINATION_POS_REGISTERED','RECEIVING_ORDER_POS_REGISTERED') THEN (a.new_value->>'orderId')::uuid END
+        LEFT JOIN full_orders f ON f.id=CASE WHEN a.action='FULL_ADJUSTMENT_REGISTERED' THEN (a.new_value->>'orderId')::uuid END
         WHERE a.action=ANY($2::text[]) AND ($1::uuid[] IS NULL OR a.branch_id=ANY($1::uuid[]))
-        ORDER BY a.created_at DESC,a.id DESC LIMIT 100`, [branches, ['RECEIVING_ORDER_POS_REGISTERED','RECEIVING_POS_REGISTERED','RECEIVING_DESTINATION_POS_REGISTERED','POS_REGISTERED','POS_CORRECTION_REGISTERED','EXIT_POS_REGISTERED','EXIT_POS_CORRECTION_REGISTERED','RETURN_POS_REGISTERED','RETURN_POS_CORRECTION_REGISTERED','TRANSFER_ORIGIN_POS','TRANSFER_DESTINATION_POS','CUSTOMER_SALE_REGISTERED']])).rows);
+        ORDER BY a.created_at DESC,a.id DESC LIMIT 100`, [branches, ['FULL_ADJUSTMENT_REGISTERED','RECEIVING_ORDER_POS_REGISTERED','RECEIVING_POS_REGISTERED','RECEIVING_DESTINATION_POS_REGISTERED','POS_REGISTERED','POS_CORRECTION_REGISTERED','EXIT_POS_REGISTERED','EXIT_POS_CORRECTION_REGISTERED','RETURN_POS_REGISTERED','RETURN_POS_CORRECTION_REGISTERED','TRANSFER_ORIGIN_POS','TRANSFER_DESTINATION_POS','CUSTOMER_SALE_REGISTERED']])).rows);
 }
 export async function registrationDetail(user: SessionUser, raw: unknown) {
     await requireSystemRegistration(user);
@@ -80,6 +89,10 @@ export async function registrationDetail(user: SessionUser, raw: unknown) {
     const row = (await registrationPending(user)).find(p => p.id === key.id && p.kind === key.kind && p.side === key.side);
     if (!row) throw new Error('El registro ya no está pendiente o no tienes acceso a esa sucursal.');
     await assertBranchAccess(user, row.branch_id);
+    if(key.kind==='FULL_ADJUSTMENT'){
+        if(!key.side)throw Error('Selecciona entrada o salida.');
+        return {row,...await (await import('./full-final-count')).finalRegistrationDetail(user,key.id,key.side)};
+    }
     const lines = await withTransaction(async c => {
         if(key.kind==='RECEIVING_ORDER')return (await c.query((await import('./receiving-origin-registration')).originOrderLinesSql,[key.id])).rows;
         if (key.kind === 'DESTINATION') return (await c.query(`SELECT COALESCE(l.product_id,o.product_id) product_id,b.id carton_id,COALESCE(p.name,NULLIF(l.product_label,''),o.product_label) product,b.carton_number box,l.model,l.color,l.counted quantity FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN receiving_destination_arrivals a ON a.carton_id=b.id AND a.branch_id=o.destination_branch_id LEFT JOIN receiving_destination_registrations r ON r.carton_id=b.id JOIN receiving_items l ON l.carton_id=b.id LEFT JOIN products p ON p.id=COALESCE(l.product_id,o.product_id) WHERE o.id=$1 AND (r.carton_id IS NULL OR r.counted_at IS DISTINCT FROM b.counted_at) ORDER BY b.carton_number,l.model,l.color`,[key.id])).rows;
@@ -96,6 +109,10 @@ export async function confirmRegistration(user: SessionUser, raw: unknown) {
     const key = registrationSchema.parse(raw);
     const { row } = await registrationDetail(user, key);
     await assertBranchAccess(user, row.branch_id);
+    if(key.kind==='FULL_ADJUSTMENT'){
+        if(!key.side)throw Error('Selecciona entrada o salida.');
+        return (await import('./full-final-count')).confirmFinalRegistration(user,key.id,key.side,key.revision);
+    }
     if(key.kind==='RECEIVING_ORDER')return (await import('./receiving-origin-registration')).confirmOriginOrder(user,key.id,key.revision);
     if(key.kind==='CLIENT_SALE'){await registerCustomerSale(user,key.id);return;}
     // Existing methods perform their own locked status, version and branch checks.
