@@ -4,8 +4,8 @@ const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0'),user={id:id(1)
 const box={id:id(4),order_id:id(5),carton_number:'1',counted_at:null};
 function fixture({rows=[box],partial=false,arrived=false,registered=false,foreign=0,existing=[]}={}){
  const calls=[],c={query:async(sql,args)=>{calls.push({sql,args});if(sql.startsWith('SELECT * FROM receiving_cartons WHERE session_id'))return{rows};if(sql.includes(' partial,'))return{rows:[{partial,arrived,registered}]};if(sql.startsWith('SELECT * FROM receiving_orders'))return{rows:[{id:id(5)}]};if(sql.startsWith('SELECT * FROM receiving_cartons WHERE order_id'))return{rows:existing};if(sql.includes('sum(carton_count)'))return{rows:[{n:foreign}]};return{rows:[],rowCount:1}}};
- const module={exports:{}};vm.runInNewContext('(function(require,module,exports){'+ts.transpileModule(read('lib/inventory/receipt-edit.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText+'})',{Error})(n=>n==='server-only'?{}:require(n),module,module.exports);
- return{calls,run:(body={},u=user,s=session)=>module.exports.editReceipt(c,u,s,{total:2,reason:'Captura equivocada',...body})};
+ const loadedModule={exports:{}};vm.runInNewContext('(function(require,loadedModule,exports){'+ts.transpileModule(read('lib/inventory/receipt-edit.ts'),{compilerOptions:{loadedModule:ts.ModuleKind.CommonJS}}).outputText+'})',{Error})(n=>n==='server-only'?{}:require(n),loadedModule,loadedModule.exports);
+ return{calls,run:(body={},u=user,s=session)=>loadedModule.exports.editReceipt(c,u,s,{total:2,reason:'Captura equivocada',...body})};
 }
 test('receipt edits reject every non-master and closed/registered receipts before reads or writes',async()=>{
  for(const role of ['MANAGER','OPERATIVE']){const f=fixture();await assert.rejects(f.run({}, {...user,role}),/Máster/);assert.equal(f.calls.length,0)}
@@ -27,7 +27,7 @@ test('new numbers and pending arrivals can be added to an existing receipt order
  const g=fixture({existing:[{id:id(6),carton_number:'2',session_id:null}]});await g.run({orderId:box.order_id,numbers:['2']});assert.ok(g.calls.some(q=>q.sql.startsWith('UPDATE receiving_cartons SET session_id=$1')));
  const h=fixture({existing:[{id:id(6),carton_number:'2',session_id:id(20)}]});await assert.rejects(h.run({orderId:box.order_id,numbers:['2']}),/ya está recibida/);
 });
-test('editor exposes receipt control only behind master flag and keeps API branch/module transaction checks',()=>{
+test('editor exposes receipt control only behind master flag and keeps API branch/loadedModule transaction checks',()=>{
  const ui=read('app/(app)/entradas/pedidos/[id]/receiving-editor.tsx');assert.match(ui,/data.canRecount&&draft&&<ReceiptEdit/);
  const api=read('lib/inventory/receiving.ts');assert.ok(api.indexOf('await assertBranchAccess(u, s.branch_id)')<api.indexOf("b.action==='editReceipt'"));assert.match(api,/else await receivingAccess\(u\)/);
  const control=read('app/(app)/entradas/pedidos/[id]/receipt-edit.tsx');assert.match(control,/lock.current/);assert.match(control,/role="alert"/);assert.match(control,/Motivo del cambio/);
