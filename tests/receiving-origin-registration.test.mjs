@@ -5,12 +5,12 @@ import {createRequire} from 'node:module';
 import vm from 'node:vm';
 const require=createRequire(import.meta.url),ts=require('typescript');
 function fixture({permission=true,access=true,boxes=[{id:'box',counted_at:'today'}],lines=[{carton_id:'box',quantity:10}],inserted=1,foreign=false,voided=false}={}){
- const queries=[];const module={exports:{}};
- const code=ts.transpileModule(readFileSync(new URL('../lib/inventory/receiving-origin-registration.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ const queries=[];const loadedModule={exports:{}};
+ const code=ts.transpileModule(readFileSync(new URL('../lib/inventory/receiving-origin-registration.ts',import.meta.url),'utf8'),{compilerOptions:{loadedModule:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const client={query:async(sql,args)=>{queries.push({sql,args});if(sql.startsWith('SELECT * FROM receiving_orders'))return {rows:[{branch_id:'branch',is_foreign:foreign,voided_at:voided}]};if(sql.startsWith('SELECT b.id,b.counted_at'))return {rows:boxes};if(sql.includes('l.id line_id'))return {rows:lines};if(sql.startsWith('INSERT INTO receiving_origin_registrations'))return {rowCount:inserted};return {rows:[]}}};
  const mocks={'server-only':{},'node:crypto':require('node:crypto'),'@/lib/db':{withTransaction:fn=>fn(client)},'@/lib/auth/special-permissions':{requireSystemRegistration:async()=>{if(!permission)throw Error('Sin permiso')}},'@/lib/auth/authorization':{assertBranchAccess:async()=>{if(!access)throw Error('Sin acceso')}}};
- vm.runInNewContext('(function(require,module,exports){'+code+'})')(name=>mocks[name],module,module.exports);
- return {...module.exports,queries,lines};
+ vm.runInNewContext('(function(require,loadedModule,exports){'+code+'})')(name=>mocks[name],loadedModule,loadedModule.exports);
+ return {...loadedModule.exports,queries,lines};
 }
 test('completed order registers only its locked pending cartons with a snapshot and actor audit',async()=>{
  const f=fixture();await f.confirmOriginOrder({id:'actor'},'order',f.originRevision(f.lines));
