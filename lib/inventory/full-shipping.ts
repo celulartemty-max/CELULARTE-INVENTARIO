@@ -34,7 +34,6 @@ export async function closeFullShipment(u:SessionUser,raw:unknown,requestId:stri
   for(const p of parts.rows){
    if(p.waived_at){if(p.pieces||p.status!=='CANCELLED')throw Error('Aportación inconsistente. Revisa el pedido.');continue;}
    if(!['CLOSED','PENDING_POS','POS_REGISTERED','POS_RECONCILED','POS_CORRECTION_PENDING'].includes(p.status))throw Error('Termina las capturas o marca Sin aportación antes de cerrar.');
-   if(p.branch==='Plaza del Audio'&&!p.reviewed)throw Error('Primero revisa las piezas de Plaza.');
   }
   const total=parts.rows.reduce((n,p)=>n+p.pieces,0);
   if(!total)throw Error('No hay piezas para enviar.');
