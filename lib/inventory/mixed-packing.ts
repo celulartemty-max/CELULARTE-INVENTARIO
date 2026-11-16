@@ -1,6 +1,6 @@
 import type {packingSchema} from './receiving-validation';
 import type {z} from 'zod';
-type Client={query:(sql:string,args?:unknown[])=>Promise<{rows:Record<string,any>[];rowCount:number|null}>};
+type Client={query:(sql:string,args?:unknown[])=>Promise<{rows:Record<string,unknown>[];rowCount:number|null}>};
 export async function validateMixedPacking(c:Client,packing:z.infer<typeof packingSchema>,orderId:string){
  const lines=packing.boxes.flatMap(b=>b.items);
  if(!lines.some(l=>l.productLabel||l.productId))return;
