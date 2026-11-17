@@ -34,7 +34,7 @@ export default async function Dashboard(){
     <section className="dashStatsV2" aria-label="Resumen operativo">
       <Link href="/entradas/pedidos?status=open" className="statV2"><span className="statV2Icon toneBlue"><MovementIcon kind="RECEPTION"/></span><strong>{Number(receipts.open).toLocaleString('es-MX')}</strong><small>Recepciones<br/>en proceso</small><span className="statV2Arrow">›</span></Link>
       <Link href="/entradas/pedidos?status=closed" className="statV2"><span className="statV2Icon toneGreen"><MovementIcon kind="CHECK"/></span><strong>{Number(receipts.closed).toLocaleString('es-MX')}</strong><small>Recepciones cerradas<br/>(últimos 30 días)</small><span className="statV2Arrow">›</span></Link>
-      <Link href="/movimientos?view=exits-open" className="statV2"><span className="statV2Icon toneRed"><MovementIcon kind="EXIT"/></span><strong>{Number(stats.exits_in_progress??0).toLocaleString('es-MX')}</strong><small>Salidas<br/>en proceso</small><span className="statV2Arrow">›</span></Link>
+      <Link href="/salidas" className="statV2"><span className="statV2Icon toneRed"><MovementIcon kind="EXIT"/></span><strong>{Number(stats.exits_in_progress??0).toLocaleString('es-MX')}</strong><small>Salidas<br/>en proceso</small><span className="statV2Arrow">›</span></Link>
       <Link href="/movimientos?view=transfers-active" className="statV2"><span className="statV2Icon tonePurple"><MovementIcon kind="TRANSFER"/></span><strong>{Number(stats.active_transfers??0).toLocaleString('es-MX')}</strong><small>Traspasos<br/>activos</small><span className="statV2Arrow">›</span></Link>
     </section>
     <RegistrationNotice/>

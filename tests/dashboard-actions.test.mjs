@@ -12,6 +12,10 @@ test('pending receipt counts include unidentified boxes and only unfinished own-
  assert.match(read('app/(app)/entradas/pedidos/page.tsx'),/r.pending_count===true/);
 });
 test('exit dashboard and destination list use drafts, never completed or POS-only work',()=>{
- const s=read('app/(app)/dashboard/page.tsx');assert.match(s,/Salidas<br\/>en proceso/);assert.match(s,/view=exits-open/);assert.match(s,/m.movement_type='EXIT' AND m.status::text='DRAFT'/);
+ const s=read('app/(app)/dashboard/page.tsx');assert.match(s,/Salidas<br\/>en proceso/);assert.match(s,/href="\/salidas" className="statV2"/);assert.match(s,/m.movement_type='EXIT' AND m.status::text='DRAFT'/);
  assert.match(read('app/(app)/movimientos/page.tsx'),/type==='EXIT'&&status==='DRAFT'/);
+});
+
+test('Salidas menu keeps only creation and order management without deleting return workflows',()=>{
+ const s=read('app/(app)/salidas/page.tsx');assert.match(s,/Nueva salida/);assert.match(s,/Gestión de Pedidos/);assert.doesNotMatch(s,/Revisar piezas de Plaza|Regresos a Plaza|revision-full|devoluciones-full/);assert.match(s,/requireUser/);assert.match(s,/requireFullAccess/);
 });
