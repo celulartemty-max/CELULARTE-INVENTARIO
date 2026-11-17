@@ -13,12 +13,13 @@ export function registrationInstruction(row:Pick<RegistrationPending,'kind'|'sid
 }
 // Visual direction only: never infer it from the displayed quantity or mutate it.
 export function registrationDirection(row:Pick<RegistrationPending,'kind'|'side'>):'entry'|'exit'|'neutral'{
-    if(row.kind==='EXIT'||row.kind==='CLIENT_SALE')return 'exit';
+    if(row.kind==='EXIT')return 'exit';
     if(row.kind==='TRANSFER'||row.kind==='FULL_ADJUSTMENT')return row.side==='origin'?'exit':row.side==='destination'?'entry':'neutral';
     if(['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION'].includes(row.kind))return 'entry';
     return 'neutral';
 }
 export function registrationDirectionLabel(row:Pick<RegistrationPending,'kind'|'side'>){
+    if(row.kind==='CLIENT_SALE')return 'VENTA';
     const direction=registrationDirection(row);
     return direction==='exit'?'SALIDA':direction==='entry'?'ENTRADA':row.kind.startsWith('RETURN_')?'DEVOLUCIÓN':'REGISTRO';
 }

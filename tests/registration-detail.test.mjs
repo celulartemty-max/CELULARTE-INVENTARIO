@@ -66,13 +66,14 @@ test('queue preserves permission workflow and blocks incomplete confirmation wit
 test('direction distinguishes entry and exit without relying on colors or signs',()=>{
  const {registrationDirection:direction,registrationDirectionLabel:label}=mod.exports;
  for(const kind of ['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION']){assert.equal(direction({...row,kind}),'entry');assert.equal(label({...row,kind}),'ENTRADA');}
- for(const kind of ['EXIT','CLIENT_SALE']){assert.equal(direction({...row,kind}),'exit');assert.equal(label({...row,kind}),'SALIDA');}
+ for(const kind of ['EXIT']){assert.equal(direction({...row,kind}),'exit');assert.equal(label({...row,kind}),'SALIDA');}
  for(const kind of ['TRANSFER','FULL_ADJUSTMENT']){
   assert.equal(direction({...row,kind,side:'origin'}),'exit');
   assert.equal(direction({...row,kind,side:'destination'}),'entry');
   assert.equal(direction({...row,kind,side:null}),'neutral');
  }
  assert.equal(direction({...row,kind:'RETURN_ML'}),'neutral');
+ assert.equal(direction({...row,kind:'CLIENT_SALE'}),'neutral');assert.equal(label({...row,kind:'CLIENT_SALE'}),'VENTA');
  for(const [side,word,colorClass] of [['origin','SALIDA','registration-exit'],['destination','ENTRADA','registration-entry']]){
   const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row:{...row,kind:'FULL_ADJUSTMENT',side},lines:[{product:'COMBO CASE',quantity:5}]}}));
   assert.ok(html.includes(colorClass));assert.ok(html.includes(word));assert.ok(html.includes('5 piezas'));
