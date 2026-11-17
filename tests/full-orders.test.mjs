@@ -20,8 +20,9 @@ function fixture({role='MASTER',permission=true,ids=null,branches=[id(1),id(2)],
  return{...mod.exports,queries,user:{id:id(9),role}};
 }
 const body={reference:'81544435',title:'FULL · Micas',expectedPieces:500,branchIds:[id(1),id(2)]};
-test('only MASTER with Salidas can create FULL orders, before any database work',async()=>{
- for(const opts of [{role:'OPERATIVE'},{role:'MANAGER'},{permission:false}]){const f=fixture(opts);await assert.rejects(f.createFullOrder(f.user,body));assert.equal(f.queries.length,0);}
+test('all roles with Salidas can create FULL orders; missing module is denied before database work',async()=>{
+ for(const role of ['OPERATIVE','MANAGER','MASTER']){const f=fixture({role});assert.equal(await f.createFullOrder(f.user,body),id(3));}
+ const f=fixture({permission:false});await assert.rejects(f.createFullOrder(f.user,body));assert.equal(f.queries.length,0);
 });
 test('reference, title, positive expected total and unique internal branches are validated',async()=>{
  for(const change of [{reference:''},{title:' '},{branchIds:[]},{branchIds:[id(1),id(1)]},{expectedPieces:0},{expectedPieces:1.5},{expectedPieces:-5}]){const f=fixture();await assert.rejects(f.createFullOrder(f.user,{...body,...change}));assert.equal(f.queries.length,0);}
@@ -67,8 +68,8 @@ test('entry menu uses requested labels; existing creation and registration route
 });
 test('management is pending-only and FULL creation lives in Nueva salida',async()=>{
  const list=read('app/(app)/salidas/pedidos/page.tsx');assert.doesNotMatch(list,/NewOrder|Crear pedido|<form/);assert.match(list,/No hay pedidos en esta vista/);
- const page=read('app/(app)/salidas/nueva/page.tsx');assert.match(page,/canCreateFull=\{u.role==='MASTER'\}/);
- const form=read('app/(app)/salidas/nueva/exit-new.tsx');assert.match(form,/channel==='MERCADO_LIBRE'&&exitType==='FULL'/);assert.match(form,/isFull\?'\/api\/full-orders':'\/api\/exits'/);assert.match(form,/name="reference"/);assert.match(form,/name="title"/);assert.match(form,/branchIds:f.getAll\('branch'\)/);
+ const page=read('app/(app)/salidas/nueva/page.tsx');assert.match(page,/canCreateFull=\{await hasModulePermission\(u,'SALIDAS'\)\}/);
+ const form=read('app/(app)/salidas/nueva/exit-new.tsx');assert.match(form,/channel==='MERCADO_LIBRE'&&exitType==='FULL'/);assert.match(form,/isFull\?'\/api\/full-orders':'\/api\/exits'/);assert.match(form,/name="reference"/);assert.match(form,/name="title"/);assert.doesNotMatch(form,/Sucursales que aportan|name="branch" value=|getAll\('branch'\)/);
  const f=fixture({ids:[id(1)]});await f.fullOrderRows(f.user,undefined,1);const q=f.queries[0];assert.match(q.sql,/pending.branch_id=e.branch_id/);assert.match(q.sql,/f.shipped_at IS NOT NULL/);assert.equal(q.args[2],50);
 });
 test('FULL detail uses compact branch cards and keeps audit and help inside collapsed details',()=>{
@@ -84,4 +85,15 @@ test('FULL detail uses compact branch cards and keeps audit and help inside coll
 test('exit capture has a compact FULL heading and collapses the long folio',()=>{
  const page=read('app/(app)/salidas/[id]/page.tsx');assert.match(page,/fullExitHeading/);assert.match(page,/← Pedido/);assert.doesNotMatch(page,/Mercado Libre FULL #| · Salida #/);assert.match(page,/<details><summary>Detalles<\/summary><small>Folio: \{m.folio\}/);
  assert.ok(page.indexOf('await assertBranchAccess')<page.indexOf('FROM full_orders'));assert.match(page,/<ExitEditor movement=\{m\}/);
+});
+
+test('without a branch selector the server prepares both internal branches with zero quantities and no registration',async()=>{
+ const {branchIds,...automatic}=body;assert.equal(branchIds.length,2);
+ for(const role of ['OPERATIVE','MANAGER','MASTER']){
+  const f=fixture({role});assert.equal(await f.createFullOrder(f.user,automatic),id(3));
+  assert.equal(f.queries.filter(q=>q.sql.startsWith('INSERT INTO full_order_exits')).length,2);
+  const branches=f.queries.find(q=>q.sql.startsWith('SELECT id::text FROM branches'));assert.match(branches.sql,/status::text='ACTIVE'/);assert.match(branches.sql,/name IN \('Treviño','Plaza del Audio'\)/);assert.doesNotMatch(branches.sql,/ANY/);
+  assert.ok(!f.queries.some(q=>/INSERT INTO exit_lines|pos_registration_events|UPDATE inventory/.test(q.sql)));
+ }
+ const unavailable=fixture({branches:[id(1)]});await assert.rejects(unavailable.createFullOrder(unavailable.user,automatic));assert.ok(!unavailable.queries.some(q=>q.sql.startsWith('INSERT')));
 });

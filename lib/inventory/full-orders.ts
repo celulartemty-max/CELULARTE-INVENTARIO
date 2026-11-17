@@ -8,7 +8,7 @@ import type { SessionUser } from '@/lib/auth/types';
 export const fullOrderSchema = z.object({
  reference:z.string().trim().min(1).max(80), title:z.string().trim().min(1).max(160),
  expectedPieces:z.number().int().min(1).max(10000000).nullable(),
- branchIds:z.array(z.string().uuid()).min(1).max(2).refine(ids=>new Set(ids).size===ids.length),
+ branchIds:z.array(z.string().uuid()).min(1).max(2).refine(ids=>new Set(ids).size===ids.length).optional(),
 }).strict();
 export type FullExit = { id:string; order_id:string; reference:string; title:string; expected_pieces:number|null; final_total?:number|null; final_pending?:boolean; created_at:string; branch_id:string; branch:string; movement_id:string; folio:string; status:string; pieces:number; pos_registered_at:string|null; registered_by:string|null; shipped_at:string|null; shipped_by_name:string|null; waived_at:string|null };
 export async function requireFullAccess(user:SessionUser) {
@@ -16,11 +16,10 @@ export async function requireFullAccess(user:SessionUser) {
 }
 export async function createFullOrder(user:SessionUser,raw:unknown) {
  await requireFullAccess(user);
- if(user.role!=='MASTER')throw Error('Solo MASTER puede crear pedidos FULL.');
  const body=fullOrderSchema.parse(raw);
  return withTransaction(async c=>{
-  const branches=await c.query(`SELECT id::text FROM branches WHERE id=ANY($1::uuid[]) AND status::text='ACTIVE' AND name IN ('Treviño','Plaza del Audio') ORDER BY id FOR SHARE`,[body.branchIds]);
-  if(branches.rows.length!==body.branchIds.length)throw Error('Selecciona únicamente Plaza del Audio o Treviño activas.');
+  const branches=body.branchIds?await c.query(`SELECT id::text FROM branches WHERE id=ANY($1::uuid[]) AND status::text='ACTIVE' AND name IN ('Treviño','Plaza del Audio') ORDER BY id FOR SHARE`,[body.branchIds]):await c.query(`SELECT id::text FROM branches WHERE status::text='ACTIVE' AND name IN ('Treviño','Plaza del Audio') ORDER BY id FOR SHARE`);
+  if(branches.rows.length!==(body.branchIds?.length??2))throw Error('Selecciona únicamente Plaza del Audio o Treviño activas.');
   const existing=await c.query('SELECT id FROM full_orders WHERE lower(btrim(reference))=lower($1)',[body.reference]);
   if(existing.rows.length)throw Error('Ya existe un pedido con ese número de Mercado Libre.');
   const order=await c.query<{id:string}>(`INSERT INTO full_orders(reference,title,expected_pieces,created_by) VALUES($1,$2,$3,$4) RETURNING id::text`,[body.reference,body.title,body.expectedPieces,user.id]);
