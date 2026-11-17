@@ -27,7 +27,7 @@ function fixture({kind='EXIT',side=null,quantity=35,confirmFailure=false,network
     return{render,requests,refreshes:()=>refreshes,row};
 }
 async function open(f){await nodes(f.render()).find(n=>n.type==='button').props.onClick();}
-const confirm=f=>nodes(f.render()).find(n=>n.props?.className==='receivingSave');
+const confirm=f=>nodes(f.render()).find(n=>String(n.props?.className||'').split(' ').includes('receivingSave'));
 
 test('all registration kinds confirm directly without camera, photo upload or checkbox',async()=>{
  for(const [kind,side] of [['EXIT',null],['RECEPTION',null],['RETURN_ML',null],['RETURN_TIKTOK',null],['RETURN_CUSTOMER',null],['TRANSFER','origin'],['TRANSFER','destination'],['CLIENT_SALE','origin'],['RECEIVING',null],['DESTINATION',null]]){

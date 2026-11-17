@@ -90,5 +90,5 @@ test('registration has one direct confirmation action with no file or camera inp
  const f=queueFixture();await walk(f.render()).find(n=>n.type==='button').props.onClick();
  assert.equal(walk(f.render()).some(n=>n.type==='input'&&n.props.type==='file'),false);
  const html=renderToStaticMarkup(f.render());assert.doesNotMatch(html,/cámara|Agregar comprobante|type="checkbox"/);
- assert.equal(f.requests.length,1);assert.equal(walk(f.render()).find(n=>n.props?.className==='receivingSave').props.disabled,false);
+ assert.equal(f.requests.length,1);assert.equal(walk(f.render()).find(n=>String(n.props?.className||'').split(' ').includes('receivingSave')).props.disabled,false);
 });
