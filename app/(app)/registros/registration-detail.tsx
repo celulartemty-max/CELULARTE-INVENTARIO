@@ -8,14 +8,14 @@ export function registrationInstruction(row:Pick<RegistrationPending,'kind'|'sid
     if(row.kind==='CLIENT_SALE')return 'Registrar una VENTA en la sucursal de origen';
     if(row.kind==='TRANSFER')return row.side==='origin'?'Registrar una SALIDA por traspaso':'Registrar una ENTRADA por traspaso';
     if(row.kind==='EXIT')return 'Registrar una SALIDA';
-    if(row.kind.startsWith('RETURN_'))return 'Registrar una DEVOLUCIÓN';
+    if(row.kind.startsWith('RETURN_'))return 'Registrar una ENTRADA por devolución';
     return 'Registrar una ENTRADA';
 }
 // Visual direction only: never infer it from the displayed quantity or mutate it.
 export function registrationDirection(row:Pick<RegistrationPending,'kind'|'side'>):'entry'|'exit'|'neutral'{
     if(row.kind==='EXIT')return 'exit';
     if(row.kind==='TRANSFER'||row.kind==='FULL_ADJUSTMENT')return row.side==='origin'?'exit':row.side==='destination'?'entry':'neutral';
-    if(['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION'].includes(row.kind))return 'entry';
+    if(['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER'].includes(row.kind))return 'entry';
     return 'neutral';
 }
 export function registrationDirectionLabel(row:Pick<RegistrationPending,'kind'|'side'>){
@@ -37,7 +37,7 @@ export function registrationConfirmLabel(row:Pick<RegistrationPending,'kind'|'si
     if(row.kind==='CLIENT_SALE')return 'Confirmar venta registrada';
     if(row.correction)return 'Confirmar corrección registrada';
     if(row.kind==='EXIT'||(row.kind==='TRANSFER'&&row.side==='origin'))return 'Confirmar salida registrada';
-    if(row.kind.startsWith('RETURN_'))return 'Confirmar devolución registrada';
+    if(row.kind.startsWith('RETURN_'))return 'Confirmar entrada por devolución registrada';
     return 'Confirmar entrada registrada';
 }
 

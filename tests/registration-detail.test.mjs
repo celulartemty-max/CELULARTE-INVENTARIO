@@ -23,7 +23,7 @@ test('receipt with an incomplete quantity does not show a false product total',(
 test('instructions distinguish receipt, exit, return and both transfer sides',()=>{
     for(const kind of ['RECEIVING','DESTINATION','RECEPTION'])assert.equal(instruction({...row,kind}),'Registrar una ENTRADA');
     assert.equal(instruction(row),'Registrar una SALIDA');
-    for(const kind of ['RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER'])assert.equal(instruction({...row,kind}),'Registrar una DEVOLUCIÓN');
+    for(const kind of ['RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER'])assert.equal(instruction({...row,kind}),'Registrar una ENTRADA por devolución');
     assert.equal(instruction({...row,kind:'TRANSFER',side:'origin'}),'Registrar una SALIDA por traspaso');
     assert.equal(instruction({...row,kind:'TRANSFER',side:'destination'}),'Registrar una ENTRADA por traspaso');
 });
@@ -39,7 +39,7 @@ test('confirmation labels explain entry, exit, return and correction without rep
     assert.equal(confirmLabel({...row,kind:'TRANSFER',side:'origin'}),'Confirmar salida registrada');
     assert.equal(confirmLabel({...row,kind:'TRANSFER',side:'destination'}),'Confirmar entrada registrada');
     assert.equal(confirmLabel({...row,kind:'RECEIVING'}),'Confirmar entrada registrada');
-    assert.equal(confirmLabel({...row,kind:'RETURN_ML'}),'Confirmar devolución registrada');
+    assert.equal(confirmLabel({...row,kind:'RETURN_ML'}),'Confirmar entrada por devolución registrada');
     assert.equal(confirmLabel({...row,correction:true}),'Confirmar corrección registrada');
 });
 test('model, colour, carton and damage status stay visible when captured',()=>{
@@ -72,7 +72,7 @@ test('direction distinguishes entry and exit without relying on colors or signs'
   assert.equal(direction({...row,kind,side:'destination'}),'entry');
   assert.equal(direction({...row,kind,side:null}),'neutral');
  }
- assert.equal(direction({...row,kind:'RETURN_ML'}),'neutral');
+ for(const kind of ['RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER']){assert.equal(direction({...row,kind}),'entry');assert.equal(label({...row,kind}),'ENTRADA');const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row:{...row,kind},lines:[{quantity:5}]}}));assert.match(html,/registration-entry/);assert.match(html,/Entrada por devolución/);}
  assert.equal(direction({...row,kind:'CLIENT_SALE'}),'neutral');assert.equal(label({...row,kind:'CLIENT_SALE'}),'VENTA');
  for(const [side,word,colorClass] of [['origin','SALIDA','registration-exit'],['destination','ENTRADA','registration-entry']]){
   const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row:{...row,kind:'FULL_ADJUSTMENT',side},lines:[{product:'COMBO CASE',quantity:5}]}}));
