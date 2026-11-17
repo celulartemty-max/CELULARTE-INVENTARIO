@@ -4,9 +4,9 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import JSZip from 'jszip';
-const module={exports:{}};
-vm.runInNewContext(ts.transpileModule(readFileSync('lib/inventory/tiktok-sku-export.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2022}}).outputText,{module,exports:module.exports,require:n=>{assert.equal(n,'jszip');return JSZip;}});
-const {exportTikTokSkus:run}=module.exports;
+const testModule={exports:{}};
+vm.runInNewContext(ts.transpileModule(readFileSync('lib/inventory/tiktok-sku-export.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true,target:ts.ScriptTarget.ES2022}}).outputText,{module:testModule,exports:testModule.exports,require:n=>{assert.equal(n,'jszip');return JSZip;}});
+const {exportTikTokSkus:run}=testModule.exports;
 const cell=(ref,v)=>'<c r="'+ref+'" t="inlineStr"><is><t>'+v+'</t></is></c>';
 async function fixture(rows,target='worksheets/sheet1.xml'){
  const z=new JSZip();
