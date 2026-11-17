@@ -62,3 +62,27 @@ test('queue preserves permission workflow and blocks incomplete confirmation wit
     const queue=readFileSync(new URL('../app/(app)/registros/registration-queue.tsx',import.meta.url),'utf8');
     assert.match(queue,/<RegistrationDetail detail=\{detail\}/);assert.match(queue,/!registrationQuantities\(detail.lines\).complete/);assert.doesNotMatch(queue,/Foto del registro en sistema|\/api\/pos-evidence|capture=/);assert.match(queue,/\/api\/system-registration/);
 });
+
+test('direction distinguishes entry and exit without relying on colors or signs',()=>{
+ const {registrationDirection:direction,registrationDirectionLabel:label}=mod.exports;
+ for(const kind of ['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION']){assert.equal(direction({...row,kind}),'entry');assert.equal(label({...row,kind}),'ENTRADA');}
+ for(const kind of ['EXIT','CLIENT_SALE']){assert.equal(direction({...row,kind}),'exit');assert.equal(label({...row,kind}),'SALIDA');}
+ for(const kind of ['TRANSFER','FULL_ADJUSTMENT']){
+  assert.equal(direction({...row,kind,side:'origin'}),'exit');
+  assert.equal(direction({...row,kind,side:'destination'}),'entry');
+  assert.equal(direction({...row,kind,side:null}),'neutral');
+ }
+ assert.equal(direction({...row,kind:'RETURN_ML'}),'neutral');
+ for(const [side,word,colorClass] of [['origin','SALIDA','registration-exit'],['destination','ENTRADA','registration-entry']]){
+  const html=renderToStaticMarkup(React.createElement(Detail,{detail:{row:{...row,kind:'FULL_ADJUSTMENT',side},lines:[{product:'COMBO CASE',quantity:5}]}}));
+  assert.ok(html.includes(colorClass));assert.ok(html.includes(word));assert.ok(html.includes('5 piezas'));
+ }
+});
+test('queue uses direction styles in list, compact controls and confirmation, retaining disabled guards',()=>{
+ const queue=readFileSync(new URL('../app/(app)/registros/registration-queue.tsx',import.meta.url),'utf8');
+ assert.match(queue,/registrationDirectionLabel\(r\)/);
+ assert.match(queue,/registrationDirection\(detail.row\)/);
+ assert.match(queue,/disabled=\{disabled\|\|!registrationQuantities\(detail.lines\).complete\}/);
+ const css=readFileSync(new URL('../app/(app)/registros/registration.css',import.meta.url),'utf8');
+ assert.match(css,/registration-exit/);assert.match(css,/registration-entry/);assert.match(css,/:focus-visible/);
+});

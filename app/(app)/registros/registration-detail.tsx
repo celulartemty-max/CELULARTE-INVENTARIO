@@ -11,6 +11,17 @@ export function registrationInstruction(row:Pick<RegistrationPending,'kind'|'sid
     if(row.kind.startsWith('RETURN_'))return 'Registrar una DEVOLUCIÓN';
     return 'Registrar una ENTRADA';
 }
+// Visual direction only: never infer it from the displayed quantity or mutate it.
+export function registrationDirection(row:Pick<RegistrationPending,'kind'|'side'>):'entry'|'exit'|'neutral'{
+    if(row.kind==='EXIT'||row.kind==='CLIENT_SALE')return 'exit';
+    if(row.kind==='TRANSFER'||row.kind==='FULL_ADJUSTMENT')return row.side==='origin'?'exit':row.side==='destination'?'entry':'neutral';
+    if(['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION'].includes(row.kind))return 'entry';
+    return 'neutral';
+}
+export function registrationDirectionLabel(row:Pick<RegistrationPending,'kind'|'side'>){
+    const direction=registrationDirection(row);
+    return direction==='exit'?'SALIDA':direction==='entry'?'ENTRADA':row.kind.startsWith('RETURN_')?'DEVOLUCIÓN':'REGISTRO';
+}
 export function registrationQuantities(lines:RegistrationLine[]){
     const complete=lines.length>0&&lines.every(line=>typeof line.quantity==='number'&&Number.isFinite(line.quantity)&&Number.isInteger(line.quantity)&&line.quantity>=0);
     return {complete,total:complete?lines.reduce((sum,line)=>sum+line.quantity!,0):null};
@@ -41,6 +52,7 @@ export default function RegistrationDetail({detail}:{detail:RegistrationDetailDa
     }
     const fmt=(n:number)=>n.toLocaleString('es-MX');
     return <section className="registrationInstructions" aria-label="Qué registrar en sistema">
+        <div className={`registrationDirection registration-${registrationDirection(row)}`}><strong>{registrationDirectionLabel(row)}</strong><span>{total===null?'Por completar':`${fmt(total)} piezas`}</span></div>
         <p className="registrationSubtitle">{registrationSubtitle(row)}</p>
         {row.correction&&<p className="registrationCorrection">{row.kind==='FULL_ADJUSTMENT'?'Ajuste adicional pendiente: estas cantidades son solo la diferencia contra lo ya confirmado. No repitas el movimiento anterior.':'Corrección: cantidades finales; no dupliques el movimiento.'}</p>}
         {grouped&&<><div className="registrationItemsHeading registrationGrouped"><span>Producto</span><span># Cajas</span><span># Piezas</span></div><ul className="registrationItems" aria-label="Resumen por producto">{Array.from(groups,([key,group])=>{const q=registrationQuantities(group.lines);return <li className="registrationItem registrationGrouped" key={key}><div className="registrationItemIdentity"><b>{group.product}</b></div><strong className="registrationItemQuantity">{group.boxes.size}</strong><strong className="registrationItemQuantity">{q.total===null?'Por completar':fmt(q.total)}</strong></li>})}</ul></>}

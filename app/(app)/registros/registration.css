@@ -3,3 +3,17 @@
 .registrationCameraHint{font-size:12px;line-height:1.5;color:#718096;margin:12px 0 0}
 .registrationModal button.receivingSave:disabled{background:#e2e8f0;color:#64748b;border-color:#e2e8f0;box-shadow:none;cursor:not-allowed}
 .registrationItemsHeading.registrationGrouped,.registrationItem.registrationGrouped{grid-template-columns:minmax(0,1fr) 54px 72px;gap:8px}.registrationGrouped>span:not(:first-child){text-align:right}
+
+/* Direction is conveyed with text as well as color. Informational badges are not controls. */
+.registrationDirection{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border:1px solid #cbd5e1;border-radius:12px;padding:14px 16px;margin:2px 0 10px;background:#f1f5f9;color:#334155}
+.registrationDirection strong{font-size:20px;font-weight:800;letter-spacing:.04em}
+.registrationDirection span{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.registrationDirection.registration-exit{background:#fff1f2;border-color:#fda4af;color:#9f1239}
+.registrationDirection.registration-entry{background:#ecfdf5;border-color:#86efac;color:#166534}
+.registrationDirectionSmall{display:inline-flex;padding:7px 11px;margin:0 10px 8px 0;font-size:12px;font-weight:800;letter-spacing:.04em}
+button.registrationPrimary.registration-exit,.registrationModal button.receivingSave.registration-exit{background:#b91c1c;color:#fff;border-color:#b91c1c}
+button.registrationPrimary.registration-entry,.registrationModal button.receivingSave.registration-entry{background:#15803d;color:#fff;border-color:#15803d}
+button.registrationPrimary.registration-exit:not(:disabled):hover,.registrationModal button.receivingSave.registration-exit:not(:disabled):hover{background:#991b1b}
+button.registrationPrimary.registration-entry:not(:disabled):hover,.registrationModal button.receivingSave.registration-entry:not(:disabled):hover{background:#166534}
+.registrationModal button.receivingSave.registration-exit:disabled,.registrationModal button.receivingSave.registration-entry:disabled{background:#e2e8f0;color:#64748b;border-color:#e2e8f0;cursor:not-allowed}
+button.registrationPrimary:focus-visible,.registrationModal button.receivingSave:focus-visible{outline:3px solid #60a5fa;outline-offset:3px}

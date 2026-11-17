@@ -2,7 +2,7 @@
 import { useRef,useState,useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { RegistrationPending } from '@/lib/inventory/system-registration';
-import RegistrationDetail,{registrationQuantities,registrationConfirmLabel,type RegistrationDetailData} from './registration-detail';
+import RegistrationDetail,{registrationQuantities,registrationConfirmLabel,registrationDirection,registrationDirectionLabel,type RegistrationDetailData} from './registration-detail';
 import ReceivingModal from '../entradas/pedidos/[id]/receiving-modal';
 import '../entradas/pedidos/receiving.css';
 import './registration.css';
@@ -30,12 +30,12 @@ export default function RegistrationQueue({rows,compact=false,buttonLabel='Ver d
     }
     return <>{!compact&&<div className="registrationListHeading"><h2>Pendientes <span>{rows.length}</span></h2><label>Tipo<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="">Todos</option>{Object.entries(labels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label></div>}
         {error&&!detail&&<p role="alert" className="receivingError">{error}</p>}{notice&&<p role="status" className="registrationSuccess">{notice}</p>}
-        {!compact&&<div className="registrationList">{visible.map(r=><article className="registrationCard" key={`${r.kind}:${r.id}:${r.side}`}><div><span className="registrationType">{labels[r.kind]}{r.side?` · ${r.side==='origin'?'Origen':'Destino'}`:''}{r.correction?' · Corrección':''}</span><h3>{r.branch.toLocaleUpperCase('es-MX')}</h3><p>Creado por: {r.created_by_name||'Sin nombre disponible'}</p><p>Folio: {r.reference}</p><small>{new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'medium'}).format(new Date(r.created_at))}</small></div><button className="registrationPrimary" disabled={disabled} onClick={()=>open(r)}>Ver detalle y registrar →</button></article>)}</div>}
+        {!compact&&<div className="registrationList">{visible.map(r=><article className="registrationCard" key={`${r.kind}:${r.id}:${r.side}`}><div><span className={`registrationDirection registrationDirectionSmall registration-${registrationDirection(r)}`}>{registrationDirectionLabel(r)}</span><span className="registrationType">{labels[r.kind]}{r.side?` · ${r.side==='origin'?'Origen':'Destino'}`:''}{r.correction?' · Corrección':''}</span><h3>{r.branch.toLocaleUpperCase('es-MX')}</h3><p>Creado por: {r.created_by_name||'Sin nombre disponible'}</p><p>Folio: {r.reference}</p><small>{new Intl.DateTimeFormat('es-MX',{timeZone:'America/Monterrey',dateStyle:'medium'}).format(new Date(r.created_at))}</small></div><button className={`registrationPrimary registration-${registrationDirection(r)}`} disabled={disabled} onClick={()=>open(r)}>Ver detalle y registrar →</button></article>)}</div>}
         {!compact&&!visible.length&&<p className="registrationEmpty">✓ No hay registros pendientes{filter?' de este tipo':''}.</p>}
-        {compact&&visible.map(r=><button type="button" className="registrationPrimary" aria-label={`${buttonLabel} en ${r.branch}`} style={{width:'100%'}} key={`${r.kind}:${r.id}:${r.side}`} disabled={disabled} onClick={()=>open(r)}>{busy?'Abriendo…':buttonLabel}</button>)}
+        {compact&&visible.map(r=><button type="button" className={`registrationPrimary registration-${registrationDirection(r)}`} aria-label={`${registrationDirectionLabel(r)}: ${buttonLabel} en ${r.branch}`} style={{width:'100%'}} key={`${r.kind}:${r.id}:${r.side}`} disabled={disabled} onClick={()=>open(r)}>{busy?'Abriendo…':`${registrationDirectionLabel(r)} · ${buttonLabel}`}</button>)}
         {detail&&<ReceivingModal className="registrationModal" title={detail.row.branch.toLocaleUpperCase('es-MX')} busy={disabled} onClose={()=>{setDetail(null);setError('')}}><RegistrationDetail detail={detail}/>
             {error&&<p role="alert" className="receivingError">{error}</p>}
-            <button type="button" className="receivingSave" disabled={disabled||!registrationQuantities(detail.lines).complete} onClick={()=>{
+            <button type="button" className={`receivingSave registration-${registrationDirection(detail.row)}`} disabled={disabled||!registrationQuantities(detail.lines).complete} onClick={()=>{
                 if(disabled||lock.current||!registrationQuantities(detail.lines).complete)return;
                 return save();
             }}>{disabled?'Guardando…':registrationConfirmLabel(detail.row)}</button>
