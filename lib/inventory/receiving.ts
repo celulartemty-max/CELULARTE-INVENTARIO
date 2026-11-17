@@ -275,6 +275,12 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const keys = new Set(expected.rows.map(x => x.id));
             if (!keys.size || lines.length !== keys.size || lines.some(x => !keys.has(x.id)))
                 throw new Error('Cuenta todas las líneas. Vacío no es cero.');
+        if(!saving&&b.reviewDifferences===true&&b.acceptDifferences!==true){
+            const reference=(await c.query('SELECT id,model,color,expected FROM receiving_items WHERE carton_id=$1',[boxId])).rows;
+            const quantities=new Map(lines.map(l=>[l.id,l.quantity]));
+            const differences=reference.filter(l=>typeof l.expected==='number'&&quantities.get(l.id)!==l.expected).map(l=>({model:String(l.model),color:String(l.color)}));
+            if(differences.length)return {ok:false,requiresReview:true,differences};
+        }
             await c.query('UPDATE receiving_items l SET counted=x.quantity FROM jsonb_to_recordset($1::jsonb) x(id uuid,quantity integer) WHERE l.id=x.id AND l.carton_id=$2',[JSON.stringify(lines),boxId]);
             if (!saving)
                 await c.query('UPDATE receiving_cartons SET counted_at=now(),counted_by=$1,notes=$2 WHERE id=$3', [u.id, notes, boxId]);
@@ -310,7 +316,7 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const review = isReviewer(u.role);
     const authorizedBranches=await getAuthorizedBranchIds(u);
     const canManageReceipt=authorizedBranches===null||authorizedBranches.includes(String(session.branch_id));
-    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.display_title,o.marking count_mark,o.shipping,o.color_order,COALESCE(b.marking,o.marking) marking,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product,b.counted_at::text,b.notes,CASE WHEN ${u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'}::boolean AND b.counted_at IS NOT NULL THEN (SELECT name FROM users WHERE id=b.counted_by) ELSE NULL END counted_by_name FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY o.reference,b.carton_number`;
+    const boxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.display_title,o.marking count_mark,o.shipping,o.color_order,COALESCE(b.marking,o.marking) marking,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product,b.counted_at::text,b.notes,EXISTS(SELECT 1 FROM receiving_items difference WHERE difference.carton_id=b.id AND b.counted_at IS NOT NULL AND difference.expected IS NOT NULL AND difference.counted IS NOT NULL AND difference.expected<>difference.counted) has_differences,CASE WHEN ${u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca'}::boolean AND b.counted_at IS NOT NULL THEN (SELECT name FROM users WHERE id=b.counted_by) ELSE NULL END counted_by_name FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY o.reference,b.carton_number`;
     const foreignBoxes = await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE b.session_id=${sessionId}::uuid AND o.is_foreign AND NOT COALESCE((o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio'))),false) ORDER BY o.reference,b.carton_number`;
     const foreign = await sql `SELECT id::text,product,carton_count,shipping,marking,notes FROM receiving_foreign_cartons WHERE session_id=${sessionId}::uuid AND voided_at IS NULL ORDER BY created_at,id`;
     // Expected values never enter the operative response, including server component props.

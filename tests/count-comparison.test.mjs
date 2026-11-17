@@ -30,10 +30,10 @@ test('unknown packing quantities stay unknown rather than becoming zero or false
 const Component=load('app/(app)/entradas/pedidos/[id]/count-comparison.tsx',{'@/lib/inventory/count-comparison':logic}).default;
 const render=items=>renderToStaticMarkup(React.createElement(Component,{boxes:[box],items}));
 test('compact summary renders totals, netted discrepancy warning and expandable model/color detail',()=>{
- const html=render([{...line,counted:80},{...line,color:'PINK',counted:120}]);assert.match(html,/Packing/);assert.match(html,/Contadas/);assert.match(html,/Diferencia neta/);assert.match(html,/Faltan 20/);assert.match(html,/Sobran 20/);assert.match(html,/El total cuadra, pero hay diferencias/);assert.match(html,/<details><summary>Ver diferencias por modelo\/color/);assert.match(html,/>-20</);assert.match(html,/>\+20</);
+ const html=render([{...line,counted:80},{...line,color:'PINK',counted:120}]);assert.match(html,/Packing/);assert.match(html,/Contadas/);assert.match(html,/Diferencia neta/);assert.match(html,/Faltan 20/);assert.match(html,/Sobran 20/);assert.match(html,/El total cuadra, pero hay diferencias/);assert.match(html,/<details><summary>Ver cajas con diferencias/);assert.match(html,/Faltan<!-- --> 20|Faltan 20/);assert.match(html,/Sobran<!-- --> 20|Sobran 20/);
 });
 test('unknown reference displays incomplete packing and never says there are no differences',()=>{
- const html=render([{...line,expected:null}]);assert.match(html,/Packing incompleto/);assert.match(html,/Sin identificar/);assert.doesNotMatch(html,/✓ Sin diferencias/);
+ const html=render([{...line,expected:null}]);assert.match(html,/Packing incompleto/);assert.match(html,/cantidades? sin identificar/);assert.doesNotMatch(html,/✓ Sin diferencias/);
  const equal=render([line]);assert.match(equal,/✓ Sin diferencias/);assert.doesNotMatch(equal,/<details>/);
 });
 test('known packing subtotal stays visible when a genuinely unknown quantity prevents a confirmed total',()=>{
@@ -65,4 +65,23 @@ test('both receiving views recover legacy unlisted reference only from the same 
 test('origin and destination summaries remain reviewer-only and use only current received boxes',()=>{
  const origin=readFileSync(new URL('../app/(app)/entradas/pedidos/[id]/receiving-editor.tsx',import.meta.url),'utf8');const destination=readFileSync(new URL('../app/(app)/entradas/pedidos/destino/[orderId]/destination-editor.tsx',import.meta.url),'utf8');
  assert.match(origin,/data.review&&<CountComparison boxes=\{currentBoxes\}/);assert.match(destination,/data.review&&<CountComparison boxes=\{arrived\}/);
+});
+
+test('only discrepant completed boxes appear, with every affected model and color, without cross-box cancellation',()=>{
+ const boxes=[{...box,carton_number:'12'},{id:'b',counted_at:'now',carton_number:'2'},{id:'c',counted_at:'now',carton_number:'3'},{id:'d',counted_at:null,carton_number:'4'}];
+ const items=[{...line,counted:80},{...line,color:'PINK',counted:110},{...line,carton_id:'b',counted:120},{...line,carton_id:'c'},{...line,carton_id:'d',counted:1}];
+ const result=logic.boxDifferences(boxes,items);assert.equal(result.length,2);assert.equal(result[0].number,'2');assert.equal(result[1].number,'12');assert.equal(result[1].rows.length,2);assert.equal(result[1].rows[0].difference,-20);
+ const html=renderToStaticMarkup(React.createElement(Component,{boxes:boxes.slice(0,3),items,onOpenBox:()=>{}}));
+ assert.match(html,/Caja 12/);assert.match(html,/Caja 2/);assert.doesNotMatch(html,/Caja 3/);assert.match(html,/Ver caja 12/);
+});
+test('mixed products and unknown expectations never become a false confirmed difference',()=>{
+ const items=[{...line,product_id:'p1',counted:80},{...line,product_id:'p2',counted:120},{...line,model:'UNKNOWN',expected:null,counted:50}];
+ const result=logic.boxDifferences([box],items);assert.equal(result[0].rows.length,2);assert.equal(result[0].rows[0].difference,-20);assert.equal(result[0].rows[1].difference,20);
+ assert.equal(logic.boxDifferences([box],[{...line,expected:null,counted:50}]).length,0);
+});
+test('both counters request server-side review without disclosing packing quantities',()=>{
+ for(const path of ['lib/inventory/receiving.ts','lib/inventory/receiving-destination.ts']){
+  const src=readFileSync(new URL('../'+path,import.meta.url),'utf8');assert.match(src,/reviewDifferences===true/);assert.match(src,/requiresReview:true,differences/);assert.match(src,/map\(l=>\(\{model:String\(l.model\),color:String\(l.color\)\}\)\)/);
+  assert.ok(src.indexOf('requiresReview:true')<src.indexOf("UPDATE receiving_items l SET counted=x.quantity"));
+ }
 });

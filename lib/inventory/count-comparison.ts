@@ -1,5 +1,5 @@
-export type ComparisonBox={id:string;counted_at:string|null};
-export type ComparisonItem={carton_id:string;model:string;color:string;counted:number|null;expected?:number|null};
+export type ComparisonBox={id:string;carton_number?:string;has_differences?:boolean;counted_at:string|null};
+export type ComparisonItem={product_id?:string|null;product_label?:string;carton_id:string;model:string;color:string;counted:number|null;expected?:number|null};
 export function countComparison(boxes:ComparisonBox[],items:ComparisonItem[]){
  if(!boxes.length||boxes.some(b=>!b.counted_at))return null;
  const ids=new Set(boxes.map(b=>b.id)),lines=items.filter(l=>ids.has(l.carton_id));
@@ -17,4 +17,22 @@ export function countComparison(boxes:ComparisonBox[],items:ComparisonItem[]){
  const rows=Array.from(groups.values()).map(r=>({...r,difference:r.unknown?null:r.counted-r.expected})).sort((a,b)=>a.model.localeCompare(b.model,'es',{numeric:true})||a.color.localeCompare(b.color,'es'));
  const missing=rows.reduce((sum,r)=>sum+Math.max(0,-(r.difference??0)),0),extra=rows.reduce((sum,r)=>sum+Math.max(0,r.difference??0),0);
  return {counted,knownExpected:expected,expected:unknown?null:expected,difference:unknown?null:counted-expected,unknown,missing,extra,rows:rows.filter(r=>r.difference!==0)};
+}
+
+export function boxDifferences(boxes:ComparisonBox[],items:ComparisonItem[]){
+ const lines=new Map<string,ComparisonItem[]>();
+ for(const item of items){const list=lines.get(item.carton_id)??[];list.push(item);lines.set(item.carton_id,list);}
+ return boxes.flatMap(box=>{
+  if(!box.counted_at)return [];
+  const groups=new Map<string,{product:string;model:string;color:string;expected:number;counted:number;unknown:boolean}>();
+  for(const item of lines.get(box.id)??[]){
+   const model=item.model.trim().toLocaleUpperCase('es-MX'),color=item.color.trim().toLocaleUpperCase('es-MX'),product=item.product_label||'',key=JSON.stringify([item.product_id||product,model,color]);
+   const row=groups.get(key)??{product,model,color,expected:0,counted:0,unknown:false};
+   if(typeof item.expected!=='number'||!Number.isSafeInteger(item.expected)||item.expected<0||typeof item.counted!=='number'||!Number.isSafeInteger(item.counted)||item.counted<0)row.unknown=true;
+   else {row.expected+=item.expected;row.counted+=item.counted;}
+   groups.set(key,row);
+  }
+  const rows=[...groups.values()].filter(r=>!r.unknown&&r.counted!==r.expected).map(r=>({...r,difference:r.counted-r.expected}));
+  return rows.length?[{id:box.id,number:box.carton_number||box.id,rows}]:[];
+ }).sort((a,b)=>a.number.localeCompare(b.number,'es',{numeric:true}));
 }

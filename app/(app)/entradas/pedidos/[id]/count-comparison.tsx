@@ -1,13 +1,14 @@
-import {countComparison,type ComparisonBox,type ComparisonItem} from '@/lib/inventory/count-comparison';
+import {boxDifferences,countComparison,type ComparisonBox,type ComparisonItem} from '@/lib/inventory/count-comparison';
 const number=new Intl.NumberFormat('es-MX');
-export default function CountComparison({boxes,items,compact=false}:{boxes:ComparisonBox[];items:ComparisonItem[];compact?:boolean}){
- const summary=countComparison(boxes,items);if(!summary)return null;
+export default function CountComparison({boxes,items,compact=false,onOpenBox,busy=false}:{boxes:ComparisonBox[];items:ComparisonItem[];compact?:boolean;onOpenBox?:(id:string)=>void;busy?:boolean}){
+ const differences=boxDifferences(boxes,items);const summary=countComparison(boxes,items);if(!summary)return null;
+ const missing=differences.reduce((n,b)=>n+b.rows.reduce((v,r)=>v+Math.max(0,-r.difference),0),0),extra=differences.reduce((n,b)=>n+b.rows.reduce((v,r)=>v+Math.max(0,r.difference),0),0);
  const fmt=(n:number|null)=>n===null?'—':number.format(n),delta=(n:number|null)=>n===null?'—':`${n>0?'+':''}${fmt(n)}`;
  return <section className={`receivingComparison${compact?' receivingComparisonCompact':''}`} aria-label="Comparación del conteo con packing list">
   <div className="receivingComparisonTotals"><span>Packing{summary.unknown>0?' identificado (parcial)':''} <b>{summary.unknown>0&&summary.knownExpected===0?'—':fmt(summary.expected??summary.knownExpected)}</b></span><span>Contadas <b>{fmt(summary.counted)}</b></span><span>Diferencia neta <b>{delta(summary.difference)}</b></span></div>
   {summary.unknown>0&&<p className="receivingComparisonWarning">Packing incompleto: {summary.unknown} {summary.unknown===1?'cantidad sin identificar':'cantidades sin identificar'}. No se puede confirmar la diferencia total.</p>}
-  {(summary.missing>0||summary.extra>0)?<p className="receivingComparisonWarning">⚠ Faltan {fmt(summary.missing)} · Sobran {fmt(summary.extra)}{summary.unknown?' en modelos con referencia completa':summary.difference===0?' · El total cuadra, pero hay diferencias por modelo/color.':''}</p>:summary.unknown===0&&<p className="receivingComparisonOk">✓ Sin diferencias por modelo/color</p>}
-  {!compact&&summary.rows.length>0&&<details><summary>Ver diferencias por modelo/color</summary><div className="receivingTable"><table><thead><tr><th>Modelo</th><th>Color</th><th>Packing</th><th>Contadas</th><th>Diferencia</th></tr></thead><tbody>{summary.rows.map(r=><tr key={JSON.stringify([r.model,r.color])}><td>{r.model||'Sin modelo'}</td><td>{r.color||'Sin color'}</td><td>{r.unknown?'Sin identificar':fmt(r.expected)}</td><td>{fmt(r.counted)}</td><td>{delta(r.difference)}</td></tr>)}</tbody></table></div></details>}
-  {!compact&&<small>Solo las cajas recibidas de este pedido.</small>}
+  {(missing>0||extra>0)?<p className="receivingComparisonWarning">⚠ Faltan {fmt(missing)} · Sobran {fmt(extra)}{summary.unknown?' en modelos con referencia completa':summary.difference===0?' · El total cuadra, pero hay diferencias por modelo/color.':''}</p>:summary.unknown===0&&<p className="receivingComparisonOk">✓ Sin diferencias por modelo/color</p>}
+  {!compact&&differences.length>0&&<details><summary>Ver cajas con diferencias ({differences.length})</summary>{differences.map(box=><section key={box.id} className="card pad"><h3>⚠ Caja {box.number}</h3>{onOpenBox&&<button type="button" className="receivingSecondary" disabled={busy} onClick={()=>onOpenBox(box.id)}>Ver caja {box.number}</button>}<div className="receivingTable"><table><thead><tr><th>Modelo</th><th>Color</th><th>Packing</th><th>Contadas</th><th>Diferencia</th></tr></thead><tbody>{box.rows.map((r,i)=><tr key={i}><td>{r.product&&<small>{r.product} · </small>}{r.model||'Sin modelo'}</td><td>{r.color||'Sin color'}</td><td>{fmt(r.expected)}</td><td>{fmt(r.counted)}</td><td>{r.difference<0?'Faltan':'Sobran'} {fmt(Math.abs(r.difference))}</td></tr>)}</tbody></table></div></section>)}</details>}
+  {!compact&&<small>Solo las cajas recibidas de este pedido. Las cantidades sin identificar no se consideran diferencias confirmadas.</small>}
  </section>;
 }

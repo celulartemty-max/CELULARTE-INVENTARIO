@@ -11,7 +11,7 @@ import { savePackingColorOrder, appendPackingColor } from './packing-column-orde
 const uuid = z.string().uuid();
 type Client = Parameters<Parameters<typeof withTransaction>[0]>[0];
 export type DestinationOrder = { is_mixed?: boolean; display_title?: string; id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number; color_order?: string[] };
-export type DestinationBox = { counted_by_name?:string|null; id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
+export type DestinationBox = { counted_by_name?:string|null; has_differences?:boolean; id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
 export type DestinationItem = { product_id?:string|null;product_label?:string; id: string; carton_id: string; model: string; color: string; counted: number | null; expected: number | null };
 export type DestinationView = { countRequest?:string|null; canCount?:boolean; order: DestinationOrder; boxes: DestinationBox[]; items: DestinationItem[]; documents: { id: string; filename: string; previous?: boolean }[]; review: boolean; canRecount: boolean };
 
@@ -56,6 +56,7 @@ export async function destinationView(u: SessionUser, orderId: string): Promise<
             JOIN receiving_cartons b ON b.order_id=o.id LEFT JOIN products p ON p.id=o.product_id LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE o.id=$1 GROUP BY o.id,p.name,dest.name,origin.name`, [o.id])).rows[0];
         const boxes = (await c.query(`SELECT b.id::text,b.carton_number,b.session_id::text,origin.name origin,a.received_at::text,b.counted_at::text,b.notes,
+            EXISTS(SELECT 1 FROM receiving_items difference WHERE difference.carton_id=b.id AND b.counted_at IS NOT NULL AND difference.expected IS NOT NULL AND difference.counted IS NOT NULL AND difference.expected<>difference.counted) has_differences,
             CASE WHEN $3::boolean AND b.counted_at IS NOT NULL THEN (SELECT name FROM users WHERE id=b.counted_by) ELSE NULL END counted_by_name
             FROM receiving_cartons b LEFT JOIN receiving_sessions s ON s.id=b.session_id LEFT JOIN branches origin ON origin.id=s.branch_id
             LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id AND a.branch_id=$2 WHERE b.order_id=$1
@@ -165,6 +166,12 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
         const expected = (await c.query('SELECT id FROM receiving_items WHERE carton_id=$1', [boxId])).rows;
         const keys = new Set(expected.map(l => l.id));
         if (lines.length !== keys.size || lines.some(l => !keys.has(l.id))) throw new Error('Revisa todas las líneas de esta caja. Vacío no es cero.');
+        if(!saving&&body.reviewDifferences===true&&body.acceptDifferences!==true){
+            const reference=(await c.query('SELECT id,model,color,expected FROM receiving_items WHERE carton_id=$1',[boxId])).rows;
+            const quantities=new Map(lines.map(l=>[l.id,l.quantity]));
+            const differences=reference.filter(l=>typeof l.expected==='number'&&quantities.get(l.id)!==l.expected).map(l=>({model:String(l.model),color:String(l.color)}));
+            if(differences.length)return {ok:false,requiresReview:true,differences};
+        }
         await c.query('UPDATE receiving_items l SET counted=x.quantity FROM jsonb_to_recordset($1::jsonb) x(id uuid,quantity integer) WHERE l.id=x.id AND l.carton_id=$2', [JSON.stringify(lines), boxId]);
         if (saving) await c.query('UPDATE receiving_cartons SET notes=$1 WHERE id=$2', [notes, boxId]);
         else await c.query('UPDATE receiving_cartons SET notes=$1,counted_at=now(),counted_by=$2 WHERE id=$3', [notes, u.id, boxId]);

@@ -8,6 +8,7 @@ import type { z } from 'zod';
 import type { DestinationView, DestinationBox, DestinationItem } from '@/lib/inventory/receiving-destination';
 import { packingSchema } from '@/lib/inventory/receiving-validation';
 import CountGrid from '../../[id]/count-grid';
+import {boxDifferences} from '@/lib/inventory/count-comparison';
 import CountComparison from '../../[id]/count-comparison';
 import CountAttribution from '../../[id]/count-attribution';
 import CountPermissionNotice from '../../[id]/count-permission-notice';
@@ -40,6 +41,7 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
     const { order, boxes, items } = data;
     const pending = boxes.filter(b => b.session_id && !b.received_at);
     const arrived = boxes.filter(b => b.received_at);
+    const differenceIds=new Set(boxDifferences(arrived,items).map(b=>b.id));
     const shown = arrived.some(b => b.id === activeBox) ? activeBox : arrived[0]?.id;
     async function run(task: () => Promise<void>) {
         if (requestLock.current || refreshing) return false;
@@ -51,8 +53,14 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
     }
     const save: Save = body => run(async () => {
         const r = await fetch('/api/receiving/destination', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, orderId: order.id }) });
-        const result = await r.json();
+        let result = await r.json();
         if (!r.ok) throw new Error(result.error || 'No se pudo guardar.');
+        if(result.requiresReview){
+            const detail=result.differences.map((x:{model:string;color:string})=>x.model+' · '+x.color).join('\n');
+            if(!confirm('Esta caja tiene diferencias en:\n'+detail+'\n\nRevisa nuevamente estas cantidades.\nCancelar: volver a revisar.\nAceptar: ya revisé y confirmo el conteo.'))throw new Error('Revisa nuevamente los modelos señalados y vuelve a terminar el conteo.');
+            const retry=await fetch('/api/receiving/destination',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,orderId:order.id,acceptDifferences:true})});
+            result=await retry.json();if(!retry.ok)throw new Error(result.error||'No se pudo guardar.');
+        }
         setNotice('Guardado.'); startTransition(() => router.refresh());
     });
     async function interpret() {
@@ -115,10 +123,10 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
                     if (await save({ action: 'packing', packing: { ...packing, reference: order.reference } })) setPacking(null);
                 }}>Confirmar packing list de este pedido</button></>}
         </section>}
-        {data.review&&<CountComparison boxes={arrived} items={items}/>}
+        {data.review&&<CountComparison boxes={arrived} items={items} busy={busy} onOpenBox={id=>{setVisited(v=>[...new Set([...v,shown??'',id])]);setActiveBox(id)}}/>}
         {arrived.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
             {data.canCount===false&&<p role="status" className="receivingMuted">Solo {order.marking==='JAPS'?'Audio (JAPS)':'Treviño (PER)'} puede contar estas cajas. Vista de consulta.</p>}
-            <div className="receivingCartonSquares">{arrived.map(b => <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-pressed={shown === b.id} aria-label={`Caja ${b.carton_number}${b.counted_at ? ', terminada' : ''}`} onClick={() => { setVisited(v => [...new Set([...v, shown ?? '', b.id])]); setActiveBox(b.id); }}>{b.carton_number}{b.counted_at ? ' ✓' : ''}</button>)}</div>
+            <div className="receivingCartonSquares">{arrived.map(b => <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" style={(differenceIds.has(b.id)||b.has_differences)?{background:'#fff1f2',borderColor:'#dc2626',color:'#991b1b'}:undefined} title={(differenceIds.has(b.id)||b.has_differences)?'Tiene diferencias: revisar esta caja':undefined} aria-pressed={shown === b.id} aria-label={`Caja ${b.carton_number}${b.counted_at ? ', terminada' : ''}`} onClick={() => { setVisited(v => [...new Set([...v, shown ?? '', b.id])]); setActiveBox(b.id); }}>{b.carton_number}{(differenceIds.has(b.id)||b.has_differences)?' ⚠':b.counted_at?' ✓':''}</button>)}</div>
             {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} colorOrder={order.color_order} busy={busy||data.canCount===false} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
         </section>}
         {addBox && <ReceivingModal title="Añadir modelo / color" busy={busy} onClose={() => setAddBox(null)}><form className="receivingCompactForm" onSubmit={async e => {
@@ -135,7 +143,7 @@ function DestinationCount({ box, items, busy, review, canRecount, save, onAdd, c
         if (!form || (finish && !form.reportValidity())) return;
         const fields = new FormData(form);
         const lines = items.map(l => ({ id: l.id, quantity: fields.get(l.id) === '' ? null : Number(fields.get(l.id)) }));
-        await save({ action: finish ? 'count' : 'saveCount', boxId: box.id, lines, notes: fields.get('notes') });
+        await save({ action: finish ? 'count' : 'saveCount', boxId: box.id, reviewDifferences:finish, lines, notes: fields.get('notes') });
     }
     return <form ref={formRef} className="receivingCompactForm" onSubmit={e => { e.preventDefault(); void submit(true); }}><h3>Caja {box.carton_number}{box.counted_at ? ' · Conteo terminado ✓' : ''}</h3>
         <CountAttribution name={box.counted_by_name} at={box.counted_at}/>

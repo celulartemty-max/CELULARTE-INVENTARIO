@@ -12,6 +12,7 @@ import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 import BatchIntake, {type Batch, type PendingCarton} from './batch-intake';
 import PackingReview from './packing-review';
 import CountGrid from './count-grid';
+import {boxDifferences} from '@/lib/inventory/count-comparison';
 import CountComparison from './count-comparison';
 import FreightAmount from './freight-amount';
 import CountAttribution from './count-attribution';
@@ -26,6 +27,7 @@ import RegistrationQueue from '../../../registros/registration-queue';
 import type {RegistrationPending} from '@/lib/inventory/system-registration';
 type Packing = z.infer<typeof packingSchema>;
 type Box = {
+    has_differences?:boolean;
     can_count?:boolean;
     display_title?: string;
     id: string;
@@ -112,13 +114,21 @@ export default function ReceivingEditor({ data, products }: {
     const targetOrder = data.orders.find(o=>o.id===packingOrder);
     const currentBatch=data.batches.find(b=>b.id===packingOrder);
     const currentBoxes=data.boxes.filter(b=>b.order_id===packingOrder).sort((a,b)=>a.carton_number.localeCompare(b.carton_number,'es',{numeric:true})),currentForeign=data.foreignBoxes.filter(b=>b.order_id===packingOrder);
+    const differenceIds=new Set(boxDifferences(currentBoxes,data.items).map(b=>b.id));
     const foreignOrder=currentBoxes.length===0&&(!!currentBatch?.is_foreign||currentForeign.length>0);
     const internalDestination=foreignOrder&&((currentBatch?.marking==='JAPS'&&currentBatch.destination_name==='Plaza del Audio')||(currentBatch?.marking==='PER'&&currentBatch.destination_name==='Treviño'));
     function openOrder(id:string){setPackingOrder(id);setPacking(null);setRaw('');setFile(null);setActive(null);setError('');const ownIds=new Set(data.boxes.filter(b=>b.order_id===id).map(b=>b.id));setDetailTab(data.items.some(i=>ownIds.has(i.carton_id))?'count':'packing');window.scrollTo({top:0,behavior:'smooth'})}
     function back(){if((active||packing)&&!confirm('¿Volver a los pedidos? Guarda tu avance antes de salir.'))return;setPackingOrder('');setActive(null);setPacking(null);setRaw('');setFile(null);setError('')}
     async function saveBatch(value:Record<string,unknown>) {setBusy(true);setError('');try{await act(value);router.refresh();return true}catch(e){setError(e instanceof Error?e.message:'No se pudo guardar');return false}finally{setBusy(false)}}
     async function act(body: Record<string, unknown>) { const r = await fetch('/api/receiving', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s.id, ...body }) }); const j = await r.json(); if (!r.ok)
-        throw new Error(j.error); return j; }
+        throw new Error(j.error);
+        if(j.requiresReview){
+            const detail=j.differences.map((x:{model:string;color:string})=>x.model+' · '+x.color).join('\n');
+            if(!confirm('Esta caja tiene diferencias en:\n'+detail+'\n\nRevisa nuevamente estas cantidades.\nCancelar: volver a revisar.\nAceptar: ya revisé y confirmo el conteo.'))throw new Error('Revisa nuevamente los modelos señalados y vuelve a terminar el conteo.');
+            const retry=await fetch('/api/receiving',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:s.id,...body,acceptDifferences:true})});
+            const result=await retry.json();if(!retry.ok)throw new Error(result.error||'No se pudo guardar.');return result;
+        }
+        return j; }
     async function run(work: () => Promise<void>) { setBusy(true); setError(''); try {
         await work();
         router.refresh();
@@ -196,12 +206,12 @@ export default function ReceivingEditor({ data, products }: {
  {data.review&&<section className="card pad"><h2>Archivos del pedido</h2>{data.documents.filter(d=>d.order_id===packingOrder&&!d.previous).map(d=><p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>{d.filename}</a></p>)}{data.documents.some(d=>d.order_id===packingOrder&&d.previous)&&<details><summary>Archivos anteriores · no vigentes</summary>{data.documents.filter(d=>d.order_id===packingOrder&&d.previous).map(d=><p key={d.id}><a href={`/api/receiving/documents?id=${d.id}`}>{d.filename}</a></p>)}</details>}{draft&&<form className="receivingCompactForm" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget).get('document');if(f instanceof File)run(()=>upload(f,{orderId:packingOrder}))}}><label className="receivingField">Adjuntar original (Excel, PDF o imagen)<input name="document" type="file" required accept=".xlsx,.pdf,.png,.jpg,.jpeg" disabled={busy}/></label><button disabled={busy}>Adjuntar archivo</button></form>}</section>}
  </div>
  <div key={countVersion} hidden={foreignOrder||(data.review&&detailTab!=='count')}>
- {data.review&&<CountComparison boxes={currentBoxes} items={data.items}/>}
- <section className="card pad"><h2>Conteo</h2><p>Cuenta físicamente. Vacío significa sin contar; 0 significa que no llegó ninguna pieza.</p><div className="receivingCartonSquares" aria-label="Seleccionar caja">{currentBoxes.map(b=><button key={b.id} type="button" disabled={busy} className="receivingBoxButton" aria-label={`Caja ${b.carton_number}, ${b.counted_at?'contada':'pendiente de conteo'}`} aria-pressed={active===b.id} data-counted={!!b.counted_at} onClick={()=>setActive(b.id)}><b>{b.carton_number}</b><span>{b.counted_at?'✓':'·'}</span></button>)}</div><p className="receivingMuted">Selecciona un número para contar esa caja. ✓ = conteo terminado.</p>{currentBoxes.map(b => <article key={`${b.id}:${b.counted_at||'draft'}`} hidden={active!==b.id} className="card pad"><h3>Caja {b.carton_number}</h3><p>{b.product} · {b.shipping} · {b.marking} · {b.counted_at?'Contada':'Pendiente de conteo'}</p><CountAttribution name={b.counted_by_name} at={b.counted_at}/>{<form className="formGrid" onSubmit={e => { e.preventDefault(); if(b.can_count===false)return; const f = new FormData(e.currentTarget); const items = data.items.filter(l => l.carton_id === b.id); const saving = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'draft'; if (!saving && items.some(l => f.get(l.id) === '')) {
+ {data.review&&<CountComparison boxes={currentBoxes} items={data.items} busy={busy} onOpenBox={setActive}/>}
+ <section className="card pad"><h2>Conteo</h2><p>Cuenta físicamente. Vacío significa sin contar; 0 significa que no llegó ninguna pieza.</p><div className="receivingCartonSquares" aria-label="Seleccionar caja">{currentBoxes.map(b=><button key={b.id} type="button" disabled={busy} className="receivingBoxButton" style={(differenceIds.has(b.id)||b.has_differences)?{background:'#fff1f2',borderColor:'#dc2626',color:'#991b1b'}:undefined} title={(differenceIds.has(b.id)||b.has_differences)?'Tiene diferencias: revisar esta caja':undefined} aria-label={`Caja ${b.carton_number}, ${b.counted_at?'contada':'pendiente de conteo'}`} aria-pressed={active===b.id} data-counted={!!b.counted_at} onClick={()=>setActive(b.id)}><b>{b.carton_number}</b><span>{(differenceIds.has(b.id)||b.has_differences)?'⚠':b.counted_at?'✓':'·'}</span></button>)}</div><p className="receivingMuted">Selecciona un número para contar esa caja. ✓ = conteo terminado.</p>{currentBoxes.map(b => <article key={`${b.id}:${b.counted_at||'draft'}`} hidden={active!==b.id} className="card pad"><h3>Caja {b.carton_number}</h3><p>{b.product} · {b.shipping} · {b.marking} · {b.counted_at?'Contada':'Pendiente de conteo'}</p><CountAttribution name={b.counted_by_name} at={b.counted_at}/>{<form className="formGrid" onSubmit={e => { e.preventDefault(); if(b.can_count===false)return; const f = new FormData(e.currentTarget); const items = data.items.filter(l => l.carton_id === b.id); const saving = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'draft'; if (!saving && items.some(l => f.get(l.id) === '')) {
                 setError('Captura todas las cantidades; usa 0 donde no haya piezas.');
                 return;
             } if (!saving && !confirm('¿Terminar el conteo de esta caja? Ya no podrás editarlo.'))
-                return; run(async () => { await act({ action: saving ? 'saveCount' : 'count', boxId: b.id, lines: items.map(l => ({ id: l.id, quantity: f.get(l.id) === '' ? null : Number(f.get(l.id)) })), notes: f.get('notes') }); if (!saving)
+                return; run(async () => { await act({ action: saving ? 'saveCount' : 'count', boxId: b.id, reviewDifferences:!saving, lines: items.map(l => ({ id: l.id, quantity: f.get(l.id) === '' ? null : Number(f.get(l.id)) })), notes: f.get('notes') }); if (!saving)
                 setActive(null); }); }}>
  {!data.items.some(l=>l.carton_id===b.id)&&<p>Esta caja aún no tiene contenido registrado. Agrega el packing list arriba o captura sus modelos/colores abajo; las cantidades empiezan vacías.</p>}
  {b.can_count===false&&<p role="status" className="receivingMuted">Solo {b.marking==='JAPS'?'Audio (JAPS)':'Treviño (PER)'} puede contar esta caja. Vista de consulta.</p>}
