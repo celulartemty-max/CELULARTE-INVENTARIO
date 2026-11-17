@@ -7,9 +7,9 @@ const require=createRequire(import.meta.url),ts=require('typescript');
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const session=id(1),box=id(2),line=id(3),order=id(4),branch=id(5);
 function load(path,mocks={}){const m={exports:{}};const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInThisContext('(function(require,module,exports){'+code+'})')(n=>n in mocks?mocks[n]:require(n),m,m.exports);return m.exports;}
-function fixture({module=true,finished=false,removable=false,marking='PER',countBranch='Treviño',granted=false}={}){
+function fixture({module=true,finished=false,removable=false,marking='PER',countBranch='Treviño',granted=false,reference=[]}={}){
  const queries=[],scopes=[];
- const query=async(sql,args)=>{queries.push({sql,args});const rows=sql.startsWith('SELECT o.marking,')?[{marking,count_branch:args[2]?countBranch:null,count_granted:granted}]:sql.startsWith('DELETE FROM receiving_sessions')?(removable?[{id:session}]:[]):sql.includes('FROM receiving_sessions WHERE id=')?[{id:session,branch_id:branch,status:'DRAFT'}]:sql.startsWith('SELECT id,counted_at')?[{id:box,counted_at:finished?'today':null}]:sql.startsWith('SELECT id FROM receiving_items')?[{id:line}]:sql.startsWith('SELECT o.id,o.display_title')?[{id:order,display_title:'Anterior'}]:[];return{rows,rowCount:rows.length}};
+ const query=async(sql,args)=>{queries.push({sql,args});const rows=sql.startsWith('SELECT id,model,color,expected FROM receiving_items')?reference:sql.startsWith('SELECT o.marking,')?[{marking,count_branch:args[2]?countBranch:null,count_granted:granted}]:sql.startsWith('DELETE FROM receiving_sessions')?(removable?[{id:session}]:[]):sql.includes('FROM receiving_sessions WHERE id=')?[{id:session,branch_id:branch,status:'DRAFT'}]:sql.startsWith('SELECT id,counted_at')?[{id:box,counted_at:finished?'today':null}]:sql.startsWith('SELECT id FROM receiving_items')?[{id:line}]:sql.startsWith('SELECT o.id,o.display_title')?[{id:order,display_title:'Anterior'}]:[];return{rows,rowCount:rows.length}};
  const f=load('lib/inventory/receiving.ts',{'server-only':{},'@/lib/auth/special-permissions':{requireSystemRegistration:async()=>{throw Error('NO_POS')}},'@/lib/db':{withTransaction:fn=>fn({query}),sql:async(strings,...args)=>(await query(strings.join('?'),args)).rows},'@/lib/auth/authorization':{hasModulePermission:async(u,m)=>m==='ENTRADAS'&&module,getAuthorizedBranchIds:async()=>[id(99)],assertBranchAccess:async(u,b)=>{scopes.push(b);if(u.role!=='MASTER')throw Error('FORBIDDEN_BRANCH')}},'./receiving-validation':load('lib/inventory/receiving-validation.ts'),'./shipping-marks':{},'./packing-reset':{},'./packing-column-order':{},'./receiving-order-removal':{}});
  return {...f,queries,scopes};
 }
@@ -40,7 +40,8 @@ test('empty receipt deletion requires master, confirmation and a server-side emp
 });
 test('shared receipt view works without matching branch but does not expose freight, references or edit permissions to operatives',async()=>{
  const f=fixture();const view=await f.receivingView({id:id(9),role:'OPERATIVE'},session);assert.equal(view.canManageReceipt,false);assert.equal(view.cost,null);assert.equal(view.review,false);assert.equal(view.canRegisterSystem,false);assert.equal(f.scopes.length,0);
- assert.ok(f.queries.filter(q=>q.sql.includes('FROM receiving_items')).every(q=>!q.sql.includes('expected')));
+ assert.ok(f.queries.filter(q=>q.sql.includes('FROM receiving_items')&&!q.sql.includes('has_differences')).every(q=>!q.sql.includes('expected')));
+ const flags=f.queries.find(q=>q.sql.includes('has_differences'));assert.match(flags.sql,/b.counted_at IS NOT NULL/);assert.match(flags.sql,/EXISTS\(SELECT 1 FROM receiving_items difference/);
  assert.ok(f.queries.some(q=>q.sql.startsWith('SELECT o.id::text,o.reference,o.display_title')&&q.sql.includes('counted_here')&&q.sql.includes('registered_here')));
  const batches=f.queries.find(q=>q.sql.startsWith('SELECT o.id::text,o.reference,o.display_title'));assert.match(batches.sql,/EXISTS\(SELECT 1 FROM receiving_items content WHERE content.carton_id=b.id\)\)::int packing_here/);assert.ok(!batches.sql.includes('expected'));assert.ok(!batches.sql.includes('receiving_documents'));
  const denied=fixture({module:false});await assert.rejects(denied.receivingView({id:id(9),role:'OPERATIVE'},session));assert.equal(denied.queries.length,0);
@@ -60,4 +61,13 @@ test('cross-branch sharing does not grant closing, arrival, packing or POS permi
 test('master title changes are metadata-only and preserve shipping mark, count and ownership',async()=>{
  const f=fixture();await f.receivingAction({id:id(9),role:'MASTER'},{action:'setOrderTitle',sessionId:session,orderId:order,title:'  MERCADOLIBRE  '});const updates=f.queries.filter(q=>q.sql.startsWith('UPDATE'));assert.equal(updates.length,1);assert.equal(updates[0].sql,'UPDATE receiving_orders SET display_title=$1 WHERE id=$2');assert.equal(updates[0].args[0],'MERCADOLIBRE');
  const denied=fixture();await assert.rejects(denied.receivingAction({id:id(9),role:'OPERATIVE'},{action:'setOrderTitle',sessionId:session,orderId:order,title:'OTRA'}));assert.ok(!denied.queries.some(q=>q.sql.startsWith('UPDATE')));
+});
+
+test('finish warning keeps count editable until reviewed and never returns expected quantities',async()=>{
+ const reference=[{id:line,model:'A',color:'BLACK',expected:100}];
+ const user={id:id(9),role:'OPERATIVE',primaryBranchId:branch},body={action:'count',sessionId:session,boxId:box,reviewDifferences:true,lines:[{id:line,quantity:80}]};
+ const f=fixture({reference});const result=await f.receivingAction(user,body);assert.equal(result.requiresReview,true);assert.deepEqual(result.differences,[{model:'A',color:'BLACK'}]);assert.ok(!JSON.stringify(result).includes('expected'));assert.ok(!f.queries.some(q=>q.sql.startsWith('UPDATE')));
+ const accepted=fixture({reference});await accepted.receivingAction(user,{...body,acceptDifferences:true});assert.ok(accepted.queries.some(q=>q.sql.startsWith('UPDATE receiving_cartons SET counted_at')));
+ const equal=fixture({reference});await equal.receivingAction(user,{...body,lines:[{id:line,quantity:100}]});assert.ok(equal.queries.some(q=>q.sql.startsWith('UPDATE receiving_cartons SET counted_at')));
+ const unknown=fixture({reference:[{...reference[0],expected:null}]});await unknown.receivingAction(user,body);assert.ok(unknown.queries.some(q=>q.sql.startsWith('UPDATE receiving_cartons SET counted_at')));
 });
