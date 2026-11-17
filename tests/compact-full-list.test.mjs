@@ -22,6 +22,6 @@ test('one compact row per FULL, cancelled pieces excluded, title escaped and sco
 test('returns are one global workspace outside individual FULL orders and reviews',async()=>{
  for(const view of [undefined,'history']){const {html}=await render({view});assert.equal((html.match(/href="\/salidas\/devoluciones-full"/g)||[]).length,1);assert.match(html,/class="fullListReturns"/);}
  for(const path of ['app/(app)/salidas/pedidos/[orderId]/page.tsx','app/(app)/salidas/revision-full/page.tsx'])assert.doesNotMatch(read(path),/\/salidas\/devoluciones-full/);
- assert.match(read('app/(app)/salidas/page.tsx'),/\/salidas\/devoluciones-full/);
+ assert.doesNotMatch(read('app/(app)/salidas/page.tsx'),/\/salidas\/devoluciones-full|\/salidas\/revision-full/);
  const workspace=read('app/(app)/salidas/devoluciones-full/page.tsx');assert.match(workspace,/fullReturnData\(user\)/);assert.match(workspace,/todos los FULL para enviarlas juntas/);assert.match(workspace,/Cada partida conserva su FULL de origen/);
 });
