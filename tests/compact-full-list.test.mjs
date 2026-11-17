@@ -20,7 +20,7 @@ test('one compact row per FULL, cancelled pieces excluded, title escaped and sco
  const {html}=await render({role:'OPERATIVE',rows});assert.equal((html.match(/class="fullListRow"/g)||[]).length,1);assert.match(html,/80 <small>pzas/);assert.match(html,/CASE &lt;test&gt;/);assert.match(html,/Plaza \+ Treviño/);assert.match(html,/Cantidades de tus sucursales/);assert.match(html,/href="\/salidas\/pedidos\/one"/);assert.doesNotMatch(html,/piezas capturadas|Abrir pedido|class="card pad"/);
 });
 test('returns are one global workspace outside individual FULL orders and reviews',async()=>{
- for(const view of [undefined,'history']){const {html}=await render({view});assert.equal((html.match(/href="\/salidas\/devoluciones-full"/g)||[]).length,1);assert.match(html,/class="fullListReturns"/);}
+ for(const view of [undefined,'history']){const {html}=await render({view});assert.doesNotMatch(html,/Regresos a Plaza|devoluciones-full|fullListReturns/);}
  for(const path of ['app/(app)/salidas/pedidos/[orderId]/page.tsx','app/(app)/salidas/revision-full/page.tsx'])assert.doesNotMatch(read(path),/\/salidas\/devoluciones-full/);
  assert.doesNotMatch(read('app/(app)/salidas/page.tsx'),/\/salidas\/devoluciones-full|\/salidas\/revision-full/);
  const workspace=read('app/(app)/salidas/devoluciones-full/page.tsx');assert.match(workspace,/fullReturnData\(user\)/);assert.match(workspace,/todos los FULL para enviarlas juntas/);assert.match(workspace,/Cada partida conserva su FULL de origen/);
