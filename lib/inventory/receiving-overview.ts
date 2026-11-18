@@ -18,7 +18,7 @@ export type ReceiptDestination = {
 export type ReceiptOverview = {
     id: string; reference: string; arrival_date: string; created_at?: string; pending_count?:boolean; total_boxes: number; status: string;
     origin: string; arrived: number; counted: number | null; can_open: boolean;
-    destinations: ReceiptDestination[]; can_delete?:boolean;
+    destinations: ReceiptDestination[]; can_delete?:boolean; search_products?:string[];
 };
 
 export async function receivingOverview(u: SessionUser): Promise<ReceiptOverview[]> {
@@ -46,11 +46,13 @@ export async function receivingOverview(u: SessionUser): Promise<ReceiptOverview
             LEFT JOIN receiving_destination_arrivals a ON a.carton_id=b.id AND a.branch_id=o.destination_branch_id
             WHERE o.destination_branch_id<>s.branch_id AND ($1::uuid[] IS NULL OR s.branch_id=ANY($1::uuid[]) OR o.destination_branch_id=ANY($1::uuid[]))
             GROUP BY b.session_id,o.id,p.name,dest.name ORDER BY dest.name,o.created_at,o.id`, [ids])).rows as ReceiptDestination[];
+        const productRows=(await c.query(`SELECT o.session_id::text, array_agg(DISTINCT COALESCE(p.name,o.product_label,'Sin producto')) AS products FROM receiving_orders o LEFT JOIN products p ON p.id=o.product_id WHERE o.voided_at IS NULL GROUP BY o.session_id`)).rows as {session_id:string;products:string[]}[];
+        const productByReceipt=new Map(productRows.map(r=>[r.session_id,r.products]));
         const byReceipt = new Map<string, ReceiptDestination[]>();
         for (const destination of destinations) {
             const group = byReceipt.get(destination.session_id) ?? [];
             group.push(destination); byReceipt.set(destination.session_id, group);
         }
-        return receipts.map(receipt => ({ ...receipt,can_delete:u.role==='MASTER'&&receipt.can_delete===true, destinations: byReceipt.get(receipt.id) ?? [] }));
+        return receipts.map(receipt => ({ ...receipt,can_delete:u.role==='MASTER'&&receipt.can_delete===true, destinations: byReceipt.get(receipt.id) ?? [],search_products:productByReceipt.get(receipt.id)??[] }));
     });
 }
