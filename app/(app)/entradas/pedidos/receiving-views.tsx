@@ -5,8 +5,8 @@ import type {ReceiptOverview} from '@/lib/inventory/receiving-overview';
 import ReceivingSearch from './receiving-search';
 
 type Box={id:string;number:string;counted:boolean;registered:boolean;session_id:string};
-export type OrderResult={id:string;session_id:string;product:string;reference:string;marking:string;shipping:string;destination:string;origin:string;arrival_date:string;boxes:Box[];destination_order:boolean;};
-type GroupedOrder=Omit<OrderResult,'boxes'> & {boxes:Box[];pendingAdjustment:boolean};
+export type OrderResult={id:string;session_id:string;product:string;reference:string;marking:string;shipping:string;destination:string;origin:string;arrival_date:string;boxes:Box[];destination_order:boolean;pending_adjustment:boolean;};
+type GroupedOrder=Omit<OrderResult,'boxes'> & {boxes:Box[];pending_adjustment:boolean};
 const norm=(s:string)=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es-MX').trim();
 const PAGE_SIZE=50;
 export default function ReceivingViews({rows,orders}:{rows:ReceiptOverview[];orders:OrderResult[]}){
@@ -18,7 +18,7 @@ export default function ReceivingViews({rows,orders}:{rows:ReceiptOverview[];ord
    const map=new Map<string,GroupedOrder>();
    for(const o of orders){
      let item=map.get(o.id);
-     if(!item){item={...o,boxes:[],pendingAdjustment:false};map.set(o.id,item);}
+     if(!item){item={...o,boxes:[],pending_adjustment:o.pending_adjustment};map.set(o.id,item);}
      const existing=new Set(item.boxes.map(b=>b.id));
      for(const b of o.boxes){if(!existing.has(b.id)){item.boxes.push(b);existing.add(b.id);}}
    }
@@ -27,7 +27,7 @@ export default function ReceivingViews({rows,orders}:{rows:ReceiptOverview[];ord
  const filtered=useMemo(()=>{
    const q=norm(query);
    return grouped.filter(o=>{
-     const registered=o.boxes.length>0&&o.boxes.every(b=>b.registered)&&!o.pendingAdjustment;
+     const registered=o.boxes.length>0&&o.boxes.every(b=>b.registered)&&!o.pending_adjustment;
      if((tab==='registered')!==registered)return false;
      return !q||[o.product,o.reference,o.marking,o.shipping,o.destination,...o.boxes.map(b=>'caja '+b.number)].some(x=>norm(x).includes(q));
    });
