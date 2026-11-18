@@ -31,7 +31,7 @@ export async function registeredRecountAction(c:PoolClient,u:SessionUser,session
  const active=(await c.query('SELECT * FROM receiving_registered_recounts WHERE carton_id=$1 AND completed_at IS NULL FOR UPDATE',[boxId])).rows[0];
  if(!active)throw Error('El reconteo no está autorizado o ya fue terminado.');
  const countBranch=u.primaryBranchId?(await c.query("SELECT name FROM branches WHERE id=$1 AND status='ACTIVE'",[u.primaryBranchId])).rows[0]?.name:null;
- const granted=(await c.query("SELECT 1 FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2 AND status='APPROVED'",[box.order_id,u.id])).rowCount>0;
+ const granted=(await c.query("SELECT 1 FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2 AND status='APPROVED'",[box.order_id,u.id])).rows.length>0;
  if(!granted&&!canCountReceivingMark(u,box.marking,countBranch??null))throw Error('No tienes permiso para contar esta caja.');
  const lines=lineSchema.parse(body.lines);
  const baseline=active.baseline as Line[];
@@ -44,7 +44,7 @@ export async function registeredRecountAction(c:PoolClient,u:SessionUser,session
  }
  if(body.action!=='finishRegisteredRecount')throw Error('Acción no válida.');
  const adjustments=baseline.map(l=>({...l,previousQuantity:l.quantity,newQuantity:byId.get(l.id),delta:(byId.get(l.id)??0)-l.quantity})).filter(l=>l.delta!==0);
- await c.query('UPDATE receiving_registered_recounts SET draft=$2::jsonb,adjustments=$3::jsonb,completed_by=$4,completed_at=now() WHERE id=$1 AND completed_at IS NULL',[active.id,JSON.stringify(lines),JSON.stringify(adjustments),u.id]);
+ await c.query('UPDATE receiving_registered_recounts SET draft=$2::jsonb,adjustments=$3::jsonb,completed_by=$4,completed_at=now(),registered_at=CASE WHEN jsonb_array_length($3::jsonb)=0 THEN now() ELSE NULL END WHERE id=$1 AND completed_at IS NULL',[active.id,JSON.stringify(lines),JSON.stringify(adjustments),u.id]);
  await log(c,u,session.branch_id,'RECEIVING_REGISTERED_RECOUNT_COMPLETED',{boxId,recountId:active.id,adjustments,registrationStatus:'PENDING'});
  return {ok:true,adjustments};
 }
