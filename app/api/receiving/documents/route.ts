@@ -46,6 +46,7 @@ export async function GET(req: Request) {
     try {
         const u = await requireUser();
         await receivingAccess(u, true);
+        if (u.role !== 'MASTER') return new Response('Solo Máster puede descargar archivos originales.', { status: 403 });
         const id = z.string().uuid().parse(new URL(req.url).searchParams.get('id'));
         return withTransaction(async c => {
             const row = (await c.query(`SELECT d.order_id,COALESCE(o.branch_id,s.branch_id) branch_id,o.is_foreign,((o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name=CASE o.marking WHEN 'PER' THEN 'Treviño' WHEN 'JAPS' THEN 'Plaza del Audio' END))) packing_allowed FROM receiving_documents d LEFT JOIN receiving_orders o ON o.id=d.order_id LEFT JOIN receiving_sessions s ON s.id=d.session_id WHERE d.id=$1`, [id])).rows[0];
