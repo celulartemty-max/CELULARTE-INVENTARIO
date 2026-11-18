@@ -1,5 +1,6 @@
 'use client';
 import {useMemo,useState} from 'react';
+import {useSearchParams} from 'next/navigation';
 import Link from 'next/link';
 import type {ReceiptOverview} from '@/lib/inventory/receiving-overview';
 import ReceivingSearch from './receiving-search';
@@ -10,10 +11,11 @@ type GroupedOrder=Omit<OrderResult,'boxes'> & {boxes:Box[];pending_adjustment:bo
 const norm=(s:string)=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es-MX').trim();
 const PAGE_SIZE=50;
 export default function ReceivingViews({rows,orders}:{rows:ReceiptOverview[];orders:OrderResult[]}){
- const [view,setView]=useState<'receipts'|'orders'>('receipts');
- const [tab,setTab]=useState<'active'|'registered'>('active');
- const [query,setQuery]=useState('');
- const [page,setPage]=useState(1);
+ const params=useSearchParams();
+ const [view,setView]=useState<'receipts'|'orders'>(params.get('view')==='orders'?'orders':'receipts');
+ const [tab,setTab]=useState<'active'|'registered'>(params.get('tab')==='registered'?'registered':'active');
+ const [query,setQuery]=useState(params.get('q')??'');
+ const [page,setPage]=useState(Math.max(1,Number(params.get('page'))||1));
  const grouped=useMemo(()=>{
    const map=new Map<string,GroupedOrder>();
    for(const o of orders){
@@ -46,7 +48,9 @@ export default function ReceivingViews({rows,orders}:{rows:ReceiptOverview[];ord
    const total=o.boxes.length;
    const complete=total>0&&counted===total;
    const href=o.destination_order?`/entradas/pedidos/destino/${o.id}`:`/entradas/pedidos/${o.boxes[0]?.session_id??o.session_id}?order=${o.id}`;
-   return <Link className="receivingOrderCompactRow" key={o.id} href={href}>
+   const backParams=new URLSearchParams({view:'orders',tab,q:query,page:String(Math.min(page,pages))});
+   const target=href+(href.includes('?')?'&':'?')+'from=orders&back='+encodeURIComponent('/entradas/pedidos?'+backParams.toString());
+   return <Link className="receivingOrderCompactRow" key={o.id} href={target}>
      <div className="receivingOrderCompactMain"><strong>{o.product}</strong><span>{o.marking} · {o.shipping}</span>
      <small className={complete?'receivingOrderCountComplete':'receivingOrderCountProgress'}>{complete?'✓ Contada · '+counted+'/'+total+' cajas':counted>0?'✓ '+counted+' de '+total+' cajas contadas':'○ Pendiente de conteo'}</small></div>
      <div className="receivingOrderCompactRight"><span>{total} {total===1?'caja':'cajas'}</span><b aria-hidden="true">›</b></div>
