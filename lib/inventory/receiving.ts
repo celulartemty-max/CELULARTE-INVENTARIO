@@ -49,7 +49,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (!s)
             throw new Error('Recepción no encontrada.');
         // Counting is shared across receiving teams; approvals and POS retain scope.
-        if(!['count','saveCount','addItem','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
+        if(!['count','saveCount','addItem','smartCount','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
         if(b.action==='freight'){
             if(u.role!=='MASTER')throw new Error('Solo Máster puede editar el monto del flete.');
             const value=z.object({cost:z.number().finite().min(0).max(999999999).refine(n=>Math.abs(n*100-Math.round(n*100))<0.00001,'Usa máximo dos decimales.'),currency:z.enum(['MXN','USD','CNY'])}).parse(b);
@@ -88,7 +88,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         }
         if (s.status !== 'DRAFT')
             throw new Error('La recepción ya está cerrada.');
-        if(['count','saveCount','addItem','reopenBox'].includes(String(b.action))){
+        if(['count','saveCount','addItem','reopenBox','smartCount'].includes(String(b.action))){
             const scope=(await c.query(`SELECT o.marking,(SELECT name FROM branches WHERE id=$3::uuid AND status='ACTIVE') count_branch,
                 EXISTS(SELECT 1 FROM receiving_count_requests r WHERE r.order_id=o.id AND r.user_id=$4::uuid AND r.status='APPROVED') count_granted
                 FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id
@@ -268,8 +268,55 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             await audit(c, u, s.branch_id, 'RECEIVING_ARRIVAL', { sessionId, boxIds: ids });
             return { ok: true };
         }
+        if (['smartCount','approveSmartCount'].includes(String(b.action))) {
+            const boxId=id.parse(b.boxId);
+            const box=(await c.query(`SELECT b.id,b.counted_at,o.id order_id,o.marking FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id WHERE b.id=$1 AND b.session_id=$2 AND o.voided_at IS NULL FOR UPDATE OF b`,[boxId,sessionId])).rows[0];
+            if(!box||box.counted_at)throw Error('Caja no disponible para conteo.');
+            const history=(await c.query("SELECT action,new_value FROM audit_events WHERE action IN ('RECEIVING_SMART_ATTEMPT','RECEIVING_SMART_BLOCKED','RECEIVING_SMART_APPROVED') AND new_value->>'boxId'=$1 ORDER BY created_at,id",[boxId])).rows;
+            const attempts=history.filter(x=>x.action==='RECEIVING_SMART_ATTEMPT').length;
+            const approvals=history.filter(x=>x.action==='RECEIVING_SMART_APPROVED').length;
+            const lastBlock=history.findLastIndex(x=>x.action==='RECEIVING_SMART_BLOCKED');
+            const lastApproval=history.findLastIndex(x=>x.action==='RECEIVING_SMART_APPROVED');
+            if(b.action==='approveSmartCount'){
+                if(u.role!=='MASTER')throw Error('Solo Máster puede desbloquear.');
+                await assertBranchAccess(u,s.branch_id);
+                if(lastBlock<0||lastApproval>lastBlock)throw Error('La caja no está bloqueada.');
+                await audit(c,u,s.branch_id,'RECEIVING_SMART_APPROVED',{boxId,sessionId});
+                return {ok:true};
+            }
+            const countBranch=u.primaryBranchId?(await c.query("SELECT name FROM branches WHERE id=$1 AND status='ACTIVE'",[u.primaryBranchId])).rows[0]?.name:null;
+            const granted=(await c.query("SELECT 1 FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2 AND status='APPROVED'",[box.order_id,u.id])).rowCount>0;
+            if(!granted&&!canCountReceivingMark(u,box.marking,countBranch??null))throw Error('Sin permiso para contar esta caja.');
+            if(lastBlock>=0&&lastApproval<lastBlock)throw Error('Caja bloqueada. Avisa a tu encargado.');
+            const lines=countSchema.parse(b.lines);
+            const reference=(await c.query('SELECT id::text,model,color,expected FROM receiving_items WHERE carton_id=$1 ORDER BY id',[boxId])).rows;
+            const byId=new Map(lines.map(l=>[l.id,l.quantity]));
+            if(!reference.length||reference.length!==lines.length||reference.some(l=>!byId.has(l.id)))throw Error('Cuenta todas las variantes.');
+            const differences=reference.filter(l=>typeof l.expected==='number'&&byId.get(l.id)!==l.expected);
+            const allZero=lines.every(l=>l.quantity===0);
+            const allMismatch=reference.length>1&&differences.length===reference.length;
+            const suspicious=allZero||(allMismatch&&attempts>=1);
+            const authorizedExtra=approvals>0&&lastApproval>lastBlock;
+            if(attempts>=3&&!authorizedExtra)throw Error('El cuarto intento requiere autorización Máster.');
+            if(attempts>=4)throw Error('Límite de reconteos alcanzado. Avisa a Máster.');
+            if(suspicious){
+                await audit(c,u,s.branch_id,'RECEIVING_SMART_BLOCKED',{boxId,sessionId,reason:allZero?'ALL_ZERO':'ALL_MISMATCH',attempt:attempts+1});
+                return {ok:true,smartStatus:'blocked'};
+            }
+            const mode=attempts>=2?z.enum(['correct','real']).parse(b.mode):null;
+            if(mode==='correct'&&differences.length)throw Error('Todavía hay diferencias. Corrige las cantidades o confirma la diferencia real.');
+            await c.query('UPDATE receiving_items l SET counted=x.quantity FROM jsonb_to_recordset($1::jsonb) x(id uuid,quantity integer) WHERE l.id=x.id AND l.carton_id=$2',[JSON.stringify(lines),boxId]);
+            await audit(c,u,s.branch_id,'RECEIVING_SMART_ATTEMPT',{boxId,sessionId,attempt:attempts+1,lines,differenceIds:differences.map(l=>l.id),mode});
+            if(!differences.length||mode==='real'){
+                await c.query('UPDATE receiving_cartons SET counted_at=now(),counted_by=$1,notes=$2 WHERE id=$3',[u.id,z.string().max(2000).parse(b.notes??''),boxId]);
+                await audit(c,u,s.branch_id,'RECEIVING_SMART_FINISHED',{boxId,sessionId,mode:mode??'MATCH',differences:differences.map(l=>({id:l.id,expected:l.expected,counted:byId.get(l.id)}))});
+                return {ok:true,smartStatus:differences.length?'confirmed':'matched'};
+            }
+            return {ok:true,smartStatus:attempts===0?'retry':'assisted'};
+        }
         if (b.action === 'count' || b.action === 'saveCount') {
             const saving = b.action === 'saveCount';
+            if(!saving)throw Error('Utiliza el conteo inteligente para terminar esta caja.');
             const boxId = id.parse(b.boxId), lines = saving ? z.array(z.object({ id, quantity: z.number().int().min(0).max(1000000).nullable() })).min(1).max(500).refine(v => new Set(v.map(l => l.id)).size === v.length).parse(b.lines) : countSchema.parse(b.lines), notes = z.string().max(2000).parse(b.notes ?? '');
             const box = await c.query(`SELECT id,counted_at FROM receiving_cartons WHERE id=$1 AND session_id=$2 AND order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) FOR UPDATE`, [boxId, sessionId]);
             if (!box.rowCount || box.rows[0].counted_at)
@@ -340,6 +387,12 @@ export async function receivingView(u: SessionUser, sessionId: string) {
  AND NOT EXISTS(SELECT 1 FROM audit_events changed WHERE changed.entity_type='receiving_items' AND changed.entity_id=l.id AND changed.action='ROW_UPDATE' AND changed.previous_value->'expected' IS DISTINCT FROM changed.new_value->'expected')
  ) THEN 0 ELSE NULL END) ELSE NULL END expected FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY l.model,l.color` : await sql `SELECT l.id::text,l.carton_id::text,l.product_id::text,l.product_label,l.model,l.color,l.counted FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id WHERE b.session_id=${sessionId}::uuid AND b.order_id IN (SELECT id FROM receiving_orders WHERE NOT is_foreign OR (marking IN ('PER','JAPS') AND destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio')))) ORDER BY l.model,l.color`;
     const pending = review ? await sql `SELECT b.id::text,b.carton_number,b.order_id::text,o.reference,o.shipping,o.marking,o.is_foreign,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id WHERE o.branch_id=${session.branch_id}::uuid AND o.voided_at IS NULL AND b.session_id IS NULL ORDER BY o.reference,b.carton_number` : [];
+    const smartEvents=await sql`SELECT action,new_value->>'boxId' box_id FROM audit_events WHERE action IN ('RECEIVING_SMART_ATTEMPT','RECEIVING_SMART_BLOCKED','RECEIVING_SMART_APPROVED') AND new_value->>'sessionId'=${sessionId}::text ORDER BY created_at,id`;
+    const smartState:Record<string,{attempts:number;blocked:boolean}>={};
+    for(const event of smartEvents){const key=String(event.box_id||'');if(!key)continue;const state=smartState[key]??{attempts:0,blocked:false};if(event.action==='RECEIVING_SMART_ATTEMPT')state.attempts++;if(event.action==='RECEIVING_SMART_BLOCKED')state.blocked=true;if(event.action==='RECEIVING_SMART_APPROVED')state.blocked=false;smartState[key]=state;}
+    for(const box of boxes){const state=smartState[String(box.id)];box.smart_attempts=state?.attempts??0;box.smart_blocked=state?.blocked??false;}
+    const assistedIds=boxes.filter(box=>!box.counted_at&&box.smart_attempts>=2&&!box.smart_blocked).map(box=>String(box.id));
+    if(assistedIds.length){const assisted=await sql`SELECT id::text,carton_id::text,expected FROM receiving_items WHERE carton_id::text=ANY(${assistedIds})`;const byId=new Map(assisted.map(line=>[line.id,line.expected]));for(const item of items){if(assistedIds.includes(String(item.carton_id))&&item.counted!==byId.get(String(item.id)))item.expected=byId.get(String(item.id));}}
     const batches = await sql `SELECT o.id::text,o.reference,o.display_title,o.shipping,o.marking,o.supplier,o.is_foreign,o.is_mixed,(SELECT name FROM branches WHERE id=o.destination_branch_id) destination_name,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining,
       count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid AND EXISTS(SELECT 1 FROM receiving_items content WHERE content.carton_id=b.id))::int packing_here,
       count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid AND b.counted_at IS NOT NULL AND (NOT o.is_foreign OR (o.marking IN ('PER','JAPS') AND o.destination_branch_id IN (SELECT id FROM branches WHERE status='ACTIVE' AND name IN ('Treviño','Plaza del Audio'))) OR EXISTS(SELECT 1 FROM receiving_destination_arrivals a WHERE a.carton_id=b.id AND a.branch_id=o.destination_branch_id)))::int counted_here,
