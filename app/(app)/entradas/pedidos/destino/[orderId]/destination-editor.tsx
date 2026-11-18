@@ -8,6 +8,7 @@ import type { z } from 'zod';
 import type { DestinationView, DestinationBox, DestinationItem } from '@/lib/inventory/receiving-destination';
 import { packingSchema } from '@/lib/inventory/receiving-validation';
 import CountGrid from '../../[id]/count-grid';
+import CountBoxTiles from '../../[id]/count-box-tiles';
 import {boxDifferences} from '@/lib/inventory/count-comparison';
 import CountComparison from '../../[id]/count-comparison';
 import CountAttribution from '../../[id]/count-attribution';
@@ -87,7 +88,7 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
         {error && <p className="receivingError" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
         {arrived.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
             {data.canCount===false&&<p role="status" className="receivingMuted">Solo {order.marking==='JAPS'?'Audio (JAPS)':'Treviño (PER)'} puede contar estas cajas. Vista de consulta.</p>}
-            <div className="receivingCartonSquares">{arrived.map(b => {const bad=differenceIds.has(b.id)||b.has_differences;const blocked=b.smart_blocked;const ok=!!b.counted_at&&!bad;return <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" style={blocked?{background:'#e5e7eb',borderColor:'#6b7280',color:'#374151'}:bad?{background:'#fff1f2',borderColor:'#dc2626',color:'#991b1b'}:ok?{background:'#dcfce7',borderColor:'#16a34a',color:'#166534'}:undefined} aria-pressed={shown===b.id} aria-label={`Caja ${b.carton_number}${blocked?', bloqueada':bad?', con diferencias':ok?', correcta':', pendiente'}`} onClick={()=>{setVisited(v=>[...new Set([...v,shown??'',b.id])]);setActiveBox(b.id)}}>{b.carton_number}{blocked?' 🔒':bad?' ⚠':ok?' ✓':''}{!b.counted_at&&!blocked&&(b.smart_attempts??0)>0?<small> · {b.smart_attempts}/3</small>:null}</button>})}</div>
+            <CountBoxTiles boxes={boxes.map(b=>({id:b.id,number:b.carton_number,counted:!!b.counted_at,difference:!!b.has_differences||differenceIds.has(b.id),blocked:!!b.smart_blocked,missing:!b.session_id,current:!!b.received_at,attempts:b.smart_attempts??0,href:b.session_id&&!b.received_at?`/entradas/pedidos/${b.session_id}?order=${order.id}&box=${b.id}`:undefined}))} active={shown} disabled={busy} onSelect={id=>{setVisited(v=>[...new Set([...v,shown??'',id])]);setActiveBox(id)}}/>
             {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} colorOrder={order.color_order} busy={busy||data.canCount===false} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
         </section>}
         <details className="card pad"><summary>Recepción de cajas · {arrived.length} de {order.total} recibidas</summary><h2>Llegada a {order.destination}</h2><p>{arrived.length} de {order.total} cajas recibidas aquí · {order.counted} contadas</p>
