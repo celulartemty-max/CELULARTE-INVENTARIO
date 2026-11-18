@@ -164,3 +164,5 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .receivingOrders .receivingOrderPagination button{padding:10px 12px;background:white;color:#215eac;border:1px solid #d4deeb;border-radius:9px;font-size:12px;box-shadow:none}
 .receivingOrders .receivingOrderPagination button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:520px){.receivingOrderCompactRow{padding:14px 12px;gap:6px}.receivingOrderCompactRight{gap:7px;font-size:11px}.receivingOrderCompactMain strong{font-size:14px}}
+
+.receivingOrders .receivingBackToOrders{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:auto;min-height:42px;padding:10px 16px;margin:0 0 14px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#194574;font-size:14px;font-weight:700;line-height:1.2;text-decoration:none;box-shadow:0 2px 6px #0f172a0b;cursor:pointer}.receivingOrders .receivingBackToOrders:hover{background:#eff6ff;border-color:#93b4e4}.receivingOrders .receivingBackToOrders:focus-visible{outline:3px solid #60a5fa;outline-offset:3px}
