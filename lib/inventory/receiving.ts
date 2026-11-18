@@ -391,6 +391,13 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const smartState:Record<string,{attempts:number;blocked:boolean}>={};
     for(const event of smartEvents){const key=String(event.box_id||'');if(!key)continue;const state=smartState[key]??{attempts:0,blocked:false};if(event.action==='RECEIVING_SMART_ATTEMPT')state.attempts++;if(event.action==='RECEIVING_SMART_BLOCKED')state.blocked=true;if(event.action==='RECEIVING_SMART_APPROVED')state.blocked=false;smartState[key]=state;}
     for(const box of boxes){const state=smartState[String(box.id)];box.smart_attempts=state?.attempts??0;box.smart_blocked=state?.blocked??false;}
+    // Return only a per-cell match flag after the first attempt; never expose the expected quantity early.
+    const checkedIds=boxes.filter(box=>!box.counted_at&&box.smart_attempts>=1).map(box=>String(box.id));
+    if(checkedIds.length){
+      const checked=await sql`SELECT id::text,carton_id::text,CASE WHEN expected IS NULL THEN NULL ELSE counted IS NOT DISTINCT FROM expected END matched FROM receiving_items WHERE carton_id::text=ANY(${checkedIds})`;
+      const matches=new Map(checked.map(line=>[String(line.id),line.matched]));
+      for(const item of items){if(checkedIds.includes(String(item.carton_id)))item.smart_match=matches.get(String(item.id))??null;}
+    }
     const assistedIds=boxes.filter(box=>!box.counted_at&&box.smart_attempts>=2&&!box.smart_blocked).map(box=>String(box.id));
     if(assistedIds.length){const assisted=await sql`SELECT id::text,carton_id::text,expected FROM receiving_items WHERE carton_id::text=ANY(${assistedIds})`;const byId=new Map(assisted.map(line=>[line.id,line.expected]));for(const item of items){if(assistedIds.includes(String(item.carton_id))&&item.counted!==byId.get(String(item.id)))item.expected=byId.get(String(item.id));}}
     const batches = await sql `SELECT o.id::text,o.reference,o.display_title,o.shipping,o.marking,o.supplier,o.is_foreign,o.is_mixed,(SELECT name FROM branches WHERE id=o.destination_branch_id) destination_name,COALESCE(CASE WHEN o.is_mixed THEN 'Pedido mixto' END,p.name,o.product_label) product,count(b.id)::int total,count(b.session_id)::int received_total,count(b.id) FILTER(WHERE b.session_id=${sessionId}::uuid)::int received_here,count(b.id) FILTER(WHERE b.session_id IS NULL)::int remaining,
