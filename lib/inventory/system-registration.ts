@@ -94,7 +94,7 @@ export async function registrationDetail(user: SessionUser, raw: unknown) {
     if (!row) throw new Error('El registro ya no está pendiente o no tienes acceso a esa sucursal.');
     await assertBranchAccess(user, row.branch_id);
     if(key.kind==='REGISTERED_RECOUNT'){
-        const lines=await withTransaction(async c=>(await c.query(`SELECT COALESCE(p.name,o.product_label) product,b.carton_number box,x.model,x.color,x.previousQuantity previous_quantity,x.newQuantity quantity,x.delta FROM receiving_registered_recounts r JOIN receiving_cartons b ON b.id=r.carton_id JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id CROSS JOIN LATERAL jsonb_to_recordset(r.adjustments) AS x(id text,model text,color text,previousQuantity integer,newQuantity integer,delta integer) WHERE r.id=$1 AND r.completed_at IS NOT NULL AND r.registered_at IS NULL`,[key.id])).rows);
+        const lines=await withTransaction(async c=>(await c.query(`SELECT COALESCE(p.name,o.product_label) product,b.carton_number box,x.model,x.color,x."previousQuantity" previous_quantity,abs(x.delta) quantity,x.delta FROM receiving_registered_recounts r JOIN receiving_cartons b ON b.id=r.carton_id JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id CROSS JOIN LATERAL jsonb_to_recordset(r.adjustments) AS x(id text,model text,color text,"previousQuantity" integer,"newQuantity" integer,delta integer) WHERE r.id=$1 AND r.completed_at IS NOT NULL AND r.registered_at IS NULL`,[key.id])).rows);
         return {row,lines};
     }
     if(key.kind==='FULL_ADJUSTMENT'){
