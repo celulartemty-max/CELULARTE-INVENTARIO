@@ -93,7 +93,7 @@ type Data = {
         notes: string;
     } | null;
 };
-export default function ReceivingEditor({ data, products }: {
+export default function ReceivingEditor({ data, products,initialOrderId,initialBoxId }: {initialOrderId?:string;initialBoxId?:string;
     data: Data;
     products: {
         id: string;
@@ -101,9 +101,9 @@ export default function ReceivingEditor({ data, products }: {
     }[];
 }) {
     const router = useRouter();
-    const [busy, setBusy] = useState(false), [error, setError] = useState(''), [packing, setPacking] = useState<Packing | null>(null), [raw, setRaw] = useState(''), [file, setFile] = useState<File | null>(null), [packingOrder, setPackingOrder] = useState(''), [active, setActive] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false), [error, setError] = useState(''), [packing, setPacking] = useState<Packing | null>(null), [raw, setRaw] = useState(''), [file, setFile] = useState<File | null>(null), [packingOrder, setPackingOrder] = useState(data.orders.some(o=>o.id===initialOrderId)?initialOrderId! : ''), [active, setActive] = useState<string | null>(data.boxes.some(b=>b.id===initialBoxId&&b.order_id===initialOrderId)?initialBoxId!:null);
     const s = data.session, draft = s.status === 'DRAFT',editable=draft&&(data.canManageReceipt??true);
-    const [detailTab, setDetailTab] = useState<'packing'|'count'>('packing');
+    const [detailTab, setDetailTab] = useState<'packing'|'count'>(initialOrderId?'count':'packing');
     const [reviewVersion, setReviewVersion] = useState(0);
     const [attachmentOptions, setAttachmentOptions] = useState(false);
     const [addingBox, setAddingBox] = useState<string|null>(null);
