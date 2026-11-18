@@ -33,10 +33,10 @@ export function NewBatchForm({products,busy,save,onSaved}:{products:{id:string;n
  const [isForeign,setIsForeign]=useState(false),[total,setTotal]=useState(''),[error,setError]=useState('');
  const generated=useRef('');
  const [selectedBoxes,setSelectedBoxes]=useState<string[]>([]);
+ const [marking,setMarking]=useState('');const external=!!marking&&!['PER','JAPS'].includes(marking);
  const validTotal=Number.isInteger(Number(total))&&Number(total)>0&&Number(total)<=1000?Number(total):0;
  const arrived=external&&validTotal?Array.from({length:validTotal},(_,i)=>String(i+1)):selectedBoxes.filter(n=>Number(n)<=validTotal);
  const selectBoxes=(values:string[])=>setSelectedBoxes(values);
- const [marking,setMarking]=useState('');const external=!!marking&&!['PER','JAPS'].includes(marking);
  const [mixed,setMixed]=useState(false);
  const [search,setSearch]=useState(''),[selectedProduct,setSelectedProduct]=useState('');
  const [open,setOpen]=useState(false),[active,setActive]=useState(-1);const listId=useId();
