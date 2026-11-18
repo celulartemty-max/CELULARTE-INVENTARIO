@@ -12,6 +12,7 @@ import ForeignCartons, { type ForeignCarton } from './foreign-cartons';
 import BatchIntake, {type Batch, type PendingCarton} from './batch-intake';
 import PackingReview from './packing-review';
 import CountGrid from './count-grid';
+import RegisteredRecount from './registered-recount';
 import {boxDifferences} from '@/lib/inventory/count-comparison';
 import CountComparison from './count-comparison';
 import FreightAmount from './freight-amount';
@@ -58,6 +59,7 @@ type Data = {
     canRegisterSystem?: boolean;
     registrationRows?:RegistrationPending[];
     registeredBoxIds?:string[];
+    registeredRecounts?:{carton_id:string;baseline:{id:string;model:string;color:string;quantity:number}[];draft?:{id:string;quantity:number}[]|null;adjustments?:{model:string;color:string;delta:number}[]|null;completed_at?:string|null}[];
     review: boolean;
     canRecount: boolean;
     orders: {
@@ -218,6 +220,7 @@ export default function ReceivingEditor({ data, products }: {
  <CountGrid items={data.items.filter(l=>l.carton_id===b.id)} colorOrder={b.color_order} disabled={b.can_count===false||!!b.counted_at||busy||!draft} showReference={data.review&&!!b.counted_at} onAdd={()=>setAddingBox(b.id)} onAddCombination={(model,color)=>run(async()=>{await act({action:'addItem',boxId:b.id,model,color})})}/>
  <label>Observaciones<textarea name="notes" maxLength={2000} defaultValue={b.notes} disabled={b.can_count===false||!!b.counted_at || !draft || busy}/></label>{b.can_count!==false&&!b.counted_at && draft && <div className="actions"><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)} value="draft" formNoValidate>Guardar avance</button><button disabled={busy || !data.items.some(l=>l.carton_id===b.id)}>Terminar conteo de esta caja</button></div>}
  </form>}
+ {active===b.id && !!b.counted_at && data.registeredBoxIds?.includes(b.id) && <RegisteredRecount boxId={b.id} recount={data.registeredRecounts?.find(r=>r.carton_id===b.id)} master={data.canRecount} canCount={b.can_count!==false} busy={busy} onAction={(action,lines)=>run(async()=>{await act({action,boxId:b.id,lines})})}/>}
  {active === b.id && b.counted_at && draft && data.canRecount && b.can_count!==false && !data.registeredBoxIds?.includes(b.id) && <button disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se conservarán las cantidades para corregir solo lo necesario y el conteo anterior quedará en auditoría. Vuelve a terminar el conteo para confirmar los cambios.'))
             run(async () => { await act({ action: 'reopenBox', boxId: b.id }); }); }}>Autorizar reconteo</button>}
  </article>)}</section>
