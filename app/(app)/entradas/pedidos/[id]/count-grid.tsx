@@ -17,8 +17,8 @@ export default function CountGrid({ items, disabled, showReference, onAdd, onAdd
                 const lines = items.filter(item => item.model === model && item.color === color);
                 return <td key={color}>{lines.length ? lines.map(item => <div className="packingCell" key={item.id}>
                     <input aria-label={`Cantidad contada: ${model || 'sin modelo'}, ${color || 'sin color'}`} name={item.id} type="number" min={0} max={1000000} step={1} inputMode="numeric" required placeholder="Sin contar" defaultValue={item.counted ?? ''} disabled={disabled}/>
-                    {item.smart_match===true&&<small className="countCellCorrect">✓ Correcto</small>}
-                    {item.smart_match===false&&<small className="countCellRecount">↻ {showReference?'Diferencia pendiente':'Recontar'}</small>}
+                    {item.smart_match===true&&<small style={{display:"block",color:"#166534",fontWeight:700}}>✓ Correcto</small>}
+                    {item.smart_match===false&&<small style={{display:"block",color:"#b91c1c",fontWeight:700}}>↻ {showReference?'Diferencia pendiente':'Recontar'}</small>}
                     {showReference && item.smart_match!==true && <small>{item.expected == null ? 'Sin referencia' : `Esperado: ${item.expected} · Diferencia: ${Number(item.counted) - item.expected}`}</small>}
                 </div>) : onAddCombination && !disabled ? <button type="button" className="packingAbsent" aria-label={`Añadir cantidad: ${model || 'sin modelo'}, ${color || 'sin color'}`} title="Habilitar esta combinación para contar" onClick={() => onAddCombination(model, color)}>＋</button> : <span aria-label="Combinación no incluida">—</span>}</td>;
             })}</tr>)}</tbody>
