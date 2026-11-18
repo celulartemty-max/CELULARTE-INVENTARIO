@@ -7,7 +7,7 @@ import ReceivingModal from '../entradas/pedidos/[id]/receiving-modal';
 import '../entradas/pedidos/receiving.css';
 import './registration.css';
 
-const labels:Record<string,string>={FULL_ADJUSTMENT:'Ajuste FULL',RECEIVING_ORDER:'Pedido contado',RECEIVING:'Recepción por pedidos',DESTINATION:'Cajas recibidas de otra sucursal',RECEPTION:'Recepción',EXIT:'Salida',RETURN_ML:'Devolución ML',RETURN_TIKTOK:'Devolución TikTok',RETURN_CUSTOMER:'Devolución de cliente',CLIENT_SALE:'Venta con entrega',TRANSFER:'Traspaso'};
+const labels:Record<string,string>={REGISTERED_RECOUNT:'Ajuste por reconteo',FULL_ADJUSTMENT:'Ajuste FULL',RECEIVING_ORDER:'Pedido contado',RECEIVING:'Recepción por pedidos',DESTINATION:'Cajas recibidas de otra sucursal',RECEPTION:'Recepción',EXIT:'Salida',RETURN_ML:'Devolución ML',RETURN_TIKTOK:'Devolución TikTok',RETURN_CUSTOMER:'Devolución de cliente',CLIENT_SALE:'Venta con entrega',TRANSFER:'Traspaso'};
 type Detail=RegistrationDetailData;
 export default function RegistrationQueue({rows,compact=false,buttonLabel='Ver detalle y registrar →'}:{rows:RegistrationPending[];compact?:boolean;buttonLabel?:string}){
     const router=useRouter(),lock=useRef(false);
