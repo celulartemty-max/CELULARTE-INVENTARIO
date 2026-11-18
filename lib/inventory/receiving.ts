@@ -50,9 +50,6 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             throw new Error('Recepción no encontrada.');
         // Counting is shared across receiving teams; approvals and POS retain scope.
         if(!['count','saveCount','addItem','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
-        if(['authorizeRegisteredRecount','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action))){
-            return (await import('./registered-recount')).registeredRecountAction(c,u,s,b);
-        }
         if(b.action==='freight'){
             if(u.role!=='MASTER')throw new Error('Solo Máster puede editar el monto del flete.');
             const value=z.object({cost:z.number().finite().min(0).max(999999999).refine(n=>Math.abs(n*100-Math.round(n*100))<0.00001,'Usa máximo dos decimales.'),currency:z.enum(['MXN','USD','CNY'])}).parse(b);
@@ -85,6 +82,9 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             await c.query("UPDATE receiving_sessions SET status='POS_REGISTERED' WHERE id=$1", [sessionId]);
             await audit(c, u, s.branch_id, 'RECEIVING_POS_REGISTERED', { sessionId });
             return { ok: true };
+        }
+        if(['authorizeRegisteredRecount','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action))){
+            return (await import('./registered-recount')).registeredRecountAction(c,u,s,b);
         }
         if (s.status !== 'DRAFT')
             throw new Error('La recepción ya está cerrada.');
