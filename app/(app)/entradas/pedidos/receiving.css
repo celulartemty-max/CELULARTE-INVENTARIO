@@ -141,3 +141,26 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .receivingOrders .receivingCartonSquares .receivingBoxButton span{display:block;max-width:100%;font-size:11px!important;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .receivingOrders .receivingCartonSquares .receivingBoxButton:disabled{cursor:not-allowed;opacity:1}
 @media(max-width:540px){.receivingOrders .receivingCartonSquares{grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:7px}.receivingOrders .receivingCartonSquares .receivingBoxButton{height:72px;min-height:72px}}
+
+
+/* Compact order directory */
+.receivingOrderStatusTabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:5px;background:#edf2f8;border-radius:13px;margin:16px 0}
+.receivingOrders .receivingOrderStatusTabs button{border:0;border-radius:10px;background:transparent;color:#60728b;font-size:14px;font-weight:700;padding:12px 8px;box-shadow:none}
+.receivingOrders .receivingOrderStatusTabs button[aria-pressed=true]{background:white;color:#174a85;box-shadow:0 2px 7px #1b38551a}
+.receivingOrderCompactList{margin-top:16px;border:1px solid #e0e7f0;border-radius:15px;background:white;overflow:hidden}
+.receivingOrderCompactRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;border-bottom:1px solid #e9edf3;text-decoration:none;color:#172d48;min-height:84px;box-sizing:border-box}
+.receivingOrderCompactRow:last-child{border-bottom:0}
+.receivingOrderCompactRow:hover{background:#f6f9fe}
+.receivingOrderCompactRow:focus-visible{outline:3px solid #60a5fa;outline-offset:-3px}
+.receivingOrderCompactMain{display:grid;gap:5px;min-width:0}
+.receivingOrderCompactMain strong{font-size:15px;line-height:1.35;overflow-wrap:anywhere}
+.receivingOrderCompactMain>span{font-size:12px;color:#718096}
+.receivingOrderCompactMain small{font-size:12px}
+.receivingOrderCountComplete{color:#17834c;font-weight:700}
+.receivingOrderCountProgress{color:#718096}
+.receivingOrderCompactRight{display:flex;align-items:center;gap:13px;flex-shrink:0;color:#718096;font-size:12px;white-space:nowrap}
+.receivingOrderCompactRight b{font-size:25px;font-weight:400;color:#91a0b3}
+.receivingOrderPagination{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:18px 0;font-size:13px;color:#66758b}
+.receivingOrders .receivingOrderPagination button{padding:10px 12px;background:white;color:#215eac;border:1px solid #d4deeb;border-radius:9px;font-size:12px;box-shadow:none}
+.receivingOrders .receivingOrderPagination button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:520px){.receivingOrderCompactRow{padding:14px 12px;gap:6px}.receivingOrderCompactRight{gap:7px;font-size:11px}.receivingOrderCompactMain strong{font-size:14px}}
