@@ -11,13 +11,17 @@ import { registerExitPos } from './exits';
 import { registerReturnPos } from './returns';
 import { registerTransferPos } from './transfers';
 
-export const registrationSchema = z.object({ id: z.string().uuid(), kind: z.enum(['FULL_ADJUSTMENT','RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION','EXIT','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER','TRANSFER','CLIENT_SALE']), side: z.enum(['origin','destination']).nullable().default(null), revision:z.string().regex(/^[a-f0-9]{64}$/).optional() });
+export const registrationSchema = z.object({ id: z.string().uuid(), kind: z.enum(['REGISTERED_RECOUNT','FULL_ADJUSTMENT','RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION','EXIT','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER','TRANSFER','CLIENT_SALE']), side: z.enum(['origin','destination']).nullable().default(null), revision:z.string().regex(/^[a-f0-9]{64}$/).optional() });
 export type RegistrationKey = z.infer<typeof registrationSchema>;
 export type RegistrationPending = RegistrationKey & { reference: string; branch_id: string; branch: string; created_at: string; correction: boolean; created_by_name?: string | null };
 
 // One row per registration responsibility. A transfer can legitimately have two
 // pending sides, never two confirmations for the same side.
 export const pendingSql = `WITH pending AS (
+    SELECT r.id,'REGISTERED_RECOUNT'::text,NULL::text side,'Reconteo caja '||b.carton_number||' · '||o.reference,r.branch_id,r.completed_at,true
+    FROM receiving_registered_recounts r JOIN receiving_cartons b ON b.id=r.carton_id JOIN receiving_orders o ON o.id=b.order_id
+    WHERE r.completed_at IS NOT NULL AND r.registered_at IS NULL AND jsonb_array_length(r.adjustments)>0
+    UNION ALL
     SELECT f.order_id id,'FULL_ADJUSTMENT'::text kind,s.side,'FULL #'||o.reference reference,f.branch_id,f.updated_at created_at,
       EXISTS(SELECT 1 FROM audit_events a WHERE a.action='FULL_ADJUSTMENT_REGISTERED' AND a.new_value->>'orderId'=f.order_id::text) correction
     FROM full_final_counts f JOIN full_orders o ON o.id=f.order_id
@@ -79,7 +83,7 @@ export async function registrationHistory(user: SessionUser) {
         LEFT JOIN receiving_orders o ON o.id=CASE WHEN a.action IN ('RECEIVING_DESTINATION_POS_REGISTERED','RECEIVING_ORDER_POS_REGISTERED') THEN (a.new_value->>'orderId')::uuid END
         LEFT JOIN full_orders f ON f.id=CASE WHEN a.action='FULL_ADJUSTMENT_REGISTERED' THEN (a.new_value->>'orderId')::uuid END
         WHERE a.action=ANY($2::text[]) AND ($1::uuid[] IS NULL OR a.branch_id=ANY($1::uuid[]))
-        ORDER BY a.created_at DESC,a.id DESC LIMIT 100`, [branches, ['FULL_ADJUSTMENT_REGISTERED','RECEIVING_ORDER_POS_REGISTERED','RECEIVING_POS_REGISTERED','RECEIVING_DESTINATION_POS_REGISTERED','POS_REGISTERED','POS_CORRECTION_REGISTERED','EXIT_POS_REGISTERED','EXIT_POS_CORRECTION_REGISTERED','RETURN_POS_REGISTERED','RETURN_POS_CORRECTION_REGISTERED','TRANSFER_ORIGIN_POS','TRANSFER_DESTINATION_POS','CUSTOMER_SALE_REGISTERED']])).rows);
+        ORDER BY a.created_at DESC,a.id DESC LIMIT 100`, [branches, ['RECEIVING_REGISTERED_RECOUNT_ADJUSTMENT_REGISTERED','FULL_ADJUSTMENT_REGISTERED','RECEIVING_ORDER_POS_REGISTERED','RECEIVING_POS_REGISTERED','RECEIVING_DESTINATION_POS_REGISTERED','POS_REGISTERED','POS_CORRECTION_REGISTERED','EXIT_POS_REGISTERED','EXIT_POS_CORRECTION_REGISTERED','RETURN_POS_REGISTERED','RETURN_POS_CORRECTION_REGISTERED','TRANSFER_ORIGIN_POS','TRANSFER_DESTINATION_POS','CUSTOMER_SALE_REGISTERED']])).rows);
 }
 export async function registrationDetail(user: SessionUser, raw: unknown) {
     await requireSystemRegistration(user);
@@ -89,6 +93,10 @@ export async function registrationDetail(user: SessionUser, raw: unknown) {
     const row = (await registrationPending(user)).find(p => p.id === key.id && p.kind === key.kind && p.side === key.side);
     if (!row) throw new Error('El registro ya no está pendiente o no tienes acceso a esa sucursal.');
     await assertBranchAccess(user, row.branch_id);
+    if(key.kind==='REGISTERED_RECOUNT'){
+        const lines=await withTransaction(async c=>(await c.query(`SELECT COALESCE(p.name,o.product_label) product,b.carton_number box,x.model,x.color,x.previousQuantity previous_quantity,x.newQuantity quantity,x.delta FROM receiving_registered_recounts r JOIN receiving_cartons b ON b.id=r.carton_id JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id CROSS JOIN LATERAL jsonb_to_recordset(r.adjustments) AS x(id text,model text,color text,previousQuantity integer,newQuantity integer,delta integer) WHERE r.id=$1 AND r.completed_at IS NOT NULL AND r.registered_at IS NULL`,[key.id])).rows);
+        return {row,lines};
+    }
     if(key.kind==='FULL_ADJUSTMENT'){
         if(!key.side)throw Error('Selecciona entrada o salida.');
         return {row,...await (await import('./full-final-count')).finalRegistrationDetail(user,key.id,key.side)};
@@ -109,6 +117,14 @@ export async function confirmRegistration(user: SessionUser, raw: unknown) {
     const key = registrationSchema.parse(raw);
     const { row } = await registrationDetail(user, key);
     await assertBranchAccess(user, row.branch_id);
+    if(key.kind==='REGISTERED_RECOUNT')return withTransaction(async c=>{
+        const r=(await c.query('SELECT id,branch_id,carton_id,adjustments FROM receiving_registered_recounts WHERE id=$1 AND completed_at IS NOT NULL AND registered_at IS NULL FOR UPDATE',[key.id])).rows[0];
+        if(!r)throw Error('Este ajuste ya fue registrado.');
+        await assertBranchAccess(user,r.branch_id);
+        await c.query('UPDATE receiving_registered_recounts SET registered_by=$2,registered_at=now() WHERE id=$1 AND registered_at IS NULL',[key.id,user.id]);
+        await c.query('INSERT INTO audit_events(user_id,branch_id,action,new_value) VALUES($1,$2,$3,$4::jsonb)',[user.id,r.branch_id,'RECEIVING_REGISTERED_RECOUNT_ADJUSTMENT_REGISTERED',JSON.stringify({recountId:r.id,cartonId:r.carton_id,adjustments:r.adjustments})]);
+        return {ok:true};
+    });
     if(key.kind==='FULL_ADJUSTMENT'){
         if(!key.side)throw Error('Selecciona entrada o salida.');
         return (await import('./full-final-count')).confirmFinalRegistration(user,key.id,key.side,key.revision);
