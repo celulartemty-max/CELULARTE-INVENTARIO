@@ -129,3 +129,5 @@ main.receivingOrders>header{display:block}main.receivingOrders>header h1{margin:
 .receivingOrders a.receivingNewReceiptButton:focus-visible{outline:3px solid #60a5fa;outline-offset:4px}
 .receivingNewReceiptButton>span{font-size:24px;line-height:1}
 @media(max-width:520px){.receivingOrders a.receivingNewReceiptButton{width:100%;align-self:stretch}}
+
+.receivingProductSearch{margin:12px 0 20px;max-width:620px}.receivingProductSearch label{display:block;font-weight:650;margin-bottom:8px}.receivingProductSearchControl input{display:block;width:100%;padding:13px 16px;border:1px solid #cbd5e1;border-radius:12px;background:var(--surface,#fff);color:inherit;font:inherit}.receivingProductSearchControl input:focus{outline:2px solid #2563eb;outline-offset:2px}
