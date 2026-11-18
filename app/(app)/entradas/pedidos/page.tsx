@@ -5,7 +5,7 @@ import { receivingAccess } from '@/lib/inventory/receiving';
 import ReceivingNew from './receiving-new';
 import './receiving.css';
 import { receivingOverview } from '@/lib/inventory/receiving-overview';
-import ReceivingSearch from './receiving-search';
+import ReceivingViews, {type OrderResult} from './receiving-views';
 export const dynamic = 'force-dynamic';
 export default async function Page({searchParams=Promise.resolve({})}:{searchParams?:Promise<{status?:string;new?:string}>}) {
     const u = await requireUser();
@@ -20,9 +20,10 @@ export default async function Page({searchParams=Promise.resolve({})}:{searchPar
     const params=await searchParams;
     const filter=params.status,newReceipt=params.new==='1';
     const allRows=newReceipt?[]:await receivingOverview(u);
+    const orderRows=newReceipt?[]:await sql`SELECT o.id::text,o.reference,COALESCE(p.name,o.product_label,'Sin producto') product,o.marking,o.shipping,dest.name destination,origin.name origin,s.arrival_date::text,b.session_id::text, (o.destination_branch_id<>s.branch_id) destination_order, jsonb_agg(jsonb_build_object('id',b.id::text,'number',b.carton_number,'counted',b.counted_at IS NOT NULL) ORDER BY b.carton_number) boxes FROM receiving_cartons b JOIN receiving_orders o ON o.id=b.order_id JOIN receiving_sessions s ON s.id=b.session_id JOIN branches dest ON dest.id=o.destination_branch_id JOIN branches origin ON origin.id=s.branch_id LEFT JOIN products p ON p.id=o.product_id WHERE o.voided_at IS NULL GROUP BY o.id,p.name,dest.name,origin.name,s.id,b.session_id ORDER BY s.arrival_date DESC,o.created_at DESC`;
     const cutoff=new Date().getTime()-30*86400000;
     const rows=allRows.filter(r=>filter==='open'?(r.can_open&&r.pending_count===true)||(!r.can_open&&r.destinations.some(d=>d.can_open&&d.counted<d.boxes)):filter==='closed'?((r.can_open&&['CLOSED','POS_REGISTERED','ARCHIVED'].includes(r.status))||(!r.can_open&&r.destinations.some(d=>d.can_open&&d.counted===d.boxes)))&&new Date(r.created_at||r.arrival_date).getTime()>=cutoff:true);
     return <main className="receivingOrders receivingHome"><header className="receivingHomeHero"><span className="receivingEyebrow">ENTRADA DE MERCANCÍA</span><h1>{newReceipt?'Nueva recepción':filter==='open'?'Recepciones en proceso':'Recepciones'}</h1><p>Registra la llegada y lleva el avance de tus cajas.</p></header>{newReceipt ? (branches.length>0 ? <ReceivingNew branches={branches} canFreight={u.role==='MASTER'} expanded/> : <p role="status">Tu usuario no tiene una sucursal habilitada para crear recepciones. Solicita al administrador que revise tu asignación.</p>) : <Link className="receivingNewReceiptButton" href="/entradas/nueva"><span aria-hidden="true">＋</span> Nueva recepción</Link>}
     {permissionPending!==null&&<Link className="receivingCountPermissions" href="/entradas/permisos-conteo"><span>Permisos de conteo</span><span className="receivingCountPermissionsBadge">{permissionPending} pendientes</span><span aria-hidden="true">→</span></Link>}
-    {!newReceipt&&<><ReceivingSearch rows={rows}/><Link className="receivingHistory" href="/entradas">Ver recepciones anteriores →</Link></>}</main>;
+    {!newReceipt&&<><ReceivingViews rows={rows} orders={(orderRows as unknown as OrderResult[]).filter(o=>rows.some(r=>r.id===o.session_id))}/><Link className="receivingHistory" href="/entradas">Ver recepciones anteriores →</Link></>}</main>;
 }
