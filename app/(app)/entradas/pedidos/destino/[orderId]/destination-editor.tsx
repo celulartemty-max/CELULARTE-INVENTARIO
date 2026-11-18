@@ -55,13 +55,7 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
         const r = await fetch('/api/receiving/destination', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, orderId: order.id }) });
         let result = await r.json();
         if (!r.ok) throw new Error(result.error || 'No se pudo guardar.');
-        if(result.requiresReview){
-            const detail=result.differences.map((x:{model:string;color:string})=>x.model+' · '+x.color).join('\n');
-            if(!confirm('Esta caja tiene diferencias en:\n'+detail+'\n\nRevisa nuevamente estas cantidades.\nCancelar: volver a revisar.\nAceptar: ya revisé y confirmo el conteo.'))throw new Error('Revisa nuevamente los modelos señalados y vuelve a terminar el conteo.');
-            const retry=await fetch('/api/receiving/destination',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,orderId:order.id,acceptDifferences:true})});
-            result=await retry.json();if(!retry.ok)throw new Error(result.error||'No se pudo guardar.');
-        }
-        setNotice('Guardado.'); startTransition(() => router.refresh());
+        setNotice(result.smartStatus==='blocked'?'Caja bloqueada. Avisa a Máster.':result.smartStatus==='assisted'?'Segundo conteo registrado. Ya puedes revisar las diferencias.':'Guardado.'); startTransition(() => router.refresh());
     });
     async function interpret() {
         if (!file) return;
@@ -93,7 +87,7 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
         {error && <p className="receivingError" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
         {arrived.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
             {data.canCount===false&&<p role="status" className="receivingMuted">Solo {order.marking==='JAPS'?'Audio (JAPS)':'Treviño (PER)'} puede contar estas cajas. Vista de consulta.</p>}
-            <div className="receivingCartonSquares">{arrived.map(b => <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" style={(differenceIds.has(b.id)||b.has_differences)?{background:'#fff1f2',borderColor:'#dc2626',color:'#991b1b'}:undefined} title={(differenceIds.has(b.id)||b.has_differences)?'Tiene diferencias: revisar esta caja':undefined} aria-pressed={shown === b.id} aria-label={`Caja ${b.carton_number}${b.counted_at ? ', terminada' : ''}`} onClick={() => { setVisited(v => [...new Set([...v, shown ?? '', b.id])]); setActiveBox(b.id); }}>{b.carton_number}{(differenceIds.has(b.id)||b.has_differences)?' ⚠':b.counted_at?' ✓':''}</button>)}</div>
+            <div className="receivingCartonSquares">{arrived.map(b => {const bad=differenceIds.has(b.id)||b.has_differences;const blocked=b.smart_blocked;const ok=!!b.counted_at&&!bad;return <button key={b.id} type="button" disabled={busy} className="receivingBoxButton" style={blocked?{background:'#e5e7eb',borderColor:'#6b7280',color:'#374151'}:bad?{background:'#fff1f2',borderColor:'#dc2626',color:'#991b1b'}:ok?{background:'#dcfce7',borderColor:'#16a34a',color:'#166534'}:undefined} aria-pressed={shown===b.id} aria-label={`Caja ${b.carton_number}${blocked?', bloqueada':bad?', con diferencias':ok?', correcta':', pendiente'}`} onClick={()=>{setVisited(v=>[...new Set([...v,shown??'',b.id])]);setActiveBox(b.id)}}>{b.carton_number}{blocked?' 🔒':bad?' ⚠':ok?' ✓':''}{!b.counted_at&&!blocked&&(b.smart_attempts??0)>0?<small> · {b.smart_attempts}/3</small>:null}</button>})}</div>
             {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} colorOrder={order.color_order} busy={busy||data.canCount===false} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
         </section>}
         <details className="card pad"><summary>Recepción de cajas · {arrived.length} de {order.total} recibidas</summary><h2>Llegada a {order.destination}</h2><p>{arrived.length} de {order.total} cajas recibidas aquí · {order.counted} contadas</p>
@@ -138,18 +132,18 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
 
 function DestinationCount({ box, items, busy, review, canRecount, save, onAdd, colorOrder }: { box: DestinationBox; items: DestinationItem[]; busy: boolean; review: boolean; canRecount: boolean; save: Save; onAdd: () => void; colorOrder?: string[] }) {
     const formRef = useRef<HTMLFormElement>(null);
-    async function submit(finish: boolean) {
-        const form = formRef.current;
-        if (!form || (finish && !form.reportValidity())) return;
-        const fields = new FormData(form);
-        const lines = items.map(l => ({ id: l.id, quantity: fields.get(l.id) === '' ? null : Number(fields.get(l.id)) }));
-        await save({ action: finish ? 'count' : 'saveCount', boxId: box.id, reviewDifferences:finish, lines, notes: fields.get('notes') });
+    async function submit(finish:boolean,mode?:'correct'|'real'){
+        const form=formRef.current;
+        if(!form||(finish&&!form.reportValidity()))return;
+        const fields=new FormData(form);
+        const lines=items.map(l=>({id:l.id,quantity:fields.get(l.id)===''?null:Number(fields.get(l.id))}));
+        await save({action:finish?'smartCount':'saveCount',boxId:box.id,mode,lines,notes:fields.get('notes')});
     }
-    return <form ref={formRef} className="receivingCompactForm" onSubmit={e => { e.preventDefault(); void submit(true); }}><h3>Caja {box.carton_number}{box.counted_at ? ' · Conteo terminado ✓' : ''}</h3>
+    return <form ref={formRef} className="receivingCompactForm" onSubmit={e => { e.preventDefault(); if((box.smart_attempts??0)<2)void submit(true); }}><h3>Caja {box.carton_number}{box.counted_at ? (box.has_differences?' · Diferencias confirmadas ⚠':' · Conteo terminado ✓') : ''}</h3>
         <CountAttribution name={box.counted_by_name} at={box.counted_at}/>
-        <CountGrid items={items} colorOrder={colorOrder} disabled={busy || Boolean(box.counted_at)} showReference={review && Boolean(box.counted_at)} onAdd={box.counted_at ? undefined : onAdd} onAddCombination={(model,color)=>{void save({action:'addItem',boxId:box.id,model,color})}}/>
+        <CountGrid items={items} colorOrder={colorOrder} disabled={busy || Boolean(box.counted_at) || !!box.smart_blocked} showReference={(review && Boolean(box.counted_at))||(!box.counted_at&&(box.smart_attempts??0)>=2&&!box.smart_blocked)} onAdd={box.counted_at ? undefined : onAdd} onAddCombination={(model,color)=>{void save({action:'addItem',boxId:box.id,model,color})}}/>
         {!items.length && <p>Agrega un packing list o utiliza “Añadir modelo” para empezar.</p>}
         <label className="receivingField">Observaciones<textarea name="notes" maxLength={2000} defaultValue={box.notes} disabled={busy || Boolean(box.counted_at)}/></label>
-        {!box.counted_at ? <div className="actions"><button type="button" disabled={busy || !items.length} onClick={() => submit(false)}>Guardar avance</button><button className="receivingSave" disabled={busy || !items.length}>Terminar conteo de esta caja</button></div> : canRecount && <button type="button" disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se conservarán las cantidades para corregir solo lo necesario y el conteo anterior quedará en auditoría. Vuelve a terminar el conteo para confirmar los cambios.')) void save({ action: 'reopenBox', boxId: box.id }); }}>Autorizar reconteo</button>}
+        {!box.counted_at ? <div className="actions">{box.smart_blocked?<p role="alert">🔒 Caja bloqueada. Avisa a tu encargado.</p>:<><button type="button" disabled={busy||!items.length} onClick={()=>submit(false)}>Guardar avance</button>{(box.smart_attempts??0)<2?<button className="receivingSave" disabled={busy||!items.length}>Enviar intento {(box.smart_attempts??0)+1}</button>:<><p role="status">Tercer intento asistido: revisa las cantidades esperadas en las variantes con diferencias.</p><button type="button" disabled={busy||!items.length} onClick={()=>submit(true,'correct')}>Corregir conteo</button><button type="button" className="receivingSave" disabled={busy||!items.length} onClick={()=>{if(confirm('¿Confirmas que estas cantidades físicas son correctas, aunque difieran del packing?'))void submit(true,'real')}}>Confirmar diferencia real</button></>}</>}{box.smart_blocked&&canRecount&&<button type="button" disabled={busy} onClick={()=>save({action:'approveSmartCount',boxId:box.id})}>Máster: autorizar revisión</button>}</div> : canRecount && <button type="button" disabled={busy} onClick={() => { if (confirm('¿Autorizar reconteo? Se conservarán las cantidades para corregir solo lo necesario y el conteo anterior quedará en auditoría. Vuelve a terminar el conteo para confirmar los cambios.')) void save({ action: 'reopenBox', boxId: box.id }); }}>Autorizar reconteo</button>}
     </form>;
 }
