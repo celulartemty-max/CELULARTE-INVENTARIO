@@ -1,7 +1,7 @@
 'use client';
 import { orderedPackingColors } from '@/lib/inventory/packing-column-order';
 
-type CountItem = { id: string; model: string; color: string; counted: number | null; expected?: number | null;product_id?:string|null;product_label?:string };
+type CountItem = { id: string; model: string; color: string; counted: number | null; expected?: number | null; smart_match?:boolean|null;product_id?:string|null;product_label?:string };
 
 export default function CountGrid({ items, disabled, showReference, onAdd, onAddCombination, colorOrder }: { items: CountItem[]; disabled: boolean; showReference: boolean; onAdd?: () => void; onAddCombination?: (model: string, color: string) => void; colorOrder?: string[] }) {
     if(items.some(i=>i.product_id||i.product_label)){
@@ -17,7 +17,9 @@ export default function CountGrid({ items, disabled, showReference, onAdd, onAdd
                 const lines = items.filter(item => item.model === model && item.color === color);
                 return <td key={color}>{lines.length ? lines.map(item => <div className="packingCell" key={item.id}>
                     <input aria-label={`Cantidad contada: ${model || 'sin modelo'}, ${color || 'sin color'}`} name={item.id} type="number" min={0} max={1000000} step={1} inputMode="numeric" required placeholder="Sin contar" defaultValue={item.counted ?? ''} disabled={disabled}/>
-                    {showReference && <small>{item.expected == null ? 'Sin referencia' : `Esperado: ${item.expected} · Diferencia: ${Number(item.counted) - item.expected}`}</small>}
+                    {item.smart_match===true&&<small className="countCellCorrect">✓ Correcto</small>}
+                    {item.smart_match===false&&<small className="countCellRecount">↻ {showReference?'Diferencia pendiente':'Recontar'}</small>}
+                    {showReference && item.smart_match!==true && <small>{item.expected == null ? 'Sin referencia' : `Esperado: ${item.expected} · Diferencia: ${Number(item.counted) - item.expected}`}</small>}
                 </div>) : onAddCombination && !disabled ? <button type="button" className="packingAbsent" aria-label={`Añadir cantidad: ${model || 'sin modelo'}, ${color || 'sin color'}`} title="Habilitar esta combinación para contar" onClick={() => onAddCombination(model, color)}>＋</button> : <span aria-label="Combinación no incluida">—</span>}</td>;
             })}</tr>)}</tbody>
             {onAdd && !disabled && <tfoot><tr><td colSpan={colors.length+1}><button type="button" className="countAddModel" onClick={onAdd}>＋ Añadir modelo</button></td></tr></tfoot>}
