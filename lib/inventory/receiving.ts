@@ -285,7 +285,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
                 return {ok:true};
             }
             const countBranch=u.primaryBranchId?(await c.query("SELECT name FROM branches WHERE id=$1 AND status='ACTIVE'",[u.primaryBranchId])).rows[0]?.name:null;
-            const granted=(await c.query("SELECT 1 FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2 AND status='APPROVED'",[box.order_id,u.id])).rowCount>0;
+            const granted=(await c.query("SELECT 1 FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2 AND status='APPROVED'",[box.order_id,u.id])).rowCount!>0;
             if(!granted&&!canCountReceivingMark(u,box.marking,countBranch??null))throw Error('Sin permiso para contar esta caja.');
             if(lastBlock>=0&&lastApproval<lastBlock)throw Error('Caja bloqueada. Avisa a tu encargado.');
             const lines=countSchema.parse(b.lines);
