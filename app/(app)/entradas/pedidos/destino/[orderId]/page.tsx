@@ -12,5 +12,5 @@ export default async function Page({ params,searchParams }: { params: Promise<{ 
     const backHref=back?.startsWith('/entradas/pedidos?')?back:'/entradas/pedidos?view=orders';
     const data = await destinationView(await requireUser(), orderId);
     const products=data.review?await sql`SELECT id::text,name FROM products WHERE status='ACTIVE' ORDER BY name`:[];
-    return <main className="receivingOrders"><Link href={backHref}>← Pedidos</Link><DestinationEditor data={data} products={products as {id:string;name:string}[]}/></main>;
+    return <main className="receivingOrders"><Link className="receivingBackToOrders" href={backHref}>← Volver a pedidos</Link><DestinationEditor data={data} products={products as {id:string;name:string}[]}/></main>;
 }
