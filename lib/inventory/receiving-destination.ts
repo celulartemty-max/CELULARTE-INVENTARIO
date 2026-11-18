@@ -11,7 +11,7 @@ import { savePackingColorOrder, appendPackingColor } from './packing-column-orde
 const uuid = z.string().uuid();
 type Client = Parameters<Parameters<typeof withTransaction>[0]>[0];
 export type DestinationOrder = { is_mixed?: boolean; display_title?: string; id: string; reference: string; product: string; marking: string; supplier: string; shipping: string; destination: string; origin: string; total: number; physical: number; arrived: number; counted: number; color_order?: string[] };
-export type DestinationBox = { counted_by_name?:string|null; has_differences?:boolean; id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
+export type DestinationBox = { counted_by_name?:string|null; smart_attempts?:number; smart_blocked?:boolean; has_differences?:boolean; id: string; carton_number: string; origin: string | null; session_id: string | null; received_at: string | null; counted_at: string | null; notes: string };
 export type DestinationItem = { product_id?:string|null;product_label?:string; id: string; carton_id: string; model: string; color: string; counted: number | null; expected: number | null };
 export type DestinationView = { countRequest?:string|null; canCount?:boolean; order: DestinationOrder; boxes: DestinationBox[]; items: DestinationItem[]; documents: { id: string; filename: string; previous?: boolean }[]; review: boolean; canRecount: boolean };
 
@@ -74,6 +74,12 @@ export async function destinationView(u: SessionUser, orderId: string): Promise<
  ) THEN 0 ELSE NULL END) ELSE NULL END expected
             FROM receiving_items l JOIN receiving_cartons b ON b.id=l.carton_id JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE b.order_id=$1 AND a.branch_id=$2 ORDER BY l.model,l.color,l.id`, [o.id, o.destination_branch_id, review])).rows;
+        const smartEvents=(await c.query("SELECT action,new_value->>'boxId' box_id FROM audit_events WHERE action IN ('RECEIVING_DEST_SMART_ATTEMPT','RECEIVING_DEST_SMART_BLOCKED','RECEIVING_DEST_SMART_APPROVED') AND new_value->>'orderId'=$1 ORDER BY created_at,id",[o.id])).rows;
+        const smartState=new Map<string,{attempts:number;blocked:boolean;approved:boolean}>();
+        for(const e of smartEvents){const key=String(e.box_id||'');if(!key)continue;const state=smartState.get(key)??{attempts:0,blocked:false,approved:false};if(e.action==='RECEIVING_DEST_SMART_ATTEMPT'){state.attempts++;state.approved=false;}if(e.action==='RECEIVING_DEST_SMART_BLOCKED')state.blocked=true;if(e.action==='RECEIVING_DEST_SMART_APPROVED'){state.blocked=false;state.approved=true;}smartState.set(key,state);}
+        for(const b of boxes){const state=smartState.get(String(b.id));b.smart_attempts=state?.attempts??0;b.smart_blocked=state?.blocked??false;}
+        const reveal=boxes.filter(b=>!b.counted_at&&(b.smart_attempts??0)>=2&&!b.smart_blocked).map(b=>String(b.id));
+        if(reveal.length){const reference=(await c.query('SELECT id::text,carton_id::text,expected FROM receiving_items WHERE carton_id=ANY($1::uuid[])',[reveal])).rows;const byId=new Map(reference.map(x=>[String(x.id),x.expected]));for(const item of items){if(reveal.includes(String(item.carton_id))&&item.counted!==byId.get(String(item.id)))item.expected=byId.get(String(item.id));}}
         const documents = review && boxes.some(b => b.received_at) ? (await c.query(`SELECT d.id::text,d.filename,EXISTS(SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_PACKING_RESET' AND a.new_value->>'orderId'=d.order_id::text AND (a.new_value->'documentIds') ? d.id::text) previous FROM receiving_documents d WHERE d.order_id=$1 ORDER BY d.created_at,d.id`, [o.id])).rows : [];
         return { order, boxes, items, documents, review, canCount,countRequest,canRecount: u.role === 'MASTER'&&canCount };
     });
@@ -83,12 +89,12 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
     return withTransaction(async c => {
         const o = await authorizedOrder(c, u, uuid.parse(body.orderId));
         const branch = o.destination_branch_id;
-        if(['count','saveCount','addItem','reopenBox'].includes(String(body.action))){
+        if(['count','saveCount','addItem','reopenBox','smartCount'].includes(String(body.action))){
             const countBranch=u.primaryBranchId?(await c.query("SELECT name FROM branches WHERE id=$1 AND status='ACTIVE'",[u.primaryBranchId])).rows[0]?.name:null;
             const grant=(await c.query("SELECT status FROM receiving_count_requests WHERE order_id=$1 AND user_id=$2",[o.id,u.id])).rows[0]?.status==='APPROVED';
             if(!grant&&!canCountReceivingMark(u,o.marking,countBranch??null))throw new Error('Solo Audio puede contar JAPS y solo Treviño puede contar PER. Solicita permiso para este pedido.');
         }
-        if(!['count','saveCount','addItem'].includes(String(body.action)))await assertBranchAccess(u,branch);
+        if(!['count','saveCount','addItem','smartCount'].includes(String(body.action)))await assertBranchAccess(u,branch);
         if (body.action === 'packingResetPreview' || body.action === 'resetPacking') {
             await receivingAccess(u,true);
             if (!(await c.query('SELECT 1 FROM receiving_destination_arrivals WHERE order_id=$1 AND branch_id=$2 LIMIT 1',[o.id,branch])).rowCount)
@@ -136,6 +142,46 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
         const b = (await c.query(`SELECT b.* FROM receiving_cartons b JOIN receiving_destination_arrivals a ON a.carton_id=b.id
             WHERE b.id=$1 AND b.order_id=$2 AND a.branch_id=$3 FOR UPDATE OF b`, [boxId, o.id, branch])).rows[0];
         if (!b) throw new Error('Primero confirma la llegada física de esta caja a la sucursal destino.');
+        if(body.action==='approveSmartCount'){
+            if(u.role!=='MASTER')throw Error('Solo Máster puede autorizar.');
+            const events=(await c.query("SELECT action FROM audit_events WHERE action IN ('RECEIVING_DEST_SMART_ATTEMPT','RECEIVING_DEST_SMART_BLOCKED','RECEIVING_DEST_SMART_APPROVED') AND new_value->>'boxId'=$1 ORDER BY created_at,id",[boxId])).rows;
+            const last=events.at(-1)?.action;
+            const attempts=events.filter(e=>e.action==='RECEIVING_DEST_SMART_ATTEMPT').length;
+            if(b.counted_at||!(last==='RECEIVING_DEST_SMART_BLOCKED'||attempts>=3))throw Error('Esta caja no necesita autorización.');
+            await audit(c,u,branch,'RECEIVING_DEST_SMART_APPROVED',{orderId:o.id,boxId});
+            return {ok:true};
+        }
+        if(body.action==='smartCount'){
+            if(b.counted_at)throw Error('Esta caja ya está terminada.');
+            const events=(await c.query("SELECT action FROM audit_events WHERE action IN ('RECEIVING_DEST_SMART_ATTEMPT','RECEIVING_DEST_SMART_BLOCKED','RECEIVING_DEST_SMART_APPROVED') AND new_value->>'boxId'=$1 ORDER BY created_at,id",[boxId])).rows;
+            const attempts=events.filter(e=>e.action==='RECEIVING_DEST_SMART_ATTEMPT').length;
+            const blocked=events.map(e=>e.action).lastIndexOf('RECEIVING_DEST_SMART_BLOCKED')>events.map(e=>e.action).lastIndexOf('RECEIVING_DEST_SMART_APPROVED');
+            if(blocked)throw Error('Caja bloqueada. Solicita revisión Máster.');
+            const approved=events.at(-1)?.action==='RECEIVING_DEST_SMART_APPROVED';
+            if(attempts>=3&&!approved)throw Error('El cuarto intento requiere autorización Máster.');
+            const lines=z.array(z.object({id:uuid,quantity:z.number().int().min(0).max(1000000)})).min(1).max(500).refine(v=>new Set(v.map(l=>l.id)).size===v.length).parse(body.lines);
+            const reference=(await c.query('SELECT id::text,model,color,expected FROM receiving_items WHERE carton_id=$1',[boxId])).rows;
+            const byId=new Map(lines.map(l=>[l.id,l.quantity]));
+            if(!reference.length||lines.length!==reference.length||reference.some(l=>!byId.has(l.id)))throw Error('Cuenta todas las variantes de la caja.');
+            const diff=reference.filter(l=>typeof l.expected==='number'&&byId.get(l.id)!==l.expected);
+            const allZero=lines.every(l=>l.quantity===0);
+            const allMismatch=reference.length>1&&diff.length===reference.length;
+            if(allZero||(allMismatch&&attempts>=1)){
+                await audit(c,u,branch,'RECEIVING_DEST_SMART_BLOCKED',{orderId:o.id,boxId,attempt:attempts+1,reason:allZero?'ALL_ZERO':'ALL_MISMATCH'});
+                return {ok:true,smartStatus:'blocked'};
+            }
+            const mode=attempts>=2?z.enum(['correct','real']).parse(body.mode):null;
+            if(mode==='correct'&&diff.length)throw Error('Aún hay diferencias. Corrige el conteo o confirma las diferencias reales.');
+            const notes=z.string().max(2000).parse(body.notes??'');
+            await c.query('UPDATE receiving_items l SET counted=x.quantity FROM jsonb_to_recordset($1::jsonb) x(id uuid,quantity integer) WHERE l.id=x.id AND l.carton_id=$2',[JSON.stringify(lines),boxId]);
+            await audit(c,u,branch,'RECEIVING_DEST_SMART_ATTEMPT',{orderId:o.id,boxId,attempt:attempts+1,lines,differenceIds:diff.map(l=>l.id),mode});
+            if(!diff.length||mode==='real'){
+                await c.query('UPDATE receiving_cartons SET notes=$1,counted_at=now(),counted_by=$2 WHERE id=$3',[notes,u.id,boxId]);
+                await audit(c,u,branch,'RECEIVING_DEST_SMART_FINISHED',{orderId:o.id,boxId,mode:mode??'MATCH',differences:diff.map(l=>({id:l.id,expected:l.expected,counted:byId.get(l.id)}))});
+                return {ok:true,smartStatus:diff.length?'confirmed':'matched'};
+            }
+            return {ok:true,smartStatus:attempts===0?'retry':'assisted'};
+        }
         if (body.action === 'reopenBox') {
             if (u.role !== 'MASTER') throw new Error('Solo un administrador puede autorizar un reconteo.');
             if (!b.counted_at) throw new Error('La caja no tiene conteo terminado.');
@@ -159,6 +205,7 @@ export async function destinationAction(u: SessionUser, body: Record<string, unk
         }
         if (body.action !== 'saveCount' && body.action !== 'count') throw new Error('Acción no válida.');
         const saving = body.action === 'saveCount';
+        if(!saving)throw Error('Utiliza el conteo inteligente para terminar la caja.');
         const quantity = z.number().int().min(0).max(1000000);
         const lines = z.array(z.object({ id: uuid, quantity: saving ? quantity.nullable() : quantity })).min(1).max(500)
             .refine(v => new Set(v.map(l => l.id)).size === v.length).parse(body.lines);
