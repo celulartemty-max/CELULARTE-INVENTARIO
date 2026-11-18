@@ -49,7 +49,7 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
         if (!s)
             throw new Error('Recepción no encontrada.');
         // Counting is shared across receiving teams; approvals and POS retain scope.
-        if(!['count','saveCount','addItem'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
+        if(!['count','saveCount','addItem','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
         if(['authorizeRegisteredRecount','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action))){
             return (await import('./registered-recount')).registeredRecountAction(c,u,s,b);
         }
