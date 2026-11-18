@@ -50,6 +50,9 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             throw new Error('Recepción no encontrada.');
         // Counting is shared across receiving teams; approvals and POS retain scope.
         if(!['count','saveCount','addItem'].includes(String(b.action)))await assertBranchAccess(u, s.branch_id);
+        if(['authorizeRegisteredRecount','saveRegisteredRecount','finishRegisteredRecount'].includes(String(b.action))){
+            return (await import('./registered-recount')).registeredRecountAction(c,u,s,b);
+        }
         if(b.action==='freight'){
             if(u.role!=='MASTER')throw new Error('Solo Máster puede editar el monto del flete.');
             const value=z.object({cost:z.number().finite().min(0).max(999999999).refine(n=>Math.abs(n*100-Math.round(n*100))<0.00001,'Usa máximo dos decimales.'),currency:z.enum(['MXN','USD','CNY'])}).parse(b);
@@ -343,9 +346,10 @@ export async function receivingView(u: SessionUser, sessionId: string) {
     const removedOrders=review ? await sql `SELECT a.id::text,a.created_at::text,a.new_value->>'product' product,a.new_value->>'marking' marking,a.new_value->>'shipping' shipping,a.new_value->>'received' received,a.new_value->>'reason' reason,u.name actor FROM audit_events a LEFT JOIN users u ON u.id=a.user_id WHERE a.action='RECEIVING_ORDER_REMOVED' AND a.branch_id=${session.branch_id}::uuid AND a.new_value->>'sessionId'=${sessionId} ORDER BY a.created_at DESC,a.id DESC LIMIT 100` : [];
     const canRegisterSystem=await hasModulePermission(u,'REGISTRO_SISTEMA');
     const registrationRows=canRegisterSystem ? (await (await import('./system-registration')).registrationPending(u)).filter(r=>r.kind==='RECEIVING_ORDER'&&boxes.some(b=>b.order_id===r.id)) : [];
-    const registeredBoxes=await sql `SELECT r.carton_id::text FROM receiving_origin_registrations r WHERE r.session_id=${sessionId}::uuid`;
+    const registeredBoxes=await sql `SELECT carton_id::text FROM receiving_origin_registrations WHERE session_id=${sessionId}::uuid UNION SELECT r.carton_id::text FROM receiving_destination_registrations r JOIN receiving_cartons b ON b.id=r.carton_id WHERE b.session_id=${sessionId}::uuid`;
+    const registeredRecounts=await sql `SELECT carton_id::text,baseline,draft,adjustments,completed_at::text,registered_at::text FROM receiving_registered_recounts WHERE session_id=${sessionId}::uuid AND registered_at IS NULL ORDER BY authorized_at DESC`;
     const countAllowed=(orderId:unknown,mark:unknown)=>canCountReceivingMark(u,String(mark),countBranch??null)||countRequests.some(r=>r.order_id===orderId&&r.status==='APPROVED');
     for(const box of boxes){box.can_count=countAllowed(box.order_id,box.count_mark);delete box.count_mark;}
     for(const batch of batches){batch.can_count=countAllowed(batch.id,batch.marking);batch.count_request=countRequests.find(r=>r.order_id===batch.id)?.status??null;}
-    return { canChangeDestination:u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca', session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canManageReceipt, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)) };
+    return { canChangeDestination:u.id==='6373f0fc-68dc-405c-a26e-00e6594031ca', session, boxes, foreign, foreignBoxes, batches, items, pending, cost: cost[0] ?? null, documents, orders, removedOrders, review, canManageReceipt, canRecount: u.role === 'MASTER', canRegisterSystem, registrationRows, registeredBoxIds:registeredBoxes.map(b=>String(b.carton_id)), registeredRecounts };
 }
