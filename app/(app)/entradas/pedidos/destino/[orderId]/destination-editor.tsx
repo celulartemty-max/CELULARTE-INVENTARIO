@@ -28,7 +28,6 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
     const requestLock = useRef(false);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
-    const [selected, setSelected] = useState<string[]>([]);
     const [activeBox, setActiveBox] = useState('');
     const [visited, setVisited] = useState<string[]>([]);
     const [file, setFile] = useState<File | null>(null);
@@ -40,7 +39,6 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
     const [sheetChoice,setSheetChoice]=useState<{file:File|null;names:string[];selected:string}>({file:null,names:[],selected:''});
     const busy = working || refreshing;
     const { order, boxes, items } = data;
-    const pending = boxes.filter(b => b.session_id && !b.received_at);
     const arrived = boxes.filter(b => b.received_at);
     const differenceIds=new Set(boxDifferences(arrived,items).map(b=>b.id));
     const shown = arrived.some(b => b.id === activeBox) ? activeBox : arrived[0]?.id;
@@ -86,22 +84,12 @@ export default function DestinationEditor({ data,products=[] }: { data: Destinat
         <CountPermissionNotice key={order.id} orderId={order.id} mark={order.marking} destinationName={order.destination} allowed={data.canCount} state={data.countRequest}/>
         <header className="receivingHomeHero"><span className="receivingEyebrow">{order.destination}</span><h1>{order.product}</h1><h2 className="receivingOrderTag">{order.marking}{order.display_title?` · ${order.display_title}`:''}</h2><p>{order.shipping} · {order.total} cajas{order.supplier ? ` · ${order.supplier}` : ''}</p><small>{order.reference} · Origen: {order.origin}</small></header>
         {error && <p className="receivingError" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-        {arrived.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
+        {boxes.length > 0 && <section key={countVersion} className="card pad"><h2>Conteo en {order.destination}</h2><p>Selecciona una caja. Vacío es sin contar; 0 significa que no llegó ninguna pieza.</p>
             {data.canCount===false&&<p role="status" className="receivingMuted">Solo {order.marking==='JAPS'?'Audio (JAPS)':'Treviño (PER)'} puede contar estas cajas. Vista de consulta.</p>}
             <CountBoxTiles boxes={boxes.map(b=>({id:b.id,number:b.carton_number,counted:!!b.counted_at,difference:!!b.has_differences||differenceIds.has(b.id),blocked:!!b.smart_blocked,missing:!b.session_id,current:!!b.received_at,attempts:b.smart_attempts??0,href:b.session_id&&!b.received_at?`/entradas/pedidos/${b.session_id}?order=${order.id}&box=${b.id}`:undefined}))} active={shown} disabled={busy} onSelect={id=>{setVisited(v=>[...new Set([...v,shown??'',id])]);setActiveBox(id)}}/>
             {arrived.filter(b => b.id === shown || visited.includes(b.id)).map(b => <div key={b.id} hidden={shown !== b.id}><DestinationCount key={`${b.id}:${b.counted_at ?? 'draft'}`} box={b} items={items.filter(l => l.carton_id === b.id)} colorOrder={order.color_order} busy={busy||data.canCount===false} review={data.review} canRecount={data.canRecount} save={save} onAdd={() => setAddBox(b.id)}/></div>)}
+            {!arrived.length&&<p className="receivingMuted">Las cajas ya contadas se pueden consultar desde su recepción original. Selecciona una caja para abrir su conteo.</p>}
         </section>}
-        <details className="card pad"><summary>Recepción de cajas · {arrived.length} de {order.total} recibidas</summary><h2>Llegada a {order.destination}</h2><p>{arrived.length} de {order.total} cajas recibidas aquí · {order.counted} contadas</p>
-            {pending.length > 0 && <><p>Estas cajas están registradas en origen. Selecciona únicamente las que ya tienes físicamente.</p>
-                {data.review ? <><button type="button" className="receivingSecondary" disabled={busy} onClick={() => setSelected(pending.map(b => b.id))}>Seleccionar todas las pendientes</button>
-                    <div className="destinationArrivalSquares">{pending.map(b => <label key={b.id} className="destinationArrivalSquare"><input type="checkbox" disabled={busy} checked={selected.includes(b.id)} onChange={e => setSelected(v => e.target.checked ? [...v, b.id] : v.filter(id => id !== b.id))}/><b>{b.carton_number}</b></label>)}</div>
-                    <button className="receivingSave" disabled={busy || !selected.length} onClick={async () => {
-                        if (!confirm(`¿Confirmas que estas ${selected.length} cajas ya llegaron físicamente a ${order.destination}?`)) return;
-                        if (await save({ action: 'confirmArrival', boxIds: selected })) setSelected([]);
-                    }}>Confirmar {selected.length || ''} cajas recibidas</button>
-                </> : <p>Un encargado debe confirmar la llegada para habilitar el conteo.</p>}</>}
-            {order.total > order.physical && <p className="receivingMuted">{order.total - order.physical} cajas todavía no llegan al origen.</p>}
-        </details>
         {data.review && arrived.length > 0 && <details className="card pad packingUploadCard"><summary>Administrar packing list · {data.documents.filter(d=>!d.previous).length ? "Archivo guardado ✓" : "Sin archivo"}</summary><section><div className="packingUploadHeading"><div><h2>Packing list</h2><p>Archivos de este pedido</p></div>{data.documents.length > 0 && <span className="packingUploadCount">{data.documents.length} {data.documents.length === 1 ? 'archivo' : 'archivos'}</span>}</div>
             {file&&sheetChoice.file===file&&sheetChoice.names.length>1&&<label className="receivingField">Hoja del pedido<select disabled={busy} value={sheetChoice.selected} onChange={e=>{setSheetChoice({...sheetChoice,selected:e.target.value});setPacking(null)}}><option value="">Selecciona una hoja…</option>{sheetChoice.names.map(name=><option key={name}>{name}</option>)}</select><small>Solo se leerá la hoja elegida.</small></label>}
             <PackingUpload file={file} busy={busy} attached={Boolean(file && attachedFile === file)} onChange={next => { setFile(next); setAttachedFile(null); setPacking(null); }} onInterpret={interpret} onAttach={() => run(async () => {
