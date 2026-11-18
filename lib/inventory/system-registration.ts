@@ -18,7 +18,7 @@ export type RegistrationPending = RegistrationKey & { reference: string; branch_
 // One row per registration responsibility. A transfer can legitimately have two
 // pending sides, never two confirmations for the same side.
 export const pendingSql = `WITH pending AS (
-    SELECT r.id,'REGISTERED_RECOUNT'::text,NULL::text side,'Reconteo caja '||b.carton_number||' · '||o.reference,r.branch_id,r.completed_at,true
+    SELECT r.id,'REGISTERED_RECOUNT'::text kind,NULL::text side,('Reconteo caja '||b.carton_number||' · '||o.reference) reference,r.branch_id,r.completed_at created_at,true correction
     FROM receiving_registered_recounts r JOIN receiving_cartons b ON b.id=r.carton_id JOIN receiving_orders o ON o.id=b.order_id
     WHERE r.completed_at IS NOT NULL AND r.registered_at IS NULL AND jsonb_array_length(r.adjustments)>0
     UNION ALL
