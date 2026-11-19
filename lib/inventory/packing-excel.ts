@@ -61,6 +61,15 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
  }
  for(const r of ['box','model','color','quantity','boxTotal','total','description'])if(roles.filter(x=>x===r).length>1)throw Error('Hay encabezados de control repetidos en el Excel. Revisa la tabla.');
  const boxCol=roles.indexOf('box'),modelCol=roles.indexOf('model'),colorCol=roles.indexOf('color'),qtyCol=roles.indexOf('quantity'),descriptionCol=roles.indexOf('description');
+ // Different brands may share a model code; distinguish them only when necessary.
+ const brandCol=headers.findIndex(v=>['BRAND','MARCA'].includes(key(v)));
+ const modelBrands=new Map<string,Set<string>>();
+ if(brandCol>=0&&modelCol>=0)for(const row of rows.slice(header+1)){
+  const m=key(row[modelCol]),b=key(row[brandCol]);
+  if(!m||!b||['TOTAL','TOTAL GENERAL','合计','总计'].includes(m))continue;
+  if(!modelBrands.has(m))modelBrands.set(m,new Set());
+  modelBrands.get(m)!.add(b);
+ }
  let totalCol=roles.indexOf('total'),boxTotalCol=roles.indexOf('boxTotal');
  // Common supplier layout: Quantity is per model, Total is per carton.
  // Accept this only when every row, carton and overall control reconciles below.
@@ -95,7 +104,8 @@ export function readPackingExcel(data:Buffer,sheetName?:string){
    throw Error(`Hoja ${name}, fila ${r+1}: hay datos después del total general. Usa una sola tabla por pedido.`);
   }
   if(row.some((v,c)=>!empty(v)&&empty(headers[c])&&!noteColumns.has(c)))throw Error(`Hay datos sin encabezado en la fila ${r+1}.`);
-  const rawBox=merged(r,boxCol),model=modelCol>=0?label(merged(r,modelCol)):'';
+  const rawBox=merged(r,boxCol),rawModel=modelCol>=0?label(merged(r,modelCol)):'',brand=brandCol>=0?label(merged(r,brandCol)):'';
+  const model=brand&&(modelBrands.get(key(rawModel))?.size??0)>1?`${brand} ${rawModel}`:rawModel;
   const isTotal=['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(rawBox))||['TOTAL','TOTAL GENERAL','合计','总计'].includes(key(model))||(!model&&empty(rawBox));
   if(isTotal){
    const colorTotals=colorCol<0&&wideColors.some(c=>!empty(row[c.c]));
