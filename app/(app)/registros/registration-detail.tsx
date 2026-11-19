@@ -4,7 +4,7 @@ export type RegistrationLine={product?:string;product_id?:string;carton_id?:stri
 export type RegistrationDetailData={row:RegistrationPending;lines:RegistrationLine[];revision?:string};
 
 export function registrationInstruction(row:Pick<RegistrationPending,'kind'|'side'|'correction'>){
-    if(row.kind==='REGISTERED_RECOUNT')return 'Registrar únicamente las diferencias positivas como ENTRADAS y negativas como SALIDAS';
+    if(row.kind==='REGISTERED_RECOUNT')return row.side==='destination'?'Registrar una ENTRADA por diferencia positiva del reconteo':'Registrar una SALIDA por diferencia negativa del reconteo';
     if(row.kind==='FULL_ADJUSTMENT')return row.side==='origin'?'Registrar una SALIDA por ajuste FULL':'Registrar una ENTRADA por ajuste FULL';
     if(row.kind==='CLIENT_SALE')return 'Registrar una VENTA en la sucursal de origen';
     if(row.kind==='TRANSFER')return row.side==='origin'?'Registrar una SALIDA por traspaso':'Registrar una ENTRADA por traspaso';
@@ -14,13 +14,13 @@ export function registrationInstruction(row:Pick<RegistrationPending,'kind'|'sid
 }
 // Visual direction only: never infer it from the displayed quantity or mutate it.
 export function registrationDirection(row:Pick<RegistrationPending,'kind'|'side'>):'entry'|'exit'|'neutral'{
+    if(row.kind==='REGISTERED_RECOUNT')return row.side==='destination'?'entry':'exit';
     if(row.kind==='EXIT')return 'exit';
     if(row.kind==='TRANSFER'||row.kind==='FULL_ADJUSTMENT')return row.side==='origin'?'exit':row.side==='destination'?'entry':'neutral';
     if(['RECEIVING_ORDER','RECEIVING','DESTINATION','RECEPTION','RETURN_ML','RETURN_TIKTOK','RETURN_CUSTOMER'].includes(row.kind))return 'entry';
     return 'neutral';
 }
 export function registrationDirectionLabel(row:Pick<RegistrationPending,'kind'|'side'>){
-    if(row.kind==='REGISTERED_RECOUNT')return 'AJUSTES';
     if(row.kind==='CLIENT_SALE')return 'VENTA';
     const direction=registrationDirection(row);
     return direction==='exit'?'SALIDA':direction==='entry'?'ENTRADA':row.kind.startsWith('RETURN_')?'DEVOLUCIÓN':'REGISTRO';
@@ -35,7 +35,7 @@ export function registrationSubtitle(row:Pick<RegistrationPending,'kind'|'side'|
     return text.charAt(0).toLocaleUpperCase('es-MX')+text.slice(1);
 }
 export function registrationConfirmLabel(row:Pick<RegistrationPending,'kind'|'side'|'correction'>){
-    if(row.kind==='REGISTERED_RECOUNT')return 'Confirmar ajustes registrados';
+    if(row.kind==='REGISTERED_RECOUNT')return row.side==='destination'?'Confirmar entrada registrada':'Confirmar salida registrada';
     if(row.kind==='FULL_ADJUSTMENT')return row.side==='origin'?'Confirmar salida registrada':'Confirmar entrada registrada';
     if(row.kind==='CLIENT_SALE')return 'Confirmar venta registrada';
     if(row.correction)return 'Confirmar corrección registrada';
@@ -58,7 +58,7 @@ export default function RegistrationDetail({detail}:{detail:RegistrationDetailDa
     return <section className="registrationInstructions" aria-label="Qué registrar en sistema">
         <div className={`registrationDirection registration-${registrationDirection(row)}`}><strong>{registrationDirectionLabel(row)}</strong><span>{total===null?'Por completar':`${fmt(total)} piezas`}</span></div>
         <p className="registrationSubtitle">{registrationSubtitle(row)}</p>
-        {row.correction&&<p className="registrationCorrection">{row.kind==='REGISTERED_RECOUNT'?'Estas son solo las diferencias contra el conteo previamente registrado. Registra + como entrada y − como salida; no vuelvas a registrar el total de la caja.':row.kind==='FULL_ADJUSTMENT'?'Ajuste adicional pendiente: estas cantidades son solo la diferencia contra lo ya confirmado. No repitas el movimiento anterior.':'Corrección: cantidades finales; no dupliques el movimiento.'}</p>}
+        {row.correction&&<p className="registrationCorrection">{row.kind==='REGISTERED_RECOUNT'?'Registra únicamente estas diferencias del reconteo, no el total de la caja. Las entradas y salidas se confirman por separado.':row.kind==='FULL_ADJUSTMENT'?'Ajuste adicional pendiente: estas cantidades son solo la diferencia contra lo ya confirmado. No repitas el movimiento anterior.':'Corrección: cantidades finales; no dupliques el movimiento.'}</p>}
         {grouped&&<><div className="registrationItemsHeading registrationGrouped"><span>Producto</span><span># Cajas</span><span># Piezas</span></div><ul className="registrationItems" aria-label="Resumen por producto">{Array.from(groups,([key,group])=>{const q=registrationQuantities(group.lines);return <li className="registrationItem registrationGrouped" key={key}><div className="registrationItemIdentity"><b>{group.product}</b></div><strong className="registrationItemQuantity">{group.boxes.size}</strong><strong className="registrationItemQuantity">{q.total===null?'Por completar':fmt(q.total)}</strong></li>})}</ul></>}
         {!grouped&&<><div className="registrationItemsHeading"><span>Producto</span><span>Piezas</span></div>
         <ul className="registrationItems" aria-label="Productos y cantidades a registrar">{lines.map((line,index)=><li key={index} className="registrationItem"><div className="registrationItemIdentity"><b>{line.product||'Producto sin nombre'}</b>{[line.model,line.color,line.box?`Caja ${line.box}`:''].filter(Boolean).length>0&&<small>{[line.model,line.color,line.box?`Caja ${line.box}`:''].filter(Boolean).join(' · ')}</small>}{row.kind==='REGISTERED_RECOUNT'&&typeof line.delta==='number'&&<small>{line.delta>0?'ENTRADA +':'SALIDA −'}{Math.abs(line.delta)} · Anterior: {line.previous_quantity}</small>}{line.condition==='DAMAGED'&&<small className="registrationDamaged">Dañado · registrar por separado</small>}</div><strong className="registrationItemQuantity">{typeof line.quantity==='number'&&Number.isFinite(line.quantity)?fmt(line.quantity):'Sin cantidad'}</strong></li>)}</ul>
