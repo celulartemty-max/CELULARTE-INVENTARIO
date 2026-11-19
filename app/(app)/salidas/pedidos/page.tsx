@@ -11,6 +11,10 @@ export default async function Page({searchParams}:{searchParams:Promise<{page?:s
  return <div className="fullWorkspace fullOrderList">
   <Link className="fullListBack" href="/salidas">← Salidas</Link>
   <h1>Gestión de Pedidos</h1>
+  <nav className="fullListTabs" aria-label="Plataforma de pedidos">
+   <Link href="/salidas/pedidos" aria-current="page">Mercado Libre</Link>
+   <Link href="/salidas/pedidos/tiktok">TikTok</Link>
+  </nav>
   <nav className="fullListTabs" aria-label="Estado de los pedidos">
    <Link href="/salidas/pedidos" aria-current={!history?'page':undefined}>Pendientes</Link>
    <Link href="/salidas/pedidos?view=history" aria-current={history?'page':undefined}>Enviados</Link>
