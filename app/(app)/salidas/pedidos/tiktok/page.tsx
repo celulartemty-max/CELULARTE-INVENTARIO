@@ -36,7 +36,7 @@ export default function TikTokOrdersPage(){
   {!loading&&!error&&view==='open'&&!orders.length&&<p>No hay pedidos de etiquetas TikTok todavía.</p>}
   {!loading&&!error&&view==='open'&&<div className="fullListRows">{[...orders].reverse().map(order=>{
    const pieces=(Array.isArray(order.items)?order.items:[]).reduce((n,item)=>n+(Number(item.qty)||0),0);
-   return <Link className="fullListRow" href="/etiquetas-tiktok" key={order.id}>
+   return <Link className="fullListRow" href={"/salidas/pedidos/tiktok/"+order.id} key={order.id}>
     <div className="fullListInfo"><small>{numbers.get(order.id)}</small><h2>{order.name}</h2><div className="fullListMeta"><span>Pendiente de salida</span><small>Bodega externa TikTok</small></div></div>
     <strong className="fullListCount">{pieces.toLocaleString('es-MX')} <small>pzas</small></strong><span className="fullListArrow" aria-hidden="true">›</span>
    </Link>;
