@@ -18,9 +18,14 @@ export type RegistrationPending = RegistrationKey & { reference: string; branch_
 // One row per registration responsibility. A transfer can legitimately have two
 // pending sides, never two confirmations for the same side.
 export const pendingSql = `WITH pending AS (
-    SELECT r.id,'REGISTERED_RECOUNT'::text kind,NULL::text side,('Reconteo caja '||b.carton_number||' · '||o.reference) reference,r.branch_id,r.completed_at created_at,true correction
+    SELECT r.id,'REGISTERED_RECOUNT'::text kind,s.side,('Reconteo caja '||b.carton_number||' · '||o.reference) reference,r.branch_id,r.completed_at created_at,true correction
     FROM receiving_registered_recounts r JOIN receiving_cartons b ON b.id=r.carton_id JOIN receiving_orders o ON o.id=b.order_id
-    WHERE r.completed_at IS NOT NULL AND r.registered_at IS NULL AND jsonb_array_length(r.adjustments)>0
+    CROSS JOIN (VALUES ('destination'::text),('origin'::text)) s(side)
+    WHERE r.completed_at IS NOT NULL AND r.registered_at IS NULL
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.adjustments) x WHERE
+        CASE WHEN s.side='destination' THEN (x->>'delta')::int>0 ELSE (x->>'delta')::int<0 END)
+      AND NOT EXISTS (SELECT 1 FROM audit_events a WHERE a.action='RECEIVING_REGISTERED_RECOUNT_ADJUSTMENT_REGISTERED'
+        AND a.new_value->>'recountId'=r.id::text AND a.new_value->>'side'=s.side)
     UNION ALL
     SELECT f.order_id id,'FULL_ADJUSTMENT'::text kind,s.side,'FULL #'||o.reference reference,f.branch_id,f.updated_at created_at,
       EXISTS(SELECT 1 FROM audit_events a WHERE a.action='FULL_ADJUSTMENT_REGISTERED' AND a.new_value->>'orderId'=f.order_id::text) correction
@@ -95,7 +100,8 @@ export async function registrationDetail(user: SessionUser, raw: unknown) {
     await assertBranchAccess(user, row.branch_id);
     if(key.kind==='REGISTERED_RECOUNT'){
         const lines=await withTransaction(async c=>(await c.query(`SELECT COALESCE(p.name,o.product_label) product,b.carton_number box,x.model,x.color,x."previousQuantity" previous_quantity,abs(x.delta) quantity,x.delta FROM receiving_registered_recounts r JOIN receiving_cartons b ON b.id=r.carton_id JOIN receiving_orders o ON o.id=b.order_id LEFT JOIN products p ON p.id=o.product_id CROSS JOIN LATERAL jsonb_to_recordset(r.adjustments) AS x(id text,model text,color text,"previousQuantity" integer,"newQuantity" integer,delta integer) WHERE r.id=$1 AND r.completed_at IS NOT NULL AND r.registered_at IS NULL`,[key.id])).rows);
-        return {row,lines};
+        if(!key.side)throw Error('Selecciona entrada o salida.');
+        return {row,lines:lines.filter(line=>key.side==='destination'?Number(line.delta)>0:Number(line.delta)<0)};
     }
     if(key.kind==='FULL_ADJUSTMENT'){
         if(!key.side)throw Error('Selecciona entrada o salida.');
@@ -118,11 +124,20 @@ export async function confirmRegistration(user: SessionUser, raw: unknown) {
     const { row } = await registrationDetail(user, key);
     await assertBranchAccess(user, row.branch_id);
     if(key.kind==='REGISTERED_RECOUNT')return withTransaction(async c=>{
+        if(!key.side)throw Error('Selecciona entrada o salida.');
         const r=(await c.query('SELECT id,branch_id,carton_id,adjustments FROM receiving_registered_recounts WHERE id=$1 AND completed_at IS NOT NULL AND registered_at IS NULL FOR UPDATE',[key.id])).rows[0];
         if(!r)throw Error('Este ajuste ya fue registrado.');
         await assertBranchAccess(user,r.branch_id);
-        await c.query('UPDATE receiving_registered_recounts SET registered_by=$2,registered_at=now() WHERE id=$1 AND registered_at IS NULL',[key.id,user.id]);
-        await c.query('INSERT INTO audit_events(user_id,branch_id,action,new_value) VALUES($1,$2,$3,$4::jsonb)',[user.id,r.branch_id,'RECEIVING_REGISTERED_RECOUNT_ADJUSTMENT_REGISTERED',JSON.stringify({recountId:r.id,cartonId:r.carton_id,adjustments:r.adjustments})]);
+        const sign=key.side==='destination'?1:-1;
+        const lines=(r.adjustments as Array<{delta:number}>).filter(x=>Number(x.delta)*sign>0);
+        if(!lines.length)throw Error('No hay diferencias de este tipo para registrar.');
+        const already=(await c.query("SELECT 1 FROM audit_events WHERE action='RECEIVING_REGISTERED_RECOUNT_ADJUSTMENT_REGISTERED' AND new_value->>'recountId'=$1 AND new_value->>'side'=$2 LIMIT 1",[key.id,key.side])).rowCount;
+        if(already)throw Error('Esta entrada o salida ya fue confirmada.');
+        await c.query('INSERT INTO audit_events(user_id,branch_id,action,new_value) VALUES($1,$2,$3,$4::jsonb)',[user.id,r.branch_id,'RECEIVING_REGISTERED_RECOUNT_ADJUSTMENT_REGISTERED',JSON.stringify({recountId:r.id,cartonId:r.carton_id,side:key.side,adjustments:lines})]);
+        const opposite=key.side==='destination'?'origin':'destination';
+        const otherLines=(r.adjustments as Array<{delta:number}>).some(x=>Number(x.delta)*(opposite==='destination'?1:-1)>0);
+        const otherDone=!otherLines||(await c.query("SELECT 1 FROM audit_events WHERE action='RECEIVING_REGISTERED_RECOUNT_ADJUSTMENT_REGISTERED' AND new_value->>'recountId'=$1 AND new_value->>'side'=$2 LIMIT 1",[key.id,opposite])).rowCount!>0;
+        if(otherDone)await c.query('UPDATE receiving_registered_recounts SET registered_by=$2,registered_at=now() WHERE id=$1 AND registered_at IS NULL',[key.id,user.id]);
         return {ok:true};
     });
     if(key.kind==='FULL_ADJUSTMENT'){
