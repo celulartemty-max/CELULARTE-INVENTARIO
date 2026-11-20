@@ -43,7 +43,7 @@ export default function ExitEditor({movement,lines,products}:{movement:ExitMovem
       <div>
         <small style={{color:'#667085',fontWeight:800}}>SALIDA DE INVENTARIO · {ch[movement.channel]}</small>
         <h1 style={{fontSize:'clamp(28px,7vw,40px)',overflowWrap:'anywhere',margin:'6px 0 4px'}}>{movement.folio}</h1>
-        <p style={{margin:0}}>{movement.branch} · {ty[movement.exit_type]} · En captura</p>
+        <p style={{margin:0}}>{movement.branch} · {ty[movement.exit_type]} · Pendiente de terminar</p>
       </div>
     </header>
 
