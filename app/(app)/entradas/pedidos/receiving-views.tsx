@@ -36,12 +36,25 @@ export default function ReceivingViews({rows,orders}:{rows:ReceiptOverview[];ord
  },[grouped,query,tab]);
  const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
  const visible=filtered.slice((Math.min(page,pages)-1)*PAGE_SIZE,Math.min(page,pages)*PAGE_SIZE);
- const switchTab=(next:'active'|'registered')=>{setTab(next);setPage(1);};
- return <><div className="receivingViewTabs" role="group" aria-label="Vista de entradas"><button type="button" aria-pressed={view==='receipts'} className={view==='receipts'?'active':''} onClick={()=>setView('receipts')}>📦 Recepciones</button><button type="button" aria-pressed={view==='orders'} className={view==='orders'?'active':''} onClick={()=>setView('orders')}>🗂️ Pedidos</button></div>
+ const syncUrl=(next:{view?:'receipts'|'orders';tab?:'active'|'registered';q?:string;page?:number})=>{
+  const params=new URLSearchParams(window.location.search);
+  const nextView=next.view??view;
+  params.set('view',nextView);
+  params.set('tab',next.tab??tab);
+  const nextQuery=next.q??query;
+  if(nextQuery)params.set('q',nextQuery);else params.delete('q');
+  params.set('page',String(next.page??page));
+  window.history.replaceState(window.history.state,'',window.location.pathname+'?'+params.toString());
+ };
+ const switchTab=(next:'active'|'registered')=>{setTab(next);setPage(1);syncUrl({tab:next,page:1});};
+ const switchView=(next:'receipts'|'orders')=>{setView(next);syncUrl({view:next});};
+ const changeQuery=(next:string)=>{setQuery(next);setPage(1);syncUrl({q:next,page:1});};
+ const changePage=(next:number)=>{setPage(next);syncUrl({page:next});};
+ return <><div className="receivingViewTabs" role="group" aria-label="Vista de entradas"><button type="button" aria-pressed={view==='receipts'} className={view==='receipts'?'active':''} onClick={()=>switchView('receipts')}>📦 Recepciones</button><button type="button" aria-pressed={view==='orders'} className={view==='orders'?'active':''} onClick={()=>switchView('orders')}>🗂️ Pedidos</button></div>
  {view==='receipts'?<ReceivingSearch rows={rows}/>:<>
  <div className="receivingListHeader"><h2>Pedidos por producto</h2><span className="receivingMuted">{filtered.length} pedidos</span></div>
  <div className="receivingOrderStatusTabs" role="group" aria-label="Estado de registro"><button type="button" aria-pressed={tab==='active'} onClick={()=>switchTab('active')}>Activos</button><button type="button" aria-pressed={tab==='registered'} onClick={()=>switchTab('registered')}>Registrados</button></div>
- <div className="receivingProductSearch"><label htmlFor="receiving-order-search">Buscar producto, pedido o caja</label><input id="receiving-order-search" type="search" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Ej. Combo Case, JAPS, Caja 6…" autoComplete="off"/></div>
+ <div className="receivingProductSearch"><label htmlFor="receiving-order-search">Buscar producto, pedido o caja</label><input id="receiving-order-search" type="search" value={query} onChange={e=>changeQuery(e.target.value)} placeholder="Ej. Combo Case, JAPS, Caja 6…" autoComplete="off"/></div>
  <section className="receivingOrderCompactList" aria-label="Pedidos encontrados">
  {visible.map(o=>{
    const counted=o.boxes.filter(b=>b.counted).length;
@@ -58,7 +71,7 @@ export default function ReceivingViews({rows,orders}:{rows:ReceiptOverview[];ord
  })}
  {!visible.length&&<div className="receivingEmpty">{query?'No encontramos pedidos con esa búsqueda.':tab==='registered'?'Todavía no hay pedidos completamente registrados.':'No hay pedidos activos.'}</div>}
  </section>
- {pages>1&&<nav className="receivingOrderPagination" aria-label="Páginas de pedidos"><button type="button" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Anterior</button><span>Página {Math.min(page,pages)} de {pages}</span><button type="button" disabled={page>=pages} onClick={()=>setPage(p=>Math.min(pages,p+1))}>Siguiente →</button></nav>}
+ {pages>1&&<nav className="receivingOrderPagination" aria-label="Páginas de pedidos"><button type="button" disabled={page<=1} onClick={()=>changePage(Math.max(1,page-1))}>← Anterior</button><span>Página {Math.min(page,pages)} de {pages}</span><button type="button" disabled={page>=pages} onClick={()=>changePage(Math.min(pages,page+1))}>Siguiente →</button></nav>}
  </>}
  </>;
 }
