@@ -11,6 +11,9 @@ export default function TikTokOrderDetail(){
  const {orderId}=useParams<{orderId:string}>();
  const [order,setOrder]=useState<Order|null>(null);
  const [number,setNumber]=useState('');
+ const [trevino,setTrevino]=useState<Record<string,number>>({});
+ const [editingBranch,setEditingBranch]=useState<'Treviño'|'Plaza del Audio'|null>(null);
+ const [branchSaving,setBranchSaving]=useState(false);
  const [plaza,setPlaza]=useState<Record<string,number>>({});
  const [request,setRequest]=useState<Record<string,number>>({});
  const [search,setSearch]=useState('');
@@ -25,14 +28,14 @@ export default function TikTokOrderDetail(){
  useEffect(()=>{let active=true;Promise.all([
   fetch('/api/tiktok-labels/orders',{cache:'no-store'}).then(async response=>{if(!response.ok)throw Error('No se pudo consultar el pedido.');return response.json() as Promise<Order[]>}),
   fetch('/api/tiktok-labels/inventory-products',{cache:'no-store'}).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo cargar el catálogo.');return data as {id:string;name:string}[];}),
-  fetch('/api/tiktok-labels/preparation?orderId='+encodeURIComponent(orderId),{cache:'no-store'}).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo consultar la preparación.');return data as {plaza:Record<string,number>;products?:Record<string,string>;request?:Record<string,number>;source_updated_at?:string|null};})
+  fetch('/api/tiktok-labels/preparation?orderId='+encodeURIComponent(orderId),{cache:'no-store'}).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo consultar la preparación.');return data as {plaza:Record<string,number>;trevino?:Record<string,number>;products?:Record<string,string>;request?:Record<string,number>;source_updated_at?:string|null};})
  ]).then(([data,products,preparation])=>{
   if(!active)return;
   const ordered=[...data].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime());
   const index=ordered.findIndex(item=>item.id===orderId);
   if(index<0)throw Error('Pedido no encontrado.');
   setOrder(ordered[index]);setNumber('TT-'+String(index+1).padStart(4,'0'));
-  setPlaza(preparation.plaza||{});setRequest(preparation.request||{});setSourceChanged(Boolean(preparation.source_updated_at&&new Date(preparation.source_updated_at).getTime()!==new Date(ordered[index].updated_at).getTime()));setMapping(preparation.products||{});setCatalog(products);
+  setPlaza(preparation.plaza||{});setTrevino(preparation.trevino||{});setRequest(preparation.request||{});setSourceChanged(Boolean(preparation.source_updated_at&&new Date(preparation.source_updated_at).getTime()!==new Date(ordered[index].updated_at).getTime()));setMapping(preparation.products||{});setCatalog(products);
  }).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setLoading(false)});
  return()=>{active=false};
  },[orderId]);
@@ -51,6 +54,18 @@ export default function TikTokOrderDetail(){
  const validMapping=[...totals.keys()].every(name=>!!mapping[name]);
  const valid=[...totals].every(([name,total])=>Number.isSafeInteger(plaza[name]??0)&&(plaza[name]??0)>=0&&(plaza[name]??0)<=total);
  const plazaTotal=[...totals].reduce((n,[name])=>n+(plaza[name]??0),0);
+ const trevinoTotal=[...totals].reduce((n,[name])=>n+(trevino[name]??0),0);
+ const pending=pieces-plazaTotal-trevinoTotal;
+ async function saveBranch(branch:'Treviño'|'Plaza del Audio'){
+  if(branchSaving||!order)return;
+  setBranchSaving(true);setError('');setNotice('');
+  try{const quantities=branch==='Treviño'?trevino:plaza;
+   const response=await fetch('/api/tiktok-labels/preparation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'branch',orderId,branch,quantities,sourceUpdatedAt:order.updated_at})});
+   const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo guardar la aportación.');
+   setEditingBranch(null);setNotice('Aportación de '+branch+' guardada. Aún no se ha descontado inventario.');
+  }catch(e){setError(e instanceof Error?e.message:'Error al guardar');}finally{setBranchSaving(false);}
+ }
+
  async function save(){
   if(!valid||!validMapping||!validRequest||saving)return;
   setSaving(true);setError('');setNotice('');
@@ -62,7 +77,7 @@ export default function TikTokOrderDetail(){
   }catch(e){setError(e instanceof Error?e.message:'Error al guardar');}
   finally{setSaving(false);}
  }
- return <div className="fullWorkspace fullOrderList">
+ return <div className="fullWorkspace fullOrderDetail">
   <Link className="fullListBack" href="/salidas/pedidos/tiktok">← Pedidos TikTok</Link>
   {loading&&<p>Cargando pedido…</p>}
   {error&&<p role="alert" style={{color:'#b42318'}}>{error}</p>}
@@ -70,9 +85,26 @@ export default function TikTokOrderDetail(){
    <header className="fullOrderHeading"><small>{number}</small><h1>{order.name}</h1><span className="fullOrderBadge">Pendiente</span></header>
    <section className="fullOrderTotal"><strong>{pieces.toLocaleString('es-MX')} <span>piezas</span></strong></section>
    <div className="fullOrderBranches">
-    <section className="card fullOrderBranch"><div className="fullOrderBranchTop"><h2>Plaza del Audio</h2><strong>{plazaTotal.toLocaleString('es-MX')} <span>pzas</span></strong></div><small>En preparación</small></section>
-    <section className="card fullOrderBranch"><div className="fullOrderBranchTop"><h2>Treviño</h2><strong>{(pieces-plazaTotal).toLocaleString('es-MX')} <span>pzas</span></strong></div><small>Calculado por diferencia</small></section>
+    {(['Treviño','Plaza del Audio'] as const).map(branch=>{
+     const isTrevino=branch==='Treviño';
+     const quantities=isTrevino?trevino:plaza;
+     const total=isTrevino?trevinoTotal:plazaTotal;
+     const setQuantities=isTrevino?setTrevino:setPlaza;
+     const isEditing=editingBranch===branch;
+     const validBranch=[...totals].every(([name,max])=>Number.isSafeInteger(quantities[name]??0)&&(quantities[name]??0)>=0&&(quantities[name]??0)<=max);
+     return <section key={branch} className="card fullOrderBranch">
+      <div className="fullOrderBranchTop"><h2>{branch}</h2><strong>{total.toLocaleString('es-MX')} <span>pzas</span></strong></div>
+      <div className="fullOrderBranchAction"><small>{total>0?'Aportación registrada':'Pendiente'}</small><button className="fullQuantityButton" type="button" onClick={()=>setEditingBranch(isEditing?null:branch)}>{isEditing?'Cerrar':'Modificar cantidad'}</button></div>
+      {isEditing&&<div style={{marginTop:18,display:'grid',gap:12}}>
+       {[...totals].map(([name,max])=><label key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}><span>{name} <small style={{color:'#64748b'}}>Máximo {max}</small></span><input type="number" min={0} max={max} step={1} value={quantities[name]??0} onChange={e=>setQuantities(prev=>({...prev,[name]:e.target.value===''?0:Number(e.target.value)}))} style={{width:110,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/></label>)}
+       {!validBranch&&<p role="alert" style={{color:'#b42318'}}>Revisa las cantidades.</p>}
+       <button type="button" disabled={!validBranch||branchSaving} onClick={()=>saveBranch(branch)}>{branchSaving?'Guardando…':'Guardar aportación'}</button>
+      </div>}
+      {total===0&&!isEditing&&<button type="button" style={{background:'#f1f1f1',border:0,borderRadius:10,padding:'10px 14px',marginTop:10,fontWeight:700}} onClick={()=>setEditingBranch(branch)}>Sin aportación</button>}
+     </section>;
+    })}
    </div>
+   <div style={{margin:'12px 0',color:pending===0?'#166534':'#9a3412',fontWeight:600}}>{pending===0?'Aportaciones completas':pending>0?'Pendientes de asignar: '+pending+' piezas':'Las aportaciones exceden el pedido por '+Math.abs(pending)+' piezas'}</div>
    <section className="card fullOrderBranch">
     <div className="fullOrderBranchTop"><h2>Solicitud de Treviño a Plaza</h2><strong>{requestedTotal.toLocaleString('es-MX')} <span>pzas</span></strong></div>
     <p style={{color:'#64748b',marginTop:8}}>Busca por modelo o color. Solo aparecen variantes del pedido original de TikTok.</p>
