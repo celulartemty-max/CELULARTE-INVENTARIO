@@ -105,7 +105,7 @@ export default function ReceivingEditor({ data, products,initialOrderId,initialB
     }[];
 }) {
     const router = useRouter();
-    const [busy, setBusy] = useState(false), [error, setError] = useState(''), [packing, setPacking] = useState<Packing | null>(null), [raw, setRaw] = useState(''), [file, setFile] = useState<File | null>(null), [packingOrder, setPackingOrder] = useState(data.orders.some(o=>o.id===initialOrderId)?initialOrderId! : ''), [active, setActive] = useState<string | null>(data.boxes.some(b=>b.id===initialBoxId&&b.order_id===initialOrderId)?initialBoxId!:null);
+    const [busy, setBusy] = useState(false), [error, setError] = useState(''), [packing, setPacking] = useState<Packing | null>(null), [raw, setRaw] = useState(''), [file, setFile] = useState<File | null>(null), [packingOrder, setPackingOrder] = useState((data.orders.some(o=>o.id===initialOrderId)||data.batches.some(b=>b.id===initialOrderId)||data.boxes.some(b=>b.order_id===initialOrderId)||data.orderBoxOverview?.some(b=>b.order_id===initialOrderId))?initialOrderId! : ''), [active, setActive] = useState<string | null>(data.boxes.some(b=>b.id===initialBoxId&&b.order_id===initialOrderId)?initialBoxId!:null);
     const s = data.session, draft = s.status === 'DRAFT',editable=draft&&(data.canManageReceipt??true);
     const [detailTab, setDetailTab] = useState<'packing'|'count'>(initialOrderId?'count':'packing');
     const [reviewVersion, setReviewVersion] = useState(0);
