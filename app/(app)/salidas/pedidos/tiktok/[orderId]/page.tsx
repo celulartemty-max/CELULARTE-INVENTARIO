@@ -13,6 +13,8 @@ export default function TikTokOrderDetail(){
  const [number,setNumber]=useState('');
  const [plaza,setPlaza]=useState<Record<string,number>>({});
  const [request,setRequest]=useState<Record<string,number>>({});
+ const [search,setSearch]=useState('');
+ const [showMatches,setShowMatches]=useState(false);
  const [sourceChanged,setSourceChanged]=useState(false);
  const [mapping,setMapping]=useState<Record<string,string>>({});
  const [catalog,setCatalog]=useState<{id:string;name:string}[]>([]);
@@ -39,6 +41,11 @@ export default function TikTokOrderDetail(){
   const product=String(item.product_name||'Producto sin nombre').trim();
   totals.set(product,(totals.get(product)||0)+(Number(item.qty)||0));
  }
+ const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ const selected=(order?.items||[]).filter(item=>(request[item.id]??0)>0);
+ const terms=normalize(search.trim()).split(/\s+/).filter(Boolean);
+ const matches=terms.length?(order?.items||[]).filter(item=>terms.every(term=>normalize(item.product_name+' '+item.variation).includes(term))).slice(0,12):[];
+ const requestedTotal=selected.reduce((sum,item)=>sum+(request[item.id]??0),0);
  const pieces=[...totals.values()].reduce((a,b)=>a+b,0);
  const validRequest=(order?.items||[]).every(item=>Number.isSafeInteger(request[item.id]??0)&&(request[item.id]??0)>=0&&(request[item.id]??0)<=item.qty);
  const validMapping=[...totals.keys()].every(name=>!!mapping[name]);
@@ -67,12 +74,29 @@ export default function TikTokOrderDetail(){
     <section className="card fullOrderBranch"><div className="fullOrderBranchTop"><h2>Treviño</h2><strong>{(pieces-plazaTotal).toLocaleString('es-MX')} <span>pzas</span></strong></div><small>Calculado por diferencia</small></section>
    </div>
    <section className="card fullOrderBranch">
-    <h2>Solicitud de Treviño a Plaza</h2>
-    <p>Solo puedes solicitar variantes existentes en Etiquetas TikTok. Para agregar modelos o colores, modifica el pedido original.</p>
-    {sourceChanged&&<p role="alert" style={{color:'#b42318'}}>El pedido original cambió desde la última preparación. Revisa las cantidades antes de guardar nuevamente.</p>}
-    <div style={{overflowX:'auto'}}><table style={{width:'100%',textAlign:'left'}}><thead><tr><th>Modelo y color del pedido</th><th>Disponible</th><th>Solicitar a Plaza</th></tr></thead><tbody>{(order.items||[]).map(item=><tr key={item.id}><td style={{padding:8}}>{item.variation||item.product_name}</td><td style={{padding:8}}>{item.qty}</td><td style={{padding:8}}><input aria-label={'Solicitar '+(item.variation||item.product_name)} type="number" min={0} max={item.qty} step={1} value={request[item.id]??0} onChange={e=>{setRequest(prev=>({...prev,[item.id]:e.target.value===''?0:Number(e.target.value)}));setNotice('');}} style={{width:95,padding:8}}/></td></tr>)}</tbody></table></div>
-    <p><strong>Total solicitado a Plaza: {(order.items||[]).reduce((n,item)=>n+(request[item.id]??0),0).toLocaleString('es-MX')} unidades</strong></p>
-    {!validRequest&&<p role="alert">La solicitud no puede superar las cantidades de cada variante del pedido.</p>}
+    <div className="fullOrderBranchTop"><h2>Solicitud de Treviño a Plaza</h2><strong>{requestedTotal.toLocaleString('es-MX')} <span>pzas</span></strong></div>
+    <p style={{color:'#64748b',marginTop:8}}>Busca por modelo o color. Solo aparecen variantes del pedido original de TikTok.</p>
+    {sourceChanged&&<p role="alert" style={{color:'#b42318'}}>El pedido original cambió. Revisa tu solicitud antes de guardarla.</p>}
+    <div style={{position:'relative',margin:'20px 0'}}>
+     <label htmlFor="tiktokVariantSearch" style={{fontWeight:700,display:'block',marginBottom:8}}>Buscar variante</label>
+     <input id="tiktokVariantSearch" type="search" autoComplete="off" placeholder="Ej. iPhone 15 Pro, multicolor, negro…" value={search} onFocus={()=>setShowMatches(true)} onChange={e=>{setSearch(e.target.value);setShowMatches(true);}} style={{width:'100%',padding:'14px 16px',border:'1px solid #cbd5e1',borderRadius:12,fontSize:16}}/>
+     {showMatches&&terms.length>0&&<div style={{border:'1px solid #e2e8f0',borderRadius:12,marginTop:6,maxHeight:350,overflowY:'auto',background:'#fff',boxShadow:'0 8px 24px rgba(15,23,42,.08)'}}>
+      {matches.length===0?<p style={{padding:14}}>No hay variantes coincidentes en este pedido. Para agregar una, modifica Etiquetas TikTok.</p>:matches.map(item=><button type="button" key={item.id} onClick={()=>{setRequest(prev=>({...prev,[item.id]:Math.max(1,prev[item.id]??0)}));setSearch('');setShowMatches(false);setNotice('');}} disabled={(request[item.id]??0)>0} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,width:'100%',padding:'13px 16px',border:0,borderBottom:'1px solid #f1f5f9',background:'#fff',textAlign:'left',cursor:'pointer'}}>
+       <span><strong>{item.variation||item.product_name}</strong><small style={{display:'block',color:'#64748b'}}>{item.product_name}</small></span><span style={{whiteSpace:'nowrap',color:'#334155'}}>{(request[item.id]??0)>0?'Agregada':item.qty+' disponibles  +'}</span>
+      </button>)}
+     </div>}
+    </div>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,margin:'18px 0 10px'}}><h3 style={{margin:0}}>Variantes solicitadas</h3><small>{selected.length} variantes</small></div>
+    {selected.length===0?<div style={{padding:'28px 18px',border:'1px dashed #cbd5e1',borderRadius:12,textAlign:'center',color:'#64748b'}}>Busca un modelo o color para agregarlo a la solicitud.</div>:<div style={{display:'grid',gap:10}}>
+     {selected.map(item=><div key={item.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',padding:14,border:'1px solid #e2e8f0',borderRadius:12,background:'#f8fafc'}}>
+      <div style={{flex:'1 1 220px'}}><strong>{item.variation||item.product_name}</strong><small style={{display:'block',color:'#64748b'}}>{item.product_name} · Máximo {item.qty}</small></div>
+      <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:600}}>Piezas <input aria-label={'Cantidad de '+(item.variation||item.product_name)} type="number" min={0} max={item.qty} step={1} value={request[item.id]??0} onChange={e=>{setRequest(prev=>({...prev,[item.id]:e.target.value===''?0:Number(e.target.value)}));setNotice('');}} style={{width:90,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/></label>
+      <button type="button" aria-label={'Quitar '+(item.variation||item.product_name)} onClick={()=>setRequest(prev=>{const next={...prev};delete next[item.id];return next;})} style={{border:'1px solid #e2e8f0',borderRadius:9,padding:'9px 12px',background:'#fff',cursor:'pointer'}}>Quitar</button>
+     </div>)}
+    </div>}
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'20px 0',padding:'16px 0',borderTop:'1px solid #e2e8f0'}}><strong>Total solicitado a Plaza</strong><strong style={{fontSize:24,color:'#1e3a5f'}}>{requestedTotal.toLocaleString('es-MX')} pzas</strong></div>
+    {!validRequest&&<p role="alert" style={{color:'#b42318'}}>Las cantidades deben ser enteras y no superar el total de cada variante.</p>}
+    <hr style={{border:0,borderTop:'1px solid #e2e8f0',margin:'24px 0'}}/>
     <h2>Total del pedido TikTok</h2>
     <p>Selecciona el producto real del inventario. El título de TikTok solo identifica el artículo.</p>
     {[...totals].map(([product,qty])=><div key={product} className="formGrid" style={{padding:'16px 0',borderBottom:'1px solid #dbe3ef'}}>
