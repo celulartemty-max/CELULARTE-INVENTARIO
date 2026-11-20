@@ -75,7 +75,7 @@ async function handlePUT(req:NextRequest){
   const normalized=Object.fromEntries([...totals].map(([name])=>[name,body.plaza[name]??0]));
   const rows=await sql`INSERT INTO tiktok_order_preparations(order_id,plaza,products,request,source_updated_at,saved_by,saved_at)
    VALUES(${body.orderId}::uuid,${JSON.stringify(normalized)}::jsonb,${JSON.stringify(body.products)}::jsonb,${JSON.stringify(body.request)}::jsonb,${body.sourceUpdatedAt}::timestamptz,${user.id}::uuid,now())
-   ON CONFLICT(order_id) DO UPDATE SET plaza=EXCLUDED.plaza,products=EXCLUDED.products,request=EXCLUDED.request,source_updated_at=EXCLUDED.source_updated_at,saved_by=EXCLUDED.saved_by,saved_at=now()
+   ON CONFLICT(order_id) DO UPDATE SET products=EXCLUDED.products,request=EXCLUDED.request,source_updated_at=EXCLUDED.source_updated_at,saved_by=EXCLUDED.saved_by,saved_at=now()
    RETURNING saved_at::text`;
   return NextResponse.json({ok:true,plaza:normalized,products:body.products,request:body.request,saved_at:rows[0].saved_at});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'No se pudo guardar'},{status:400});}
