@@ -4,7 +4,7 @@ import {requireUser,hasModulePermission,assertBranchAccess,isAdmin} from '@/lib/
 import {z} from 'zod';
 import {auditRoute} from '@/lib/audit/route';
 
-const branchSchema=z.object({action:z.literal('branch'),orderId:z.string().uuid(),branch:z.enum(['Treviño','Plaza del Audio']),quantities:z.record(z.string(),z.number().int().min(0).max(10000000)),sourceUpdatedAt:z.string().min(1)}).strict();
+const branchSchema=z.object({action:z.literal('branch'),orderId:z.string().uuid(),branch:z.enum(['Treviño','Plaza del Audio']),quantities:z.record(z.string(),z.number().int().min(0).max(10000000)),products:z.record(z.string(),z.string().uuid()).optional(),sourceUpdatedAt:z.string().min(1)}).strict();
 const bodySchema=z.object({orderId:z.string().uuid(),plaza:z.record(z.string(),z.number().int().min(0).max(10000000)),products:z.record(z.string(),z.string().uuid()),request:z.record(z.string(),z.number().int().min(0).max(10000000)),sourceUpdatedAt:z.string().min(1)}).strict();
 async function ready(){
  await sql`CREATE TABLE IF NOT EXISTS tiktok_order_preparations (
@@ -43,10 +43,17 @@ async function handlePUT(req:NextRequest){
    const totals=new Map<string,number>();
    for(const item of (Array.isArray(orders[0].items)?orders[0].items:[])){const name=String(item.product_name||'Producto sin nombre').trim();totals.set(name,(totals.get(name)||0)+Number(item.qty||0));}
    for(const [name,qty] of Object.entries(b.quantities))if(!totals.has(name)||qty>totals.get(name)!)return NextResponse.json({error:'Cantidad fuera del pedido: '+name},{status:400});
+   if(b.products){
+    for(const name of Object.keys(b.products))if(!totals.has(name))return NextResponse.json({error:'Producto fuera del pedido: '+name},{status:400});
+    const ids=[...new Set(Object.values(b.products))];
+    if(ids.length){const active=await sql`SELECT id::text FROM products WHERE id=ANY(${ids}::uuid[]) AND status::text='ACTIVE'`;
+     if(active.length!==ids.length)return NextResponse.json({error:'Selecciona productos activos del catálogo.'},{status:400});}
+   }
    const normalized=Object.fromEntries([...totals].map(([name])=>[name,b.quantities[name]??0]));
    await sql`INSERT INTO tiktok_order_preparations(order_id,saved_by,saved_at) VALUES(${b.orderId}::uuid,${user.id}::uuid,now()) ON CONFLICT(order_id) DO NOTHING`;
    if(b.branch==='Treviño')await sql`UPDATE tiktok_order_preparations SET trevino=${JSON.stringify(normalized)}::jsonb,saved_by=${user.id}::uuid,saved_at=now() WHERE order_id=${b.orderId}::uuid`;
    else await sql`UPDATE tiktok_order_preparations SET plaza=${JSON.stringify(normalized)}::jsonb,saved_by=${user.id}::uuid,saved_at=now() WHERE order_id=${b.orderId}::uuid`;
+   if(b.products&&Object.keys(b.products).length){await sql`UPDATE tiktok_order_preparations SET products=COALESCE(products,'{}'::jsonb)||${JSON.stringify(b.products)}::jsonb,saved_by=${user.id}::uuid,saved_at=now() WHERE order_id=${b.orderId}::uuid`;}
    return NextResponse.json({ok:true,branch:b.branch,quantities:normalized});
   }
   if(!isAdmin(user))return NextResponse.json({error:'Solo administración puede guardar el mapeo y la solicitud.'},{status:403});
