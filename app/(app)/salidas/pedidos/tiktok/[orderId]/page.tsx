@@ -12,7 +12,6 @@ export default function TikTokOrderDetail(){
  const [order,setOrder]=useState<Order|null>(null);
  const [number,setNumber]=useState('');
  const [trevino,setTrevino]=useState<Record<string,number>>({});
- const [branchSearch,setBranchSearch]=useState('');
  const [catalogSearch,setCatalogSearch]=useState<Record<string,string>>({});
  const [editingBranch,setEditingBranch]=useState<'Treviño'|'Plaza del Audio'|null>(null);
  const [branchSaving,setBranchSaving]=useState(false);
@@ -97,17 +96,16 @@ export default function TikTokOrderDetail(){
      const validBranch=[...totals].every(([name,max])=>Number.isSafeInteger(quantities[name]??0)&&(quantities[name]??0)>=0&&(quantities[name]??0)<=max);
      return <section key={branch} className="card fullOrderBranch">
       <div className="fullOrderBranchTop"><h2>{branch}</h2><strong>{total.toLocaleString('es-MX')} <span>pzas</span></strong></div>
-      <div className="fullOrderBranchAction"><small>{total>0?'Aportación registrada':'Pendiente'}</small><button className="fullQuantityButton" type="button" onClick={()=>{setEditingBranch(isEditing?null:branch);setBranchSearch('')}}>{isEditing?'Cerrar':'Modificar cantidad'}</button></div>
+      <div className="fullOrderBranchAction"><small>{total>0?'Aportación registrada':'Pendiente'}</small><button className="fullQuantityButton" type="button" onClick={()=>{setEditingBranch(isEditing?null:branch)}}>{isEditing?'Cerrar':'Modificar cantidad'}</button></div>
       {isEditing&&<div style={{marginTop:18,display:'grid',gap:12}}>
-       <label style={{display:'grid',gap:6,fontWeight:600}}>Buscar producto del pedido<input type="search" placeholder="Buscar producto…" value={branchSearch} onChange={e=>setBranchSearch(e.target.value)} style={{width:'100%',padding:12,border:'1px solid #cbd5e1',borderRadius:9}}/></label>
-       {[...totals].filter(([name])=>normalize(name).includes(normalize(branchSearch.trim()))).map(([name,max])=><div key={name} style={{display:'grid',gap:10,padding:14,border:'1px solid #e2e8f0',borderRadius:12}}>
+       {[...totals].map(([name,max])=><div key={name} style={{display:'grid',gap:10,padding:14,border:'1px solid #e2e8f0',borderRadius:12}}>
         <strong>{name} <small style={{color:'#64748b',fontWeight:400}}>Máximo {max}</small></strong>
-        <label style={{display:'grid',gap:6}}>Producto de nuestro catálogo
-         <input type="search" placeholder="Buscar en productos guardados…" value={catalogSearch[name]??''} onChange={e=>setCatalogSearch(prev=>({...prev,[name]:e.target.value}))} style={{width:'100%',padding:11,border:'1px solid #cbd5e1',borderRadius:9}}/>
-         <select value={mapping[name]||''} onChange={e=>{setMapping(prev=>({...prev,[name]:e.target.value}));setNotice('')}} style={{width:'100%',padding:11,border:'1px solid #cbd5e1',borderRadius:9}}>
-          <option value="">Selecciona producto guardado…</option>{catalog.filter(p=>p.id===mapping[name]||normalize(p.name).includes(normalize(catalogSearch[name]??''))).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-         </select>
-        </label>
+        <div style={{display:'grid',gap:6}}>
+         <label htmlFor={'catalog-'+name} style={{fontWeight:600}}>Producto de COREONE</label>
+         <input id={'catalog-'+name} type="search" placeholder="Buscar producto del catálogo…" value={catalogSearch[name]??catalog.find(p=>p.id===mapping[name])?.name??''} onChange={e=>{setCatalogSearch(prev=>({...prev,[name]:e.target.value}));setMapping(prev=>({...prev,[name]:''}));setNotice('')}} style={{width:'100%',padding:11,border:'1px solid #cbd5e1',borderRadius:9}}/>
+         {mapping[name]&&<small style={{color:'#166534'}}>✓ Producto seleccionado</small>}
+         {!mapping[name]&&(catalogSearch[name]??'').trim()&&<div style={{maxHeight:200,overflowY:'auto',border:'1px solid #cbd5e1',borderRadius:9}}>{catalog.filter(p=>normalize(p.name).includes(normalize(catalogSearch[name]??''))).slice(0,15).map(p=><button type="button" key={p.id} onClick={()=>{setMapping(prev=>({...prev,[name]:p.id}));setCatalogSearch(prev=>({...prev,[name]:p.name}));setNotice('')}} style={{display:'block',width:'100%',textAlign:'left',padding:11,background:'#fff',border:0,borderBottom:'1px solid #e2e8f0',color:'#172b4d'}}>{p.name}</button>)}</div>}
+        </div>
         <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>Piezas
          <input type="number" min={0} max={max} step={1} value={quantities[name]??0} onChange={e=>setQuantities(prev=>({...prev,[name]:e.target.value===''?0:Number(e.target.value)}))} style={{width:110,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/>
         </label>
