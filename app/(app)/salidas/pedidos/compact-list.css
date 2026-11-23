@@ -23,3 +23,8 @@
 .fullListPagination{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;flex-wrap:wrap;font-size:14px}
 .fullListPagination>a{min-height:44px;display:inline-flex;align-items:center}
 @media(max-width:600px){.fullOrderList>h1{font-size:24px}.fullOrderList .fullListRow{padding:12px;gap:10px;grid-template-columns:minmax(0,1fr) auto 10px}.fullOrderList .fullListInfo h2{font-size:15px}.fullOrderList .fullListCount{font-size:17px}.fullOrderList .fullListCount small{display:block;margin-top:2px}}
+
+/* Compact premium back navigation */
+.fullOrderList .fullListBack{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:fit-content;min-height:44px;padding:10px 16px;border:1px solid #dbe5f4;border-radius:12px;background:#edf2fa;color:#2453a6;font-weight:650;font-size:14px;line-height:1.25;text-decoration:none;transition:background .15s,border-color .15s;}
+.fullOrderList .fullListBack:hover{background:#e2eaf8;border-color:#b8cbed;}
+.fullOrderList .fullListBack:focus-visible{outline:2px solid #2453a6;outline-offset:3px;}
