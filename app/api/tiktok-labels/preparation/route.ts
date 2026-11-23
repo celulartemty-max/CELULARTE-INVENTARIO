@@ -5,6 +5,7 @@ import {z} from 'zod';
 import {auditRoute} from '@/lib/audit/route';
 
 const branchSchema=z.object({action:z.literal('branch'),orderId:z.string().uuid(),branch:z.enum(['Treviño','Plaza del Audio']),quantities:z.record(z.string(),z.number().int().min(0).max(10000000)),products:z.record(z.string(),z.string().uuid()).optional(),sourceUpdatedAt:z.string().min(1)}).strict();
+const requestSchema=z.object({action:z.literal('request'),orderId:z.string().uuid(),request:z.record(z.string(),z.number().int().min(0).max(10000000)),requestProducts:z.record(z.string(),z.string().uuid()),sourceUpdatedAt:z.string().min(1)}).strict();
 const bodySchema=z.object({orderId:z.string().uuid(),plaza:z.record(z.string(),z.number().int().min(0).max(10000000)),products:z.record(z.string(),z.string().uuid()),request:z.record(z.string(),z.number().int().min(0).max(10000000)),sourceUpdatedAt:z.string().min(1)}).strict();
 async function ready(){
  await sql`CREATE TABLE IF NOT EXISTS tiktok_order_preparations (
@@ -13,6 +14,7 @@ async function ready(){
   trevino jsonb NOT NULL DEFAULT '{}'::jsonb,
   products jsonb NOT NULL DEFAULT '{}'::jsonb,
   request jsonb NOT NULL DEFAULT '{}'::jsonb,
+  request_products jsonb NOT NULL DEFAULT '{}'::jsonb,
   source_updated_at timestamptz,
   saved_by uuid REFERENCES users(id),
   saved_at timestamptz NOT NULL DEFAULT now()
@@ -20,14 +22,15 @@ async function ready(){
  await sql`ALTER TABLE tiktok_order_preparations ADD COLUMN IF NOT EXISTS trevino jsonb NOT NULL DEFAULT '{}'::jsonb`;
  await sql`ALTER TABLE tiktok_order_preparations ADD COLUMN IF NOT EXISTS products jsonb NOT NULL DEFAULT '{}'::jsonb`;
  await sql`ALTER TABLE tiktok_order_preparations ADD COLUMN IF NOT EXISTS request jsonb NOT NULL DEFAULT '{}'::jsonb`;
+ await sql`ALTER TABLE tiktok_order_preparations ADD COLUMN IF NOT EXISTS request_products jsonb NOT NULL DEFAULT '{}'::jsonb`;
  await sql`ALTER TABLE tiktok_order_preparations ADD COLUMN IF NOT EXISTS source_updated_at timestamptz`;
 }
 async function access(){const user=await requireUser();if(!await hasModulePermission(user,'SALIDAS'))throw Error('Sin permiso de Salidas.');return user;}
 export async function GET(req:NextRequest){
  try{await access();await ready();const orderId=req.nextUrl.searchParams.get('orderId');
   if(!orderId||!z.string().uuid().safeParse(orderId).success)return NextResponse.json({error:'Pedido inválido'},{status:400});
-  const rows=await sql`SELECT plaza,trevino,products,request,source_updated_at::text,saved_at::text FROM tiktok_order_preparations WHERE order_id=${orderId}::uuid`;
-  return NextResponse.json(rows[0]??{plaza:{},trevino:{},products:{},request:{},source_updated_at:null,saved_at:null});
+  const rows=await sql`SELECT plaza,trevino,products,request,request_products,source_updated_at::text,saved_at::text FROM tiktok_order_preparations WHERE order_id=${orderId}::uuid`;
+  return NextResponse.json(rows[0]??{plaza:{},trevino:{},products:{},request:{},request_products:{},source_updated_at:null,saved_at:null});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Error al consultar'},{status:403});}
 }
 async function handlePUT(req:NextRequest){
@@ -55,6 +58,24 @@ async function handlePUT(req:NextRequest){
    else await sql`UPDATE tiktok_order_preparations SET plaza=${JSON.stringify(normalized)}::jsonb,saved_by=${user.id}::uuid,saved_at=now() WHERE order_id=${b.orderId}::uuid`;
    if(b.products&&Object.keys(b.products).length){await sql`UPDATE tiktok_order_preparations SET products=COALESCE(products,'{}'::jsonb)||${JSON.stringify(b.products)}::jsonb,saved_by=${user.id}::uuid,saved_at=now() WHERE order_id=${b.orderId}::uuid`;}
    return NextResponse.json({ok:true,branch:b.branch,quantities:normalized});
+  }
+  if(payload.action==='request'){
+   if(!isAdmin(user))return NextResponse.json({error:'Solo administración puede guardar solicitudes.'},{status:403});
+   const b=requestSchema.parse(payload);
+   const orders=await sql`SELECT items,updated_at::text FROM tiktok_label_orders WHERE id=${b.orderId}::uuid`;
+   if(!orders.length)return NextResponse.json({error:'Pedido no encontrado'},{status:404});
+   if(new Date(orders[0].updated_at).getTime()!==new Date(b.sourceUpdatedAt).getTime())return NextResponse.json({error:'El pedido cambió. Recarga y revisa la solicitud.'},{status:409});
+   const variants=new Map<string,number>();
+   for(const item of (Array.isArray(orders[0].items)?orders[0].items:[])){const key=String(item.id||'');variants.set(key,(variants.get(key)||0)+Number(item.qty||0));}
+   for(const [id,qty] of Object.entries(b.request))if(!variants.has(id)||qty>variants.get(id)!)return NextResponse.json({error:'Cantidad fuera del pedido'},{status:400});
+   for(const id of Object.keys(b.requestProducts))if(!variants.has(id))return NextResponse.json({error:'Variante inválida'},{status:400});
+   for(const [id,qty] of Object.entries(b.request))if(qty>0&&!b.requestProducts[id])return NextResponse.json({error:'Selecciona el producto COREONE para cada variante solicitada'},{status:400});
+   const ids=[...new Set(Object.values(b.requestProducts))];
+   if(ids.length){const active=await sql`SELECT id::text FROM products WHERE id=ANY(${ids}::uuid[]) AND status::text='ACTIVE'`;if(active.length!==ids.length)return NextResponse.json({error:'Producto de catálogo inválido'},{status:400});}
+   await sql`INSERT INTO tiktok_order_preparations(order_id,request,request_products,source_updated_at,saved_by,saved_at)
+    VALUES(${b.orderId}::uuid,${JSON.stringify(b.request)}::jsonb,${JSON.stringify(b.requestProducts)}::jsonb,${b.sourceUpdatedAt}::timestamptz,${user.id}::uuid,now())
+    ON CONFLICT(order_id) DO UPDATE SET request=EXCLUDED.request,request_products=EXCLUDED.request_products,source_updated_at=EXCLUDED.source_updated_at,saved_by=EXCLUDED.saved_by,saved_at=now()`;
+   return NextResponse.json({ok:true});
   }
   if(!isAdmin(user))return NextResponse.json({error:'Solo administración puede guardar el mapeo y la solicitud.'},{status:403});
   const body=bodySchema.parse(payload);
