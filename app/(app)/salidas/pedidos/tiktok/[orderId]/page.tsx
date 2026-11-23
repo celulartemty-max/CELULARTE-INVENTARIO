@@ -12,6 +12,7 @@ export default function TikTokOrderDetail(){
  const [order,setOrder]=useState<Order|null>(null);
  const [number,setNumber]=useState('');
  const [trevino,setTrevino]=useState<Record<string,number>>({});
+ const [branchSearch,setBranchSearch]=useState('');
  const [editingBranch,setEditingBranch]=useState<'Treviño'|'Plaza del Audio'|null>(null);
  const [branchSaving,setBranchSaving]=useState(false);
  const [plaza,setPlaza]=useState<Record<string,number>>({});
@@ -60,7 +61,8 @@ export default function TikTokOrderDetail(){
   if(branchSaving||!order)return;
   setBranchSaving(true);setError('');setNotice('');
   try{const quantities=branch==='Treviño'?trevino:plaza;
-   const response=await fetch('/api/tiktok-labels/preparation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'branch',orderId,branch,quantities,sourceUpdatedAt:order.updated_at})});
+   const products=Object.fromEntries([...totals.keys()].filter(name=>mapping[name]).map(name=>[name,mapping[name]]));
+   const response=await fetch('/api/tiktok-labels/preparation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'branch',orderId,branch,quantities,products,sourceUpdatedAt:order.updated_at})});
    const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo guardar la aportación.');
    setEditingBranch(null);setNotice('Aportación de '+branch+' guardada. Aún no se ha descontado inventario.');
   }catch(e){setError(e instanceof Error?e.message:'Error al guardar');}finally{setBranchSaving(false);}
@@ -94,11 +96,22 @@ export default function TikTokOrderDetail(){
      const validBranch=[...totals].every(([name,max])=>Number.isSafeInteger(quantities[name]??0)&&(quantities[name]??0)>=0&&(quantities[name]??0)<=max);
      return <section key={branch} className="card fullOrderBranch">
       <div className="fullOrderBranchTop"><h2>{branch}</h2><strong>{total.toLocaleString('es-MX')} <span>pzas</span></strong></div>
-      <div className="fullOrderBranchAction"><small>{total>0?'Aportación registrada':'Pendiente'}</small><button className="fullQuantityButton" type="button" onClick={()=>setEditingBranch(isEditing?null:branch)}>{isEditing?'Cerrar':'Modificar cantidad'}</button></div>
+      <div className="fullOrderBranchAction"><small>{total>0?'Aportación registrada':'Pendiente'}</small><button className="fullQuantityButton" type="button" onClick={()=>{setEditingBranch(isEditing?null:branch);setBranchSearch('')}}>{isEditing?'Cerrar':'Modificar cantidad'}</button></div>
       {isEditing&&<div style={{marginTop:18,display:'grid',gap:12}}>
-       {[...totals].map(([name,max])=><label key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}><span>{name} <small style={{color:'#64748b'}}>Máximo {max}</small></span><input type="number" min={0} max={max} step={1} value={quantities[name]??0} onChange={e=>setQuantities(prev=>({...prev,[name]:e.target.value===''?0:Number(e.target.value)}))} style={{width:110,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/></label>)}
+       <label style={{display:'grid',gap:6,fontWeight:600}}>Buscar producto del pedido<input type="search" placeholder="Buscar producto…" value={branchSearch} onChange={e=>setBranchSearch(e.target.value)} style={{width:'100%',padding:12,border:'1px solid #cbd5e1',borderRadius:9}}/></label>
+       {[...totals].filter(([name])=>normalize(name).includes(normalize(branchSearch.trim()))).map(([name,max])=><div key={name} style={{display:'grid',gap:10,padding:14,border:'1px solid #e2e8f0',borderRadius:12}}>
+        <strong>{name} <small style={{color:'#64748b',fontWeight:400}}>Máximo {max}</small></strong>
+        <label style={{display:'grid',gap:6}}>Producto de inventario
+         <select value={mapping[name]||''} onChange={e=>{setMapping(prev=>({...prev,[name]:e.target.value}));setNotice('')}} style={{width:'100%',padding:11,border:'1px solid #cbd5e1',borderRadius:9}}>
+          <option value="">Selecciona producto…</option>{catalog.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+         </select>
+        </label>
+        <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>Piezas
+         <input type="number" min={0} max={max} step={1} value={quantities[name]??0} onChange={e=>setQuantities(prev=>({...prev,[name]:e.target.value===''?0:Number(e.target.value)}))} style={{width:110,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/>
+        </label>
+       </div>)}
        {!validBranch&&<p role="alert" style={{color:'#b42318'}}>Revisa las cantidades.</p>}
-       <button type="button" disabled={!validBranch||branchSaving} onClick={()=>saveBranch(branch)}>{branchSaving?'Guardando…':'Guardar aportación'}</button>
+       <button type="button" disabled={!validBranch||branchSaving||[...totals].some(([name])=>(quantities[name]??0)>0&&!mapping[name])} onClick={()=>saveBranch(branch)}>{branchSaving?'Guardando…':'Guardar aportación'}</button>
       </div>}
       {total===0&&!isEditing&&<button type="button" style={{background:'#f1f1f1',border:0,borderRadius:10,padding:'10px 14px',marginTop:10,fontWeight:700}} onClick={()=>setEditingBranch(branch)}>Sin aportación</button>}
      </section>;
