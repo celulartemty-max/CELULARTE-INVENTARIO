@@ -13,6 +13,7 @@ export default function TikTokOrderDetail(){
  const [number,setNumber]=useState('');
  const [trevino,setTrevino]=useState<Record<string,number>>({});
  const [branchSearch,setBranchSearch]=useState('');
+ const [catalogSearch,setCatalogSearch]=useState<Record<string,string>>({});
  const [editingBranch,setEditingBranch]=useState<'Treviño'|'Plaza del Audio'|null>(null);
  const [branchSaving,setBranchSaving]=useState(false);
  const [plaza,setPlaza]=useState<Record<string,number>>({});
@@ -101,9 +102,10 @@ export default function TikTokOrderDetail(){
        <label style={{display:'grid',gap:6,fontWeight:600}}>Buscar producto del pedido<input type="search" placeholder="Buscar producto…" value={branchSearch} onChange={e=>setBranchSearch(e.target.value)} style={{width:'100%',padding:12,border:'1px solid #cbd5e1',borderRadius:9}}/></label>
        {[...totals].filter(([name])=>normalize(name).includes(normalize(branchSearch.trim()))).map(([name,max])=><div key={name} style={{display:'grid',gap:10,padding:14,border:'1px solid #e2e8f0',borderRadius:12}}>
         <strong>{name} <small style={{color:'#64748b',fontWeight:400}}>Máximo {max}</small></strong>
-        <label style={{display:'grid',gap:6}}>Producto de inventario
+        <label style={{display:'grid',gap:6}}>Producto de nuestro catálogo
+         <input type="search" placeholder="Buscar en productos guardados…" value={catalogSearch[name]??''} onChange={e=>setCatalogSearch(prev=>({...prev,[name]:e.target.value}))} style={{width:'100%',padding:11,border:'1px solid #cbd5e1',borderRadius:9}}/>
          <select value={mapping[name]||''} onChange={e=>{setMapping(prev=>({...prev,[name]:e.target.value}));setNotice('')}} style={{width:'100%',padding:11,border:'1px solid #cbd5e1',borderRadius:9}}>
-          <option value="">Selecciona producto…</option>{catalog.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          <option value="">Selecciona producto guardado…</option>{catalog.filter(p=>p.id===mapping[name]||normalize(p.name).includes(normalize(catalogSearch[name]??''))).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
          </select>
         </label>
         <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>Piezas
