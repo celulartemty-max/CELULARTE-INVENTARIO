@@ -141,27 +141,9 @@ export default function TikTokOrderDetail(){
     </div>}
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'20px 0',padding:'16px 0',borderTop:'1px solid #e2e8f0'}}><strong>Total solicitado a Plaza</strong><strong style={{fontSize:24,color:'#1e3a5f'}}>{requestedTotal.toLocaleString('es-MX')} pzas</strong></div>
     {!validRequest&&<p role="alert" style={{color:'#b42318'}}>Las cantidades deben ser enteras y no superar el total de cada variante.</p>}
-    <hr style={{border:0,borderTop:'1px solid #e2e8f0',margin:'24px 0'}}/>
-    <h2>Total del pedido TikTok</h2>
-    <p>Selecciona el producto real del inventario. El título de TikTok solo identifica el artículo.</p>
-    {[...totals].map(([product,qty])=><div key={product} className="formGrid" style={{padding:'16px 0',borderBottom:'1px solid #dbe3ef'}}>
-     <strong>{product}</strong>
-     <label>Producto de inventario
-      <select required value={mapping[product]||''} onChange={e=>{setMapping(prev=>({...prev,[product]:e.target.value}));setNotice('');}}>
-       <option value="">Selecciona…</option>{catalog.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
-     </label>
-     <div><b>Total: {qty.toLocaleString('es-MX')} unidades</b></div>
-     <label>Plaza del Audio
-      <input type="number" min={0} max={qty} step={1} value={plaza[product]??0} onChange={e=>{setPlaza(prev=>({...prev,[product]:e.target.value===''?0:Number(e.target.value)}));setNotice('');}}/>
-     </label>
-     <div className="fullCountPreview"><strong>Treviño: {(qty-(plaza[product]??0)).toLocaleString('es-MX')} unidades</strong></div>
-    </div>)}
-    {!valid&&<p role="alert">Las cantidades deben ser enteras entre cero y el total del producto.</p>}
-    {!validMapping&&<p>Selecciona un producto del catálogo para poder guardar.</p>}
-    <button type="button" onClick={save} disabled={!valid||!validMapping||!validRequest||saving}>{saving?'Guardando…':'Guardar preparación'}</button>
+    {!validRequest&&<p role="alert">Revisa las cantidades solicitadas.</p>}
     {notice&&<p role="status">{notice}</p>}
-    <small>Guardar preparación no genera movimientos ni descuenta inventario. Las salidas se confirmarán por separado.</small>
+    <small>Las aportaciones se guardan por sucursal. Guardarlas no descuenta inventario.</small>
    </section>
   </>}
  </div>;
