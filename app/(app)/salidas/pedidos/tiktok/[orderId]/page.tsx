@@ -17,6 +17,8 @@ export default function TikTokOrderDetail(){
  const [branchSaving,setBranchSaving]=useState(false);
  const [plaza,setPlaza]=useState<Record<string,number>>({});
  const [request,setRequest]=useState<Record<string,number>>({});
+ const [requestProducts,setRequestProducts]=useState<Record<string,string>>({});
+ const [requestCatalogSearch,setRequestCatalogSearch]=useState<Record<string,string>>({});
  const [search,setSearch]=useState('');
  const [showMatches,setShowMatches]=useState(false);
  const [sourceChanged,setSourceChanged]=useState(false);
@@ -29,14 +31,14 @@ export default function TikTokOrderDetail(){
  useEffect(()=>{let active=true;Promise.all([
   fetch('/api/tiktok-labels/orders',{cache:'no-store'}).then(async response=>{if(!response.ok)throw Error('No se pudo consultar el pedido.');return response.json() as Promise<Order[]>}),
   fetch('/api/tiktok-labels/inventory-products',{cache:'no-store'}).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo cargar el catálogo.');return data as {id:string;name:string}[];}),
-  fetch('/api/tiktok-labels/preparation?orderId='+encodeURIComponent(orderId),{cache:'no-store'}).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo consultar la preparación.');return data as {plaza:Record<string,number>;trevino?:Record<string,number>;products?:Record<string,string>;request?:Record<string,number>;source_updated_at?:string|null};})
+  fetch('/api/tiktok-labels/preparation?orderId='+encodeURIComponent(orderId),{cache:'no-store'}).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo consultar la preparación.');return data as {plaza:Record<string,number>;trevino?:Record<string,number>;products?:Record<string,string>;request?:Record<string,number>;request_products?:Record<string,string>;source_updated_at?:string|null};})
  ]).then(([data,products,preparation])=>{
   if(!active)return;
   const ordered=[...data].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime());
   const index=ordered.findIndex(item=>item.id===orderId);
   if(index<0)throw Error('Pedido no encontrado.');
   setOrder(ordered[index]);setNumber('TT-'+String(index+1).padStart(4,'0'));
-  setPlaza(preparation.plaza||{});setTrevino(preparation.trevino||{});setRequest(preparation.request||{});setSourceChanged(Boolean(preparation.source_updated_at&&new Date(preparation.source_updated_at).getTime()!==new Date(ordered[index].updated_at).getTime()));setMapping(preparation.products||{});setCatalog(products);
+  setPlaza(preparation.plaza||{});setTrevino(preparation.trevino||{});setRequest(preparation.request||{});setRequestProducts(preparation.request_products||{});setSourceChanged(Boolean(preparation.source_updated_at&&new Date(preparation.source_updated_at).getTime()!==new Date(ordered[index].updated_at).getTime()));setMapping(preparation.products||{});setCatalog(products);
  }).catch(e=>{if(active)setError(e.message)}).finally(()=>{if(active)setLoading(false)});
  return()=>{active=false};
  },[orderId]);
@@ -57,6 +59,17 @@ export default function TikTokOrderDetail(){
  const plazaTotal=[...totals].reduce((n,[name])=>n+(plaza[name]??0),0);
  const trevinoTotal=[...totals].reduce((n,[name])=>n+(trevino[name]??0),0);
  const pending=pieces-plazaTotal-trevinoTotal;
+ async function saveRequest(){
+  if(saving||!order||!validRequest)return;
+  const missing=selected.some(item=>!requestProducts[item.id]);
+  if(missing){setError('Selecciona un producto COREONE para cada variante solicitada.');return;}
+  setSaving(true);setError('');setNotice('');
+  try{
+   const response=await fetch('/api/tiktok-labels/preparation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'request',orderId,request,requestProducts:Object.fromEntries(Object.entries(requestProducts).filter(([id])=>(request[id]??0)>0)),sourceUpdatedAt:order.updated_at})});
+   const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo guardar la solicitud.');
+   setNotice('Solicitud guardada con productos COREONE para Plaza.');
+  }catch(e){setError(e instanceof Error?e.message:'Error al guardar');}finally{setSaving(false);}
+ }
  async function saveBranch(branch:'Treviño'|'Plaza del Audio'){
   if(branchSaving||!order)return;
   setBranchSaving(true);setError('');setNotice('');
@@ -134,7 +147,10 @@ export default function TikTokOrderDetail(){
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,margin:'18px 0 10px'}}><h3 style={{margin:0}}>Variantes solicitadas</h3><small>{selected.length} variantes</small></div>
     {selected.length===0?<div style={{padding:'28px 18px',border:'1px dashed #cbd5e1',borderRadius:12,textAlign:'center',color:'#64748b'}}>Busca un modelo o color para agregarlo a la solicitud.</div>:<div style={{display:'grid',gap:10}}>
      {selected.map(item=><div key={item.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',padding:14,border:'1px solid #e2e8f0',borderRadius:12,background:'#f8fafc'}}>
-      <div style={{flex:'1 1 220px'}}><strong>{item.variation||item.product_name}</strong><small style={{display:'block',color:'#64748b'}}>{item.product_name} · Máximo {item.qty}</small></div>
+      <div style={{flex:'1 1 220px',display:'grid',gap:7}}><strong>{catalog.find(p=>p.id===requestProducts[item.id])?.name||'Selecciona producto COREONE'}</strong><small style={{display:'block',color:'#64748b'}}>TikTok: {item.variation||item.product_name} · {item.product_name} · Máximo {item.qty}</small>
+       <input type="search" aria-label={'Buscar producto COREONE para '+(item.variation||item.product_name)} placeholder="Buscar producto COREONE…" value={requestCatalogSearch[item.id]??catalog.find(p=>p.id===requestProducts[item.id])?.name??''} onChange={e=>{setRequestCatalogSearch(prev=>({...prev,[item.id]:e.target.value}));setRequestProducts(prev=>({...prev,[item.id]:''}));setNotice('')}} style={{width:'100%',padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/>
+       {!requestProducts[item.id]&&(requestCatalogSearch[item.id]??'').trim()&&<div style={{maxHeight:160,overflowY:'auto',border:'1px solid #cbd5e1',borderRadius:9,background:'#fff'}}>{catalog.filter(p=>normalize(p.name).includes(normalize(requestCatalogSearch[item.id]??''))).slice(0,12).map(p=><button type="button" key={p.id} onClick={()=>{setRequestProducts(prev=>({...prev,[item.id]:p.id}));setRequestCatalogSearch(prev=>({...prev,[item.id]:p.name}));setNotice('')}} style={{display:'block',width:'100%',padding:10,textAlign:'left',background:'#fff',border:0,borderBottom:'1px solid #e2e8f0'}}>{p.name}</button>)}</div>}
+      </div>
       <label style={{display:'flex',alignItems:'center',gap:8,fontWeight:600}}>Piezas <input aria-label={'Cantidad de '+(item.variation||item.product_name)} type="number" min={0} max={item.qty} step={1} value={request[item.id]??0} onChange={e=>{setRequest(prev=>({...prev,[item.id]:e.target.value===''?0:Number(e.target.value)}));setNotice('');}} style={{width:90,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/></label>
       <button type="button" aria-label={'Quitar '+(item.variation||item.product_name)} onClick={()=>setRequest(prev=>{const next={...prev};delete next[item.id];return next;})} style={{border:'1px solid #e2e8f0',borderRadius:9,padding:'9px 12px',background:'#fff',cursor:'pointer'}}>Quitar</button>
      </div>)}
