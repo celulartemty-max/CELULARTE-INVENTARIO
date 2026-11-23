@@ -44,7 +44,7 @@ export async function saveFinalCount(u:SessionUser,raw:unknown,requestId:string)
   const legacy=(await c.query(`SELECT 1 FROM full_order_exits x JOIN inventory_movements m ON m.id=x.movement_id WHERE x.order_id=$1 AND x.branch_id=$2 AND (m.pos_registered_at IS NOT NULL OR EXISTS(SELECT 1 FROM exit_lines WHERE movement_id=m.id) OR (x.waived_at IS NULL AND m.status::text<>'DRAFT')) LIMIT 1`,[d.orderId,branch])).rows;
   if(legacy.length)throw Error('Treviño ya tiene una salida capturada con el flujo anterior. Se requiere revisar esa salida antes de generar otro ajuste.');
   const plaza=(await c.query<Plaza>(plazaSnapshotSql,[d.orderId])).rows;
-  if(plaza.some(p=>p.waived_at?p.lines.length>0||p.status!=='CANCELLED':!['CLOSED','PENDING_POS','POS_REGISTERED','POS_RECONCILED','POS_CORRECTION_PENDING'].includes(p.status)))throw Error('Primero termina la captura de Plaza o marca Sin aportación.');
+  if(plaza.some(p=>p.waived_at?p.lines.length>0||p.status!=='CANCELLED':p.status==='DRAFT'&&p.lines.length===0?false:!['CLOSED','PENDING_POS','POS_REGISTERED','POS_RECONCILED','POS_CORRECTION_PENDING'].includes(p.status)))throw Error('Plaza tiene una aportación pendiente de terminar. Revísala antes de guardar el total.');
   if((await c.query('SELECT 1 FROM full_exit_reviews WHERE order_id=$1 LIMIT 1',[d.orderId])).rows.length)throw Error('Este FULL tiene una revisión anterior. Requiere revisar su historial antes de usar el ajuste global.');
   const total=d.lines.reduce((n,l)=>n+l.quantity,0);if(total<1||total>10000000)throw Error('Captura un total final entre 1 y 10,000,000.');
   const base=new Map<string,number>();for(const p of plaza)for(const l of p.lines)base.set(l.product_id,(base.get(l.product_id)??0)+l.quantity);
