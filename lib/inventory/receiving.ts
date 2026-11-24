@@ -294,17 +294,14 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             if(!reference.length||reference.length!==lines.length||reference.some(l=>!byId.has(l.id)))throw Error('Cuenta todas las variantes.');
             const differences=reference.filter(l=>typeof l.expected==='number'&&byId.get(l.id)!==l.expected);
             const allZero=lines.every(l=>l.quantity===0);
-            const allMismatch=reference.length>1&&differences.length===reference.length;
-            const previousAttempt=history.filter(x=>x.action==='RECEIVING_SMART_ATTEMPT').at(-1);
-            const previousLines=previousAttempt?.new_value?.lines;
-            const previousById=new Map<string,number>(Array.isArray(previousLines)?previousLines.map((l:{id:string;quantity:number})=>[l.id,l.quantity] as [string,number]):[]);
-            const repeatedCount=previousById.size===lines.length&&lines.every(l=>previousById.get(l.id)===l.quantity);
-            const suspicious=allZero||(allMismatch&&attempts>=1&&!repeatedCount);
+            // A discrepancy across every variant is not itself evidence of an invalid count.
+            // Preserve the assisted third confirmation and the all-zero safeguard.
+            const suspicious=allZero;
             const authorizedExtra=approvals>0&&lastApproval>lastBlock;
             if(attempts>=3&&!authorizedExtra)throw Error('El cuarto intento requiere autorización Máster.');
             if(attempts>=4)throw Error('Límite de reconteos alcanzado. Avisa a Máster.');
             if(suspicious){
-                await audit(c,u,s.branch_id,'RECEIVING_SMART_BLOCKED',{boxId,sessionId,reason:allZero?'ALL_ZERO':'ALL_MISMATCH',attempt:attempts+1});
+                await audit(c,u,s.branch_id,'RECEIVING_SMART_BLOCKED',{boxId,sessionId,reason:'ALL_ZERO',attempt:attempts+1});
                 return {ok:true,smartStatus:'blocked'};
             }
             const mode=attempts>=2?z.enum(['correct','real']).parse(b.mode):null;
