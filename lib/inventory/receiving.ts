@@ -295,7 +295,11 @@ export async function receivingAction(u: SessionUser, b: Record<string, unknown>
             const differences=reference.filter(l=>typeof l.expected==='number'&&byId.get(l.id)!==l.expected);
             const allZero=lines.every(l=>l.quantity===0);
             const allMismatch=reference.length>1&&differences.length===reference.length;
-            const suspicious=allZero||(allMismatch&&attempts>=1);
+            const previousAttempt=history.filter(x=>x.action==='RECEIVING_SMART_ATTEMPT').at(-1);
+            const previousLines=previousAttempt?.new_value?.lines;
+            const previousById=new Map<string,number>(Array.isArray(previousLines)?previousLines.map((l:{id:string;quantity:number})=>[l.id,l.quantity] as [string,number]):[]);
+            const repeatedCount=previousById.size===lines.length&&lines.every(l=>previousById.get(l.id)===l.quantity);
+            const suspicious=allZero||(allMismatch&&attempts>=1&&!repeatedCount);
             const authorizedExtra=approvals>0&&lastApproval>lastBlock;
             if(attempts>=3&&!authorizedExtra)throw Error('El cuarto intento requiere autorización Máster.');
             if(attempts>=4)throw Error('Límite de reconteos alcanzado. Avisa a Máster.');
