@@ -45,7 +45,7 @@ export default function TikTokOrderDetail(){
  const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
  const pieces=[...totals.values()].reduce((a,b)=>a+b,0);
  const validMapping=[...totals.keys()].every(name=>!!mapping[name]);
- const valid=[...totals].every(([name,total])=>Number.isSafeInteger(plaza[name]??0)&&(plaza[name]??0)>=0&&(plaza[name]??0)<=total);
+ const valid=[...totals].every(([name,total])=>Number.isSafeInteger(plaza[name]??0)&&(plaza[name]??0)>=0);
  const plazaTotal=[...totals].reduce((n,[name])=>n+(plaza[name]??0),0);
  const trevinoTotal=[...totals].reduce((n,[name])=>n+(trevino[name]??0),0);
  const pending=pieces-plazaTotal-trevinoTotal;
@@ -60,8 +60,8 @@ export default function TikTokOrderDetail(){
   }catch(e){setError(e instanceof Error?e.message:'Error al guardar');}finally{setBranchSaving(false);}
  }
 
- async function closeOrder(){if(closing||editingBranch||!order)return;if(!window.confirm('¿Cerrar pedido y generar las salidas de las aportaciones guardadas?'))return;setClosing(true);setError('');try{const r=await fetch('/api/tiktok-labels/preparation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'close',orderId})});const d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo cerrar');setExits(d.exits);setNotice('Pedido cerrado. Pendiente de registro en sistema.');}catch(e){setError(e instanceof Error?e.message:'Error al cerrar');}finally{setClosing(false);}}
- const complete=pieces>0&&[...totals].every(([name,total])=>(trevino[name]??0)+(plaza[name]??0)===total&&(!total||mapping[name]));
+ async function closeOrder(){if(closing||editingBranch||!order)return;if(!window.confirm(''+(pending!==0?'Las cantidades de TikTok e inventario son distintas. ':'')+'¿Cerrar pedido y generar las salidas de las aportaciones guardadas?'))return;setClosing(true);setError('');try{const r=await fetch('/api/tiktok-labels/preparation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'close',orderId})});const d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo cerrar');setExits(d.exits);setNotice('Pedido cerrado. Pendiente de registro en sistema.');}catch(e){setError(e instanceof Error?e.message:'Error al cerrar');}finally{setClosing(false);}}
+ const complete=trevinoTotal+plazaTotal>0&&[...totals].every(([name])=>[trevino[name]??0,plaza[name]??0].every(q=>Number.isSafeInteger(q)&&q>=0&&q<=10000000)&&(!( (trevino[name]??0)+(plaza[name]??0))||!!mapping[name]));
  const registered=exits.length>0&&exits.every(e=>['POS_REGISTERED','POS_RECONCILED'].includes(e.status));
  return <div className="fullWorkspace fullOrderDetail">
   <Link className="fullListBack" href="/salidas/pedidos/tiktok">← Pedidos TikTok</Link>
@@ -69,7 +69,7 @@ export default function TikTokOrderDetail(){
   {error&&<p role="alert" style={{color:'#b42318'}}>{error}</p>}
   {order&&<>
    <header className="fullOrderHeading"><small>{number}</small><h1>{order.name}</h1><span className="fullOrderBadge">{registered?"Registrado en sistema":exits.length?"Pendiente de registro":"Pendiente"}</span></header>
-   <section className="fullOrderTotal"><strong>{pieces.toLocaleString('es-MX')} <span>piezas</span></strong></section>
+   <section className="fullOrderTotal"><strong>{pieces.toLocaleString('es-MX')} <span>unidades TikTok</span></strong><div>Salida de inventario: {(trevinoTotal+plazaTotal).toLocaleString('es-MX')} piezas</div></section>
    <div className="fullOrderBranches">
     {(['Treviño','Plaza del Audio'] as const).map(branch=>{
      const isTrevino=branch==='Treviño';
@@ -77,13 +77,13 @@ export default function TikTokOrderDetail(){
      const total=isTrevino?trevinoTotal:plazaTotal;
      const setQuantities=isTrevino?setTrevino:setPlaza;
      const isEditing=editingBranch===branch;
-     const validBranch=[...totals].every(([name,max])=>Number.isSafeInteger(quantities[name]??0)&&(quantities[name]??0)>=0&&(quantities[name]??0)<=max);
+     const validBranch=[...totals].every(([name,max])=>Number.isSafeInteger(quantities[name]??0)&&(quantities[name]??0)>=0&&(quantities[name]??0)<=10000000);
      return <section key={branch} className="card fullOrderBranch">
       <div className="fullOrderBranchTop"><h2>{branch}</h2><strong>{total.toLocaleString('es-MX')} <span>pzas</span></strong></div>
       <div className="fullOrderBranchAction"><small>{total>0?'Aportación registrada':'Pendiente'}</small><button disabled={exits.length>0||closing} className="fullQuantityButton" type="button" onClick={()=>{setEditingBranch(isEditing?null:branch)}}>{isEditing?'Cerrar':'Modificar cantidad'}</button></div>
       {isEditing&&<div style={{marginTop:18,display:'grid',gap:12}}>
        {[...totals].map(([name,max])=><div key={name} style={{display:'grid',gap:10,padding:14,border:'1px solid #e2e8f0',borderRadius:12}}>
-        <strong>{name} <small style={{color:'#64748b',fontWeight:400}}>Máximo {max}</small></strong>
+        <strong>{name} <small style={{color:'#64748b',fontWeight:400}}>TikTok: {max} unidades</small></strong>
         <div style={{display:'grid',gap:6}}>
          <label htmlFor={'catalog-'+name} style={{fontWeight:600}}>Producto de COREONE</label>
          <input id={'catalog-'+name} type="search" placeholder="Buscar producto del catálogo…" value={catalogSearch[name]??catalog.find(p=>p.id===mapping[name])?.name??''} onChange={e=>{setCatalogSearch(prev=>({...prev,[name]:e.target.value}));setMapping(prev=>({...prev,[name]:''}));setNotice('')}} style={{width:'100%',padding:11,border:'1px solid #cbd5e1',borderRadius:9}}/>
@@ -91,7 +91,7 @@ export default function TikTokOrderDetail(){
          {!mapping[name]&&(catalogSearch[name]??'').trim()&&<div style={{maxHeight:200,overflowY:'auto',border:'1px solid #cbd5e1',borderRadius:9}}>{catalog.filter(p=>normalize(p.name).includes(normalize(catalogSearch[name]??''))).slice(0,15).map(p=><button type="button" key={p.id} onClick={()=>{setMapping(prev=>({...prev,[name]:p.id}));setCatalogSearch(prev=>({...prev,[name]:p.name}));setNotice('')}} style={{display:'block',width:'100%',textAlign:'left',padding:11,background:'#fff',border:0,borderBottom:'1px solid #e2e8f0',color:'#172b4d'}}>{p.name}</button>)}</div>}
         </div>
         <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>Piezas
-         <input type="number" min={0} max={max} step={1} value={quantities[name]??0} onChange={e=>setQuantities(prev=>({...prev,[name]:e.target.value===''?0:Number(e.target.value)}))} style={{width:110,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/>
+         <input type="number" min={0} max={10000000} step={1} value={quantities[name]??0} onChange={e=>setQuantities(prev=>({...prev,[name]:e.target.value===''?0:Number(e.target.value)}))} style={{width:110,padding:10,border:'1px solid #cbd5e1',borderRadius:9}}/>
         </label>
        </div>)}
        {!validBranch&&<p role="alert" style={{color:'#b42318'}}>Revisa las cantidades.</p>}
@@ -101,7 +101,7 @@ export default function TikTokOrderDetail(){
      </section>;
     })}
    </div>
-   <div style={{margin:'12px 0',color:pending===0?'#166534':'#9a3412',fontWeight:600}}>{pending===0?'Aportaciones completas':pending>0?'Pendientes de asignar: '+pending+' piezas':'Las aportaciones exceden el pedido por '+Math.abs(pending)+' piezas'}</div>
+   <div style={{margin:'12px 0',color:pending===0?'#166534':'#9a3412',fontWeight:600}}>{pending===0?'Aportaciones completas':'Las cantidades de TikTok e inventario no coinciden. Verifica kits o paquetes; puedes continuar.'}</div>
 
    {notice&&<p role="status">{notice}</p>}
    {!exits.length&&complete&&!editingBranch&&<button type="button" disabled={closing||branchSaving} onClick={closeOrder} style={{width:'100%',padding:14,background:'#2056b8',color:'#fff',borderRadius:12,border:0,fontWeight:700}}>{closing?'Cerrando…':'Cerrar pedido'}</button>}
