@@ -46,7 +46,7 @@ async function handlePUT(req:NextRequest){
     const p=(await c.query("SELECT * FROM tiktok_order_preparations WHERE order_id=$1 FOR UPDATE",[b.orderId])).rows[0];if(!p)throw Error('Guarda primero las aportaciones.');
     const totals=new Map<string,number>();for(const item of o.items){const name=String(item.product_name||'Producto sin nombre').trim(),qty=Number(item.qty);if(!Number.isSafeInteger(qty)||qty<0)throw Error('Cantidad inválida');totals.set(name,(totals.get(name)||0)+qty);}
     const groups=[{name:'Treviño',lines:new Map<string,number>()},{name:'Plaza del Audio',lines:new Map<string,number>()}];
-    for(const [name,total] of totals){const quantities=[Number(p.trevino[name]??0),Number(p.plaza[name]??0)];if(quantities.some(q=>!Number.isSafeInteger(q)||q<0)||quantities[0]+quantities[1]!==total)throw Error('Las aportaciones guardadas no coinciden con el pedido: '+name);if(total>0){const id=p.products[name];if(!id||!(await c.query("SELECT 1 FROM products WHERE id=$1 AND status='ACTIVE'",[id])).rowCount)throw Error('Selecciona un producto activo para '+name);groups.forEach((g,i)=>{if(quantities[i]>0)g.lines.set(id,(g.lines.get(id)||0)+quantities[i]);});}}
+    for(const [name,total] of totals){const quantities=[Number(p.trevino[name]??0),Number(p.plaza[name]??0)];if(quantities.some(q=>!Number.isSafeInteger(q)||q<0))throw Error('Las aportaciones guardadas no coinciden con el pedido: '+name);if(quantities.some(q=>q>0)){const id=p.products[name];if(!id||!(await c.query("SELECT 1 FROM products WHERE id=$1 AND status='ACTIVE'",[id])).rowCount)throw Error('Selecciona un producto activo para '+name);groups.forEach((g,i)=>{if(quantities[i]>0)g.lines.set(id,(g.lines.get(id)||0)+quantities[i]);});}}
     const result=[];for(const g of groups){if(!g.lines.size)continue;const branch=(await c.query("SELECT id::text FROM branches WHERE name=$1 AND status='ACTIVE'",[g.name])).rows[0];if(!branch)throw Error('Sucursal no disponible');await assertBranchAccess(user,branch.id);
      const id=(await c.query("INSERT INTO inventory_movements(folio,movement_type,branch_id,created_by,status,closed_by,closed_at) VALUES($1,'EXIT',$2,$3,'CLOSED',$3,now()) RETURNING id::text",['SAL-TT-'+crypto.randomUUID(),branch.id,user.id])).rows[0].id;
      await c.query("INSERT INTO exits(movement_id,channel,exit_type) VALUES($1,'TIKTOK','FULL')",[id]);for(const [product,qty] of g.lines)await c.query("INSERT INTO exit_lines(movement_id,product_id,quantity) VALUES($1,$2,$3)",[id,product,qty]);
@@ -66,7 +66,7 @@ async function handlePUT(req:NextRequest){
    if(new Date(orders[0].updated_at).getTime()!==new Date(b.sourceUpdatedAt).getTime())return NextResponse.json({error:'El pedido TikTok cambió. Recarga la página.'},{status:409});
    const totals=new Map<string,number>();
    for(const item of (Array.isArray(orders[0].items)?orders[0].items:[])){const name=String(item.product_name||'Producto sin nombre').trim();totals.set(name,(totals.get(name)||0)+Number(item.qty||0));}
-   for(const [name,qty] of Object.entries(b.quantities))if(!totals.has(name)||qty>totals.get(name)!)return NextResponse.json({error:'Cantidad fuera del pedido: '+name},{status:400});
+   for(const [name,qty] of Object.entries(b.quantities))if(!totals.has(name))return NextResponse.json({error:'Producto fuera del pedido: '+name},{status:400});
    if(b.products){
     for(const name of Object.keys(b.products))if(!totals.has(name))return NextResponse.json({error:'Producto fuera del pedido: '+name},{status:400});
     const ids=[...new Set(Object.values(b.products))];
