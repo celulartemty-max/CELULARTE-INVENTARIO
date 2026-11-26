@@ -4,7 +4,7 @@ import '../../full-orders.css';
 import Link from 'next/link';
 import {useEffect,useState} from 'react';
 
-type LabelOrder={id:string;name:string;items:{qty:number}[];created_at:string};
+type LabelOrder={id:string;name:string;items:{qty:number}[];created_at:string;inventory_status?:'OPEN'|'PENDING_POS'|'REGISTERED'};
 export default function TikTokOrdersPage(){
  const [orders,setOrders]=useState<LabelOrder[]>([]);
  const [loading,setLoading]=useState(true);
@@ -19,6 +19,7 @@ export default function TikTokOrdersPage(){
  },[]);
  const ordered=[...orders].sort((a,b)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime());
  const numbers=new Map(ordered.map((order,index)=>[order.id,'TT-'+String(index+1).padStart(4,'0')]));
+ const visible=orders.filter(o=>view==='history'?o.inventory_status==='REGISTERED':o.inventory_status!=='REGISTERED');
  return <div className="fullWorkspace fullOrderList">
   <Link className="fullListBack" href="/salidas">← Salidas</Link>
   <h1>Gestión de Pedidos</h1>
@@ -32,12 +33,11 @@ export default function TikTokOrdersPage(){
   </nav>
   {loading&&<p>Cargando pedidos TikTok…</p>}
   {error&&<p role="alert">{error}</p>}
-  {!loading&&!error&&view==='history'&&<p>Los pedidos enviados aparecerán aquí cuando habilitemos el registro de salidas de TikTok.</p>}
-  {!loading&&!error&&view==='open'&&!orders.length&&<p>No hay pedidos de etiquetas TikTok todavía.</p>}
-  {!loading&&!error&&view==='open'&&<div className="fullListRows">{[...orders].reverse().map(order=>{
+  {!loading&&!error&&!visible.length&&<p>{view==='history'?'No hay pedidos registrados en sistema.':'No hay pedidos pendientes.'}</p>}
+  {!loading&&!error&&<div className="fullListRows">{[...visible].reverse().map(order=>{
    const pieces=(Array.isArray(order.items)?order.items:[]).reduce((n,item)=>n+(Number(item.qty)||0),0);
    return <Link className="fullListRow" href={"/salidas/pedidos/tiktok/"+order.id} key={order.id}>
-    <div className="fullListInfo"><small>{numbers.get(order.id)}</small><h2>{order.name}</h2><div className="fullListMeta"><span>Pendiente de salida</span><small>Bodega externa TikTok</small></div></div>
+    <div className="fullListInfo"><small>{numbers.get(order.id)}</small><h2>{order.name}</h2><div className="fullListMeta"><span>{order.inventory_status==='REGISTERED'?'Registrado en sistema':order.inventory_status==='PENDING_POS'?'Pendiente de registro':'Pendiente de salida'}</span><small>Bodega externa TikTok</small></div></div>
     <strong className="fullListCount">{pieces.toLocaleString('es-MX')} <small>pzas</small></strong><span className="fullListArrow" aria-hidden="true">›</span>
    </Link>;
   })}</div>}
