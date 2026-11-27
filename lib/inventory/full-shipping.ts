@@ -37,8 +37,13 @@ export async function closeFullShipment(u:SessionUser,raw:unknown,requestId:stri
   for(const p of parts.rows){
    if(finalTotal!=null&&p.branch==='Treviño')continue;
    if(p.waived_at){if(p.pieces||p.status!=='CANCELLED')throw Error('Aportación inconsistente. Revisa el pedido.');continue;}
+   if(p.status==='DRAFT'&&p.pieces===0){
+    const lines=await c.query('SELECT 1 FROM exit_lines WHERE movement_id=$1 LIMIT 1',[p.movement_id]);
+    if(!lines.rows.length){await c.query('UPDATE full_order_exits SET waived_at=now(),waived_by=$1 WHERE movement_id=$2',[u.id,p.movement_id]);await c.query("UPDATE inventory_movements SET status='CANCELLED',updated_at=now() WHERE id=$1",[p.movement_id]);await c.query(`INSERT INTO audit_events(user_id,branch_id,movement_id,action,new_value) VALUES($1,$2,$3,'FULL_NO_CONTRIBUTION',$4::jsonb)`,[u.id,p.branch_id,p.movement_id,JSON.stringify({...data,automatic:true})]);continue;}
+   }
    if(!['CLOSED','PENDING_POS','POS_REGISTERED','POS_RECONCILED','POS_CORRECTION_PENDING'].includes(p.status))throw Error('Termina las capturas o marca Sin aportación antes de cerrar.');
   }
+  if(finalTotal!=null){const snapshot=await (await import('./full-final-count')).plazaSnapshotSql;const current=await c.query(snapshot,[data.orderId]);await c.query('UPDATE full_final_counts SET plaza_snapshot=$2::jsonb WHERE order_id=$1',[data.orderId,JSON.stringify(current.rows)]);}
   const total=finalTotal??parts.rows.reduce((n,p)=>n+p.pieces,0);
   if(!total)throw Error('No hay piezas para enviar.');
   if(finalTotal==null&&order.rows[0].expected_pieces!==null&&total!==order.rows[0].expected_pieces)throw Error('El total no coincide con el FULL. MASTER debe ajustar el total antes de enviarlo.');
