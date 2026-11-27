@@ -18,6 +18,8 @@ export default function ExitEditor({movement,lines,products}:{movement:ExitMovem
   const [quantities,setQuantities]=useState<Record<string,number>>(()=>Object.fromEntries(lines.map(l=>[l.id,l.quantity])));
   const total=lines.reduce((s,l)=>s+(quantities[l.id]??l.quantity),0);
   const isDraft=movement.status==='DRAFT';
+  const canCorrect=!movement.pos_registered_at&&['CLOSED','PENDING_POS'].includes(movement.status);
+  const [editing,setEditing]=useState(false);
   const canRegisterPos=useRegistrationAccess();
 
   async function changeQuantity(l:ExitLine,delta:number){
@@ -51,7 +53,7 @@ export default function ExitEditor({movement,lines,products}:{movement:ExitMovem
         <button type="submit" style={{width:'100%',padding:14}}>Agregar producto</button>
       <button type="button" onClick={()=>setCapture(false)}>Cancelar y volver</button></form></section></div>;
 
-  if(!isDraft)return <ExitSummary movement={movement} lines={lines} canRegister={canRegisterPos}/>;
+  if(!isDraft)return <><ExitSummary movement={movement} lines={lines} canRegister={canRegisterPos}/>{canCorrect&&<section className="card pad"><button type="button" onClick={()=>setEditing(v=>!v)}>{editing?'Cerrar edición':'Modificar cantidades'}</button>{editing&&lines.map(l=><form key={l.id} className="formGrid" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void act({action:'saveLine',lineId:l.id,productId:l.productId,quantity:Number(f.get('quantity'))},'¿Confirmar la cantidad real de esta salida?');}}><label>{l.product}<input name="quantity" type="number" min={1} step={1} defaultValue={l.quantity} required/></label><button type="submit">Guardar cantidad</button></form>)}</section>}</>
 
   return <div style={{maxWidth:760,margin:'0 auto'}}>
     <header style={{marginBottom:18}}>
