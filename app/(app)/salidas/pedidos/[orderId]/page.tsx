@@ -1,6 +1,8 @@
 import '../../full-orders.css';
 import './final-count.css';
 import Link from 'next/link';
+import InlineQuantity from './inline-quantity';
+import {sql} from '@/lib/db';
 import EditName from './edit-name';
 import FinalCount from './final-count';
 import RegistrationQueue from '../../../registros/registration-queue';
@@ -14,6 +16,8 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
  const user=await requireUser(),{orderId}=await params,rows=await fullOrderRows(user,orderId);
  if(!rows.length)return <p>Pedido no disponible para tus sucursales.</p>;
  const [products,final,review,allowed,canRegister]=await Promise.all([fullOrderProducts(user,orderId),finalCountView(user,orderId),fullReviewData(user,orderId),getAuthorizedBranchIds(user),hasModulePermission(user,'REGISTRO_SISTEMA')]);
+ const editableIds=rows.filter(r=>!r.shipped_at&&!r.waived_at&&!r.pos_registered_at&&['DRAFT','CLOSED','PENDING_POS'].includes(r.status)&&(allowed===null||allowed.includes(r.branch_id))).map(r=>r.movement_id);
+ const editableLines=editableIds.length?await sql`SELECT l.id::text,l.movement_id::text,l.product_id::text,p.name product,l.quantity::int FROM exit_lines l JOIN products p ON p.id=l.product_id WHERE l.movement_id=ANY(${editableIds}::uuid[]) AND NOT EXISTS(SELECT 1 FROM full_exit_reviews v WHERE v.movement_id=l.movement_id) ORDER BY p.name,l.id`:[];
  const order=rows[0],total=final?.total??rows.reduce((n,r)=>n+(r.status==='CANCELLED'?0:r.pieces),0);
  const expected=order.expected_pieces,difference=expected===null?null:total-expected;
  const pending=canRegister?(await registrationPending(user)).filter(r=>r.kind==='FULL_ADJUSTMENT'&&r.id===orderId):[];
@@ -26,7 +30,8 @@ export default async function Page({params}:{params:Promise<{orderId:string}>}){
   {user.role==='MASTER'&&<section className="fullOrderTotal" aria-label="Total del pedido"><strong>{total.toLocaleString('es-MX')}{expected!==null?` / ${expected.toLocaleString('es-MX')}`:''} <span>piezas</span></strong>{difference!==null&&<small>{difference===0?'✓ Total completo':difference<0?`Faltan ${(-difference).toLocaleString('es-MX')}`:`${difference.toLocaleString('es-MX')} de más`}</small>}</section>}
   <div className="fullOrderBranches">{rows.filter(r=>!final||r.branch!=='Treviño').map(r=><section className="card fullOrderBranch" key={r.movement_id}>
    <div className="fullOrderBranchTop"><h2>{r.branch}</h2><strong>{r.pieces.toLocaleString('es-MX')} <span>pzas</span></strong></div>
-   <div className="fullOrderBranchAction"><small>{r.waived_at?'Sin aportación':r.status==='POS_CORRECTION_PENDING'?'Corrección pendiente':r.pos_registered_at?'Registrado':r.status==='DRAFT'?'Pendiente':'Pendiente de registro'}</small>{(!r.waived_at||!order.shipped_at)&&<Link className="fullQuantityButton" href={'/salidas/'+r.movement_id}>{order.shipped_at?'Ver detalle →':'Modificar cantidad'}</Link>}</div>
+   <div className="fullOrderBranchAction"><small>{r.waived_at?'Sin aportación':r.status==='POS_CORRECTION_PENDING'?'Corrección pendiente':r.pos_registered_at?'Registrado':r.status==='DRAFT'?'Pendiente':'Pendiente de registro'}</small>{(!r.waived_at||!order.shipped_at)&&<Link className="fullQuantityButton" href={'/salidas/'+r.movement_id}>{order.shipped_at||r.pieces>0?'Ver detalle →':'Agregar producto'}</Link>}</div>
+   {editableLines.filter(l=>String(l.movement_id)===r.movement_id).map(l=><InlineQuantity key={String(l.id)+':'+String(l.quantity)} movementId={r.movement_id} lineId={String(l.id)} productId={String(l.product_id)} product={String(l.product)} quantity={Number(l.quantity)}/>)}
    {!order.shipped_at&&!r.waived_at&&r.status==='DRAFT'&&r.pieces===0&&(allowed===null||allowed.includes(r.branch_id))&&<ShippingAction orderId={orderId} movementId={r.movement_id}/>}
   </section>)}</div>
   {final&&<section className="card fullOrderBranch"><h2>Ajuste calculado de Treviño</h2>{final.lines.map(l=>{const delta=l.final_quantity-l.plaza_quantity;return <p key={l.product_id}><b>{l.product}</b> · {delta===0?'Sin ajuste':`${delta>0?'Salida':'Entrada'} de ${Math.abs(delta).toLocaleString('es-MX')} piezas`}</p>})}{final.stale?<p role="alert">Cambió Plaza. Guarda de nuevo el conteo final antes de registrar o cerrar.</p>:<><p>{finalAdjustment(final.lines,'origin').length||finalAdjustment(final.lines,'destination').length?'Pendiente de registrar en sistema':'Sin ajustes pendientes de registro'}</p><RegistrationQueue rows={pending} compact buttonLabel="Registrar en sistema"/></>}</section>}
