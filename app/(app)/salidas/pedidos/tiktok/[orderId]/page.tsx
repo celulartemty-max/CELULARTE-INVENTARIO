@@ -51,6 +51,7 @@ export default function TikTokOrderDetail(){
  const pending=pieces-plazaTotal-trevinoTotal;
  async function saveBranch(branch:'Treviño'|'Plaza del Audio'){
   if(branchSaving||!order)return;
+  if(!window.confirm('Vas a guardar mercancía de '+branch+'. Verifica que la sucursal sea correcta. ¿Continuar?'))return;
   setBranchSaving(true);setError('');setNotice('');
   try{const quantities=branch==='Treviño'?trevino:plaza;
    const products=Object.fromEntries([...totals.keys()].filter(name=>mapping[name]).map(name=>[name,mapping[name]]));
