@@ -1,0 +1,8 @@
+'use client';
+import {useState} from 'react';
+import {useRouter} from 'next/navigation';
+export default function InlineQuantity({movementId,lineId,productId,product,quantity}:{movementId:string;lineId:string;productId:string;product:string;quantity:number}){
+ const router=useRouter(),[qty,setQty]=useState(quantity),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ async function save(){setBusy(true);setError('');try{const r=await fetch('/api/exits',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'saveLine',movementId,lineId,productId,quantity:qty})});const j=await r.json();if(!r.ok)throw Error(j.error||'No se pudo guardar');router.refresh();}catch(e){setError(e instanceof Error?e.message:'Error al guardar')}finally{setBusy(false)}}
+ return <div style={{borderTop:'1px solid #e4e7ec',paddingTop:12,marginTop:12}}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><b>{product}</b><div style={{display:'flex',alignItems:'center',gap:8}}><button type="button" disabled={busy||qty<=1} onClick={()=>setQty(q=>q-1)} aria-label="Quitar pieza">−</button><input aria-label="Cantidad" type="number" min={1} step={1} value={qty} disabled={busy} onChange={e=>setQty(Number(e.target.value))} style={{width:85,textAlign:'center'}}/><button type="button" disabled={busy} onClick={()=>setQty(q=>q+1)} aria-label="Agregar pieza">+</button></div></div>{qty!==quantity&&<button type="button" disabled={busy||!Number.isInteger(qty)||qty<1} onClick={save}>{busy?'Guardando…':'Guardar cantidad'}</button>}{error&&<p role="alert">{error}</p>}</div>
+}
